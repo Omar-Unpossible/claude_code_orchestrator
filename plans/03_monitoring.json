@@ -1,0 +1,316 @@
+{
+  "milestone_id": "M3",
+  "milestone_name": "File Monitoring",
+  "purpose": "Track file changes made by the agent to enable validation and rollback",
+  "estimated_hours": 6,
+  "priority": "important",
+  "dependencies": ["M1"],
+  "week": "3",
+  
+  "overview": {
+    "why_this_matters": "Without file watching, we can't know what the agent actually did. This enables validation (did it create expected files?) and rollback (restore to checkpoint).",
+    "key_insight": "Debouncing is critical - agents make rapid changes. Without debouncing, you'll get hundreds of duplicate events.",
+    "success_indicator": "Detects all file changes within 1 second with <5% duplicate events"
+  },
+  
+  "implementation_order": ["3.1", "3.2"],
+  
+  "deliverables": [
+    {
+      "id": "3.1",
+      "name": "file_watcher",
+      "file": "src/monitoring/file_watcher.py",
+      "description": "Watches project directory for file changes using watchdog library",
+      "estimated_hours": 4,
+      "priority": "critical",
+      
+      "requirements": [
+        "Implement FileWatcher class using watchdog library",
+        "Add recursive directory watching",
+        "Implement file change detection (created, modified, deleted)",
+        "Add pattern filtering (include and exclude patterns)",
+        "Implement debouncing to avoid duplicate events",
+        "Add event queuing for batch processing",
+        "Implement change tracking in StateManager",
+        "Add content hashing for deduplication (MD5 or SHA256)",
+        "Implement graceful handling of temporary files",
+        "Add observer pattern for notifications",
+        "Implement start/stop functionality",
+        "Add thread safety for concurrent access"
+      ],
+      
+      "watchdog_integration": {
+        "library": "watchdog",
+        "handler": "watchdog.events.FileSystemEventHandler",
+        "observer": "watchdog.observers.Observer",
+        "events": ["FileCreatedEvent", "FileModifiedEvent", "FileDeletedEvent", "FileMovedEvent"]
+      },
+      
+      "methods_required": {
+        "start_watching": "def start_watching(self, path: str) -> None",
+        "stop_watching": "def stop_watching(self) -> None",
+        "get_recent_changes": "def get_recent_changes(self, limit: int = 100) -> List[dict]",
+        "register_handler": "def register_handler(self, callback: Callable[[dict], None]) -> None",
+        "is_watching": "def is_watching(self) -> bool",
+        "get_watched_paths": "def get_watched_paths(self) -> List[str]",
+        "clear_history": "def clear_history(self) -> None"
+      },
+      
+      "pattern_configuration": {
+        "watch_patterns": ["*.py", "*.md", "*.txt", "*.json", "*.yaml", "*.toml"],
+        "ignore_patterns": [
+          "__pycache__",
+          "*.pyc",
+          ".git",
+          ".venv",
+          "venv",
+          "node_modules",
+          ".pytest_cache",
+          "*.log",
+          ".DS_Store",
+          "Thumbs.db"
+        ],
+        "ignore_directories": [".git", "__pycache__", "node_modules", ".venv"]
+      },
+      
+      "debouncing_strategy": {
+        "approach": "Event coalescing with time window",
+        "debounce_seconds": 0.5,
+        "implementation": "Track last event time per file, only emit if >0.5s since last",
+        "coalescing": "Multiple modifications to same file = one event"
+      },
+      
+      "change_tracking": {
+        "storage": "StateManager.save_file_state()",
+        "data_captured": {
+          "file_path": "Relative to project root",
+          "change_type": "created, modified, deleted",
+          "timestamp": "Unix timestamp",
+          "content_hash": "MD5 or SHA256 of content",
+          "file_size": "Bytes",
+          "content": "Full file content (for rollback)"
+        },
+        "hash_algorithm": "hashlib.md5() - fast enough for this use case"
+      },
+      
+      "acceptance_criteria": [
+        "Detects all file changes (verified by creating/modifying/deleting files)",
+        "Filters correctly by pattern (ignores __pycache__, watches *.py)",
+        "Debouncing works (rapid changes = one event)",
+        "Handles rapid file changes (100 files in 1 second)",
+        "Minimal performance impact (<5% CPU)",
+        "Thread-safe operations (tested with concurrent access)",
+        "Changes stored in StateManager with hashes",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_detect_file_created",
+          "test_detect_file_modified",
+          "test_detect_file_deleted",
+          "test_pattern_filtering",
+          "test_debouncing",
+          "test_rapid_changes",
+          "test_state_manager_integration"
+        ],
+        "integration_tests": [
+          "test_real_filesystem_watching",
+          "test_agent_file_changes_captured"
+        ],
+        "performance_tests": [
+          "test_cpu_usage_under_load",
+          "test_handle_1000_files_per_second"
+        ]
+      },
+      
+      "implementation_notes": [
+        "Run observer in separate thread: observer.start()",
+        "Use watchdog.events.PatternMatchingEventHandler for filtering",
+        "Implement on_created, on_modified, on_deleted handlers",
+        "Use collections.defaultdict for last_event_time tracking",
+        "Calculate hash: hashlib.md5(content.encode()).hexdigest()",
+        "Store changes: state_manager.save_file_state(...)",
+        "Handle exceptions in handlers (watchdog can throw)",
+        "Use pathlib.Path for path operations"
+      ],
+      
+      "edge_cases": [
+        "Temporary files (*.tmp, *.swp) - ignore",
+        "Editor backups (*.bak, *~) - ignore",
+        "Rapid modifications - debounce",
+        "Directory renames - track as multiple file moves",
+        "Symlinks - follow or ignore based on config",
+        "Permission errors - log and skip"
+      ]
+    },
+    
+    {
+      "id": "3.2",
+      "name": "event_detector",
+      "file": "src/monitoring/event_detector.py",
+      "description": "Detects significant events from file changes and patterns",
+      "estimated_hours": 2,
+      "priority": "important",
+      "depends_on": ["3.1"],
+      
+      "requirements": [
+        "Implement EventDetector class",
+        "Add task completion detection based on expected files",
+        "Implement failure pattern detection (consecutive errors)",
+        "Add milestone completion detection (all tasks done)",
+        "Implement anomaly detection (deviation from baseline)",
+        "Add state transition detection (status changes)",
+        "Implement threshold monitoring (budget, time, errors)",
+        "Add event correlation (related events)",
+        "Implement debouncing to avoid duplicate events"
+      ],
+      
+      "methods_required": {
+        "detect_task_complete": "def detect_task_complete(self, task: Task, file_changes: List[dict]) -> bool",
+        "detect_failure": "def detect_failure(self, recent_events: List[dict]) -> Optional[FailurePattern]",
+        "detect_milestone_complete": "def detect_milestone_complete(self, project_state: ProjectState) -> bool",
+        "detect_anomaly": "def detect_anomaly(self, metric: str, value: float) -> bool",
+        "detect_state_change": "def detect_state_change(self, old_state: dict, new_state: dict) -> Optional[Event]",
+        "check_thresholds": "def check_thresholds(self, current_values: dict) -> List[ThresholdEvent]",
+        "should_trigger_event": "def should_trigger_event(self, event_type: str, context: dict) -> bool"
+      },
+      
+      "detection_logic": {
+        "task_complete": {
+          "conditions": [
+            "All expected files created (from task metadata)",
+            "Tests passing (if test task)",
+            "No errors in last N outputs (N=10)",
+            "Completion marker in agent output",
+            "No file changes for 5 seconds (quiescence)"
+          ],
+          "scoring": "All conditions must be true, or 4 out of 5"
+        },
+        "failure_patterns": {
+          "consecutive_errors": {
+            "threshold": 3,
+            "window_seconds": 600,
+            "detection": "Count errors in time window"
+          },
+          "error_rate": {
+            "threshold": 0.5,
+            "window_interactions": 10,
+            "detection": "Errors / total interactions"
+          },
+          "same_error_repeated": {
+            "threshold": 2,
+            "detection": "Same error message twice"
+          }
+        },
+        "milestone_complete": {
+          "conditions": [
+            "All tasks in milestone marked complete",
+            "All tests passing (if applicable)",
+            "Documentation updated (if required)",
+            "No blocking issues remaining"
+          ]
+        },
+        "anomaly_detection": {
+          "methods": ["statistical", "threshold_based"],
+          "baseline_window": 60,
+          "sensitivity": "medium",
+          "metrics": ["file_change_rate", "error_rate", "iteration_time"]
+        }
+      },
+      
+      "acceptance_criteria": [
+        "Task completion detection accurate (>90%)",
+        "Failure patterns caught early (before cascading)",
+        "Minimal false positives (<5%)",
+        "Low latency detection (<1 second)",
+        "Debouncing works (no duplicate events)",
+        "Threshold monitoring triggers correctly",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_task_complete_detection",
+          "test_failure_pattern_detection",
+          "test_milestone_complete",
+          "test_anomaly_detection",
+          "test_threshold_monitoring"
+        ],
+        "test_data": "Create synthetic event streams with known patterns"
+      },
+      
+      "implementation_notes": [
+        "Query StateManager for recent interactions",
+        "Use sliding window for rate calculations",
+        "Store baseline metrics for anomaly detection",
+        "Emit events via callback or event bus",
+        "Log all detected events at INFO level",
+        "Use time.time() for timestamps"
+      ]
+    }
+  ],
+  
+  "integration_requirements": {
+    "file_watcher_to_state_manager": "Save all changes to database",
+    "file_watcher_to_orchestrator": "Notify on significant changes",
+    "event_detector_to_breakpoint_manager": "Trigger breakpoints on failures"
+  },
+  
+  "testing_requirements": {
+    "overall_coverage": "85% for this phase",
+    "integration_tests": [
+      "test_agent_changes_captured",
+      "test_task_completion_detected",
+      "test_failure_pattern_triggers_breakpoint"
+    ]
+  },
+  
+  "success_metrics": {
+    "performance": {
+      "file_change_detection_latency": "<1s",
+      "cpu_usage": "<5%",
+      "event_processing_throughput": ">100 events/second"
+    },
+    "accuracy": {
+      "change_detection_accuracy": "100%",
+      "task_completion_detection": ">90%",
+      "false_positive_rate": "<5%"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "missing_changes": {
+      "risk": "File watcher misses some changes",
+      "mitigation": "Use proven library (watchdog), comprehensive tests, periodic full scan"
+    },
+    "performance_impact": {
+      "risk": "File watching consumes too much CPU",
+      "mitigation": "Efficient filtering, debouncing, run in separate thread"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented",
+      "85% test coverage",
+      "Performance tests pass"
+    ],
+    "functionality": [
+      "Detects all file changes",
+      "Detects task completion accurately",
+      "Stores changes in StateManager",
+      "Performance impact minimal"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M4",
+    "name": "Orchestration Engine",
+    "readiness_criteria": [
+      "File watching works reliably",
+      "Can detect task completion",
+      "Changes tracked in database"
+    ]
+  }
+}

@@ -1,0 +1,717 @@
+{
+  "milestone_id": "M0",
+  "milestone_name": "Architecture Foundation",
+  "purpose": "Establish plugin system, core abstractions, and architectural principles that guide all development",
+  "estimated_hours": 8,
+  "priority": "critical_path",
+  "dependencies": [],
+  "week": 1,
+  
+  "overview": {
+    "why_this_matters": "This phase establishes the extensibility foundation. Skipping or rushing this will require 15-20 hours of refactoring later. The 8 hours invested here prevents weeks of technical debt.",
+    "key_insight": "Plugin architecture costs minimal time upfront (just interface definitions) but provides massive flexibility. Hard-coding agent implementation would save 3 hours now but cost 20+ hours later.",
+    "success_indicator": "Can instantiate different agent types via config, swap implementations without changing core code"
+  },
+  
+  "architectural_decisions": {
+    "decision_001_plugin_system": {
+      "title": "Use plugin architecture for agent and LLM abstraction",
+      "status": "approved",
+      "date": "2025-11-01",
+      "context": "Need to support multiple agent backends (Claude Code, Aider, custom) and potentially multiple LLM providers (Ollama, llama.cpp, vLLM)",
+      "decision": "Implement abstract base classes (AgentPlugin, LLMPlugin) with decorator-based registration system",
+      "rationale": [
+        "Enables multiple implementations without changing core orchestration logic",
+        "Makes testing trivial (mock agents for unit tests)",
+        "Future-proof for community contributions",
+        "Minimal overhead - just interface definitions",
+        "Industry standard pattern (Airflow, Jenkins, etc. use this)",
+        "Hard to add later - requires major refactoring of all callsites"
+      ],
+      "alternatives_considered": {
+        "hardcode_claude_code": {
+          "description": "Directly integrate Claude Code without abstraction",
+          "pros": ["Faster initial development (-3 hours)", "Simpler code initially"],
+          "cons": ["Cannot support other agents", "Difficult to test", "Refactoring cost 20+ hours"],
+          "rejected_reason": "Not extensible, testing nightmare, high technical debt"
+        },
+        "add_plugins_later": {
+          "description": "Build without plugins, refactor later when needed",
+          "pros": ["Faster MVP", "Don't pay upfront cost"],
+          "cons": ["Refactoring touches 50+ files", "High risk of breakage", "15-20 hour refactor"],
+          "rejected_reason": "False economy - pay much more later"
+        },
+        "strategy_pattern_only": {
+          "description": "Use strategy pattern but no registry/discovery",
+          "pros": ["Simpler than full plugin system"],
+          "cons": ["Manual wiring required", "No runtime discovery", "Less flexible"],
+          "rejected_reason": "Registry adds 1 hour but significant value"
+        }
+      },
+      "consequences": {
+        "positive": [
+          "Any developer can add new agent without touching core code",
+          "Unit tests can use MockAgent instead of real SSH/Docker",
+          "Can compare agents side-by-side on same task",
+          "Professional codebase architecture"
+        ],
+        "negative": [
+          "Extra 3 hours upfront for interface design",
+          "Slightly more complex for first-time contributors",
+          "Need to maintain interface stability"
+        ]
+      },
+      "implementation_notes": [
+        "Use ABC (Abstract Base Class) for interface definition",
+        "Decorator pattern for auto-registration (@register_agent)",
+        "Registry pattern for discovery and instantiation",
+        "Type hints throughout for IDE support",
+        "Comprehensive docstrings with examples"
+      ]
+    },
+    
+    "decision_002_deployment_models": {
+      "title": "Support multiple deployment models via separate plugin implementations",
+      "status": "approved",
+      "date": "2025-11-01",
+      "context": "Users need different isolation levels: VM for dangerous mode, Docker for easy distribution, local for development",
+      "decision": "Create separate agent plugin implementations for each deployment model",
+      "deployment_options": {
+        "ssh_to_vm": {
+          "use_case": "Maximum safety with dangerous mode - VM can be destroyed",
+          "complexity": "Medium - SSH setup, network config",
+          "performance": "Good - 50-200ms network latency",
+          "isolation": "Excellent - full VM boundary",
+          "implementation": "ClaudeCodeSSHAgent using paramiko",
+          "priority": "High - primary deployment for safety"
+        },
+        "docker_container": {
+          "use_case": "Easy distribution, good isolation, reproducible environment",
+          "complexity": "Low - docker-compose up",
+          "performance": "Excellent - no network overhead",
+          "isolation": "Very Good - container boundary",
+          "implementation": "ClaudeCodeDockerAgent using docker SDK",
+          "priority": "Medium - for M7 distribution"
+        },
+        "local_subprocess": {
+          "use_case": "Development and testing - fastest iteration",
+          "complexity": "Very Low - subprocess.Popen",
+          "performance": "Excellent - no overhead",
+          "isolation": "None - direct access to host",
+          "implementation": "ClaudeCodeLocalAgent using subprocess",
+          "priority": "Low - development only, not for dangerous mode"
+        }
+      },
+      "rationale": [
+        "Single plugin interface supports all deployment models",
+        "Users choose based on their security/performance needs",
+        "No architectural changes needed to add new deployment",
+        "Can implement SSH first (M2), Docker later (M7)"
+      ]
+    },
+    
+    "decision_003_state_management": {
+      "title": "Centralized StateManager as single source of truth",
+      "status": "approved",
+      "date": "2025-11-01",
+      "context": "Multiple components need access to project state, tasks, interactions. Need to prevent inconsistencies and enable transactions.",
+      "decision": "All state access goes through StateManager singleton. No direct database access from other components.",
+      "rationale": [
+        "Prevents state inconsistencies (two components with different views)",
+        "Enables atomic transactions (all-or-nothing operations)",
+        "Single place for locking (thread-safe operations)",
+        "Simplifies debugging (one place to add logging/breakpoints)",
+        "Enables state validation before persistence",
+        "Supports checkpointing and rollback"
+      ],
+      "critical_requirements": [
+        "ALL components must use StateManager (enforce via architecture review)",
+        "Thread-safe operations with proper locking mechanisms",
+        "Transaction support for multi-step operations",
+        "No SQL in business logic - only in StateManager",
+        "Connection pooling to prevent connection exhaustion",
+        "Event emission on state changes for monitoring"
+      ],
+      "implementation_notes": [
+        "Singleton pattern with thread-safe initialization",
+        "Context managers for transactions: with state_manager.transaction():",
+        "Locking at method level for thread safety",
+        "Comprehensive logging of all state changes",
+        "Separate read/write methods for clarity"
+      ]
+    },
+    
+    "decision_004_validation_ordering": {
+      "title": "ResponseValidator runs before QualityController",
+      "status": "approved",
+      "date": "2025-11-01",
+      "context": "Two different validation concerns: completeness (did we get a full response?) vs correctness (is the response good?)",
+      "decision": "Always run ResponseValidator first, only proceed to QualityController if validation passes",
+      "rationale": [
+        "Completeness check is fast, quality check is slow (may involve local LLM)",
+        "No point checking quality of incomplete response",
+        "Clear separation of concerns: format vs content",
+        "Different failure modes: incomplete = retry, low quality = review"
+      ],
+      "sequence": [
+        "1. Agent returns response",
+        "2. ResponseValidator checks: complete? format valid? code blocks closed?",
+        "3. If validation fails: retry with clarification or trigger breakpoint",
+        "4. If validation passes: proceed to QualityController",
+        "5. QualityController checks: meets requirements? good quality? tests pass?",
+        "6. If quality fails: retry with improvements or trigger breakpoint",
+        "7. If quality passes: mark task complete"
+      ]
+    },
+    
+    "decision_005_no_cost_tracking": {
+      "title": "No cost calculation - subscription-based, track usage only",
+      "status": "approved",
+      "date": "2025-11-01",
+      "context": "Using Claude Code via subscription (flat fee) not API (per-token pricing)",
+      "decision": "Remove all cost calculation. Track token usage for context management only. Detect rate limits from Claude Code output.",
+      "implications": [
+        "Simpler implementation - no pricing database",
+        "No budget enforcement - subscription handles limits",
+        "Rate limits detected reactively, not proactively",
+        "When limit hit: wait (auto-resolve breakpoint) or notify user",
+        "Focus optimization on quality, not cost"
+      ],
+      "removed_components": [
+        "Cost calculation per interaction",
+        "Budget limits and enforcement",
+        "Cost projections and alerts",
+        "Pricing database updates"
+      ],
+      "kept_components": [
+        "Token counting (for context window management)",
+        "Usage tracking (statistics and analytics)",
+        "Rate limit detection (from Claude Code output)"
+      ]
+    }
+  },
+  
+  "system_architecture": {
+    "architectural_style": "Layered architecture with plugin-based extensibility",
+    "layers": {
+      "layer_1_presentation": {
+        "name": "Presentation Layer",
+        "components": ["CLI", "Future: Web UI", "Future: REST API"],
+        "responsibility": "User interaction, input validation, output formatting",
+        "dependencies": ["Orchestration Layer"]
+      },
+      "layer_2_orchestration": {
+        "name": "Orchestration Layer", 
+        "components": ["Orchestrator", "DecisionEngine", "TaskScheduler", "BreakpointManager"],
+        "responsibility": "High-level workflow control, decision making, task management",
+        "dependencies": ["Domain Layer", "Infrastructure Layer"]
+      },
+      "layer_3_domain": {
+        "name": "Domain Layer",
+        "components": ["StateManager", "QualityController", "PromptGenerator", "ResponseValidator"],
+        "responsibility": "Core business logic, validation rules, quality standards",
+        "dependencies": ["Infrastructure Layer"]
+      },
+      "layer_4_infrastructure": {
+        "name": "Infrastructure Layer",
+        "components": ["AgentPlugins", "LLMPlugins", "FileWatcher", "Database"],
+        "responsibility": "External integrations, I/O, persistence",
+        "dependencies": []
+      }
+    },
+    "data_flow": {
+      "description": "See docs/architecture/data_flow.md for detailed diagrams",
+      "primary_flow": [
+        "1. User initiates task via CLI",
+        "2. Orchestrator gets next task from TaskScheduler",
+        "3. DecisionEngine selects appropriate agent plugin",
+        "4. PromptGenerator creates optimized prompt with context",
+        "5. Agent executes and returns response",
+        "6. FileWatcher detects changes made by agent",
+        "7. ResponseValidator checks completeness",
+        "8. QualityController validates correctness",
+        "9. DecisionEngine decides next action (proceed/retry/breakpoint)",
+        "10. StateManager persists all interactions and changes",
+        "11. Loop continues or breakpoint triggered"
+      ]
+    },
+    "component_interactions": "See docs/architecture/component_diagram.png"
+  },
+  
+  "plugin_system_design": {
+    "overview": {
+      "purpose": "Enable extensibility without modifying core code",
+      "pattern": "Abstract Base Class + Registry + Decorator",
+      "inspiration": "Python entry_points, Airflow operators, Jenkins plugins"
+    },
+    
+    "core_interfaces": {
+      "AgentPlugin": {
+        "file": "src/plugins/base.py",
+        "purpose": "Abstract interface for all coding agents (Claude Code, Aider, etc.)",
+        "methods": {
+          "initialize": {
+            "signature": "def initialize(self, config: dict) -> None",
+            "purpose": "Set up agent with configuration (credentials, paths, etc.)",
+            "raises": ["ConfigException if config invalid"]
+          },
+          "send_prompt": {
+            "signature": "def send_prompt(self, prompt: str, context: Optional[dict] = None) -> str",
+            "purpose": "Send prompt to agent and return response",
+            "params": {
+              "prompt": "The text prompt to send",
+              "context": "Optional context dict with task info, constraints, etc."
+            },
+            "returns": "Agent's response as string",
+            "raises": ["AgentException on failure", "AgentTimeoutException on timeout"]
+          },
+          "get_workspace_files": {
+            "signature": "def get_workspace_files(self) -> List[Path]",
+            "purpose": "Get list of all files in agent's workspace",
+            "returns": "List of Path objects"
+          },
+          "read_file": {
+            "signature": "def read_file(self, path: Path) -> str",
+            "purpose": "Read contents of file from workspace",
+            "returns": "File contents as string",
+            "raises": ["FileNotFoundError if file doesn't exist"]
+          },
+          "get_file_changes": {
+            "signature": "def get_file_changes(self, since: Optional[float] = None) -> List[dict]",
+            "purpose": "Get files modified since timestamp",
+            "params": {
+              "since": "Unix timestamp, or None for all changes since last check"
+            },
+            "returns": "List of dicts with keys: path, change_type, timestamp, hash"
+          },
+          "is_healthy": {
+            "signature": "def is_healthy(self) -> bool",
+            "purpose": "Check if agent is responsive",
+            "returns": "True if healthy, False otherwise"
+          },
+          "cleanup": {
+            "signature": "def cleanup(self) -> None",
+            "purpose": "Release resources (close connections, kill processes, etc.)"
+          }
+        },
+        "implementations_planned": [
+          {
+            "name": "ClaudeCodeSSHAgent",
+            "description": "Claude Code in VM via SSH",
+            "priority": "High - M2 primary implementation",
+            "file": "src/agents/claude_code_ssh.py"
+          },
+          {
+            "name": "ClaudeCodeDockerAgent",
+            "description": "Claude Code in Docker container",
+            "priority": "Medium - M7 for distribution",
+            "file": "src/agents/claude_code_docker.py"
+          },
+          {
+            "name": "ClaudeCodeLocalAgent",
+            "description": "Claude Code as subprocess (no isolation)",
+            "priority": "Low - development only",
+            "file": "src/agents/claude_code_local.py"
+          },
+          {
+            "name": "AiderAgent",
+            "description": "Aider.chat as alternative agent",
+            "priority": "Optional - community contribution",
+            "file": "src/agents/aider.py"
+          },
+          {
+            "name": "MockAgent",
+            "description": "Test double for unit testing",
+            "priority": "High - M0 for testing",
+            "file": "tests/mocks/mock_agent.py"
+          }
+        ]
+      },
+      
+      "LLMPlugin": {
+        "file": "src/plugins/base.py",
+        "purpose": "Abstract interface for local LLM providers",
+        "methods": {
+          "generate": {
+            "signature": "def generate(self, prompt: str, **kwargs) -> str",
+            "purpose": "Generate text completion",
+            "params": {
+              "prompt": "Input prompt",
+              "kwargs": "Model-specific parameters (temperature, max_tokens, etc.)"
+            },
+            "returns": "Generated text"
+          },
+          "generate_stream": {
+            "signature": "def generate_stream(self, prompt: str, **kwargs) -> Iterator[str]",
+            "purpose": "Generate with streaming output",
+            "returns": "Iterator yielding text chunks"
+          },
+          "estimate_tokens": {
+            "signature": "def estimate_tokens(self, text: str) -> int",
+            "purpose": "Estimate token count for text",
+            "returns": "Approximate token count"
+          },
+          "is_available": {
+            "signature": "def is_available(self) -> bool",
+            "purpose": "Check if LLM is accessible",
+            "returns": "True if available"
+          }
+        },
+        "implementations_planned": [
+          {
+            "name": "OllamaProvider",
+            "description": "Ollama API integration",
+            "priority": "High - M2 primary implementation",
+            "file": "src/llm/ollama_provider.py"
+          },
+          {
+            "name": "LlamaCppProvider",
+            "description": "llama.cpp as alternative",
+            "priority": "Low - optional backend",
+            "file": "src/llm/llamacpp_provider.py"
+          },
+          {
+            "name": "MockLLM",
+            "description": "Test double",
+            "priority": "High - M0 for testing",
+            "file": "tests/mocks/mock_llm.py"
+          }
+        ]
+      }
+    },
+    
+    "registry_pattern": {
+      "purpose": "Runtime discovery and instantiation of plugins",
+      "file": "src/plugins/registry.py",
+      "implementation": {
+        "registry_class": "AgentRegistry and LLMRegistry",
+        "storage": "Class-level dict mapping names to classes",
+        "registration": "Decorator @register_agent(name) for auto-registration",
+        "retrieval": "AgentRegistry.get(name) returns class, AgentRegistry.list() returns all names",
+        "validation": "Check that class implements required interface"
+      },
+      "usage_example": {
+        "registration": "@register_agent('claude-code-ssh')\nclass ClaudeCodeSSHAgent(AgentPlugin):\n    pass",
+        "instantiation": "agent_class = AgentRegistry.get('claude-code-ssh')\nagent = agent_class()\nagent.initialize(config)",
+        "discovery": "available = AgentRegistry.list()  # ['claude-code-ssh', 'aider', 'mock']"
+      }
+    },
+    
+    "configuration_driven": {
+      "description": "Users select plugins via configuration, not code changes",
+      "config_example": {
+        "yaml": "orchestrator:\n  agent:\n    type: claude-code-ssh  # or: claude-code-docker, aider, custom\n    config:\n      host: 192.168.1.100\n      user: myuser\n      key_path: ~/.ssh/vm_key"
+      },
+      "loading": "config = Config.load()\nagent_type = config.get('agent.type')\nagent = AgentRegistry.get(agent_type)()\nagent.initialize(config.get('agent.config'))"
+    }
+  },
+  
+  "deliverables": [
+    {
+      "id": "0.1",
+      "name": "plugin_interfaces",
+      "file": "src/plugins/base.py",
+      "description": "Define abstract base classes for AgentPlugin and LLMPlugin",
+      "estimated_hours": 2,
+      
+      "requirements": [
+        "Create AgentPlugin ABC with all required abstract methods",
+        "Create LLMPlugin ABC with all required abstract methods",
+        "Add comprehensive docstrings explaining each method's purpose",
+        "Include type hints for all parameters and return values",
+        "Add usage examples in docstrings",
+        "Define custom exceptions (AgentException, LLMException hierarchies)",
+        "Document expected behavior and edge cases",
+        "Include protocol for cleanup and resource management"
+      ],
+      
+      "acceptance_criteria": [
+        "Can create subclass implementing all abstract methods",
+        "Type checking passes (mypy) with no errors",
+        "Docstrings explain purpose, params, returns, raises for each method",
+        "Examples in docstrings are runnable",
+        "Exception hierarchy is clear and covers all failure modes",
+        "Pylint score ≥9.0",
+        "Peer review completed and approved"
+      ],
+      
+      "implementation_notes": [
+        "Use ABC from abc module",
+        "Use @abstractmethod decorator for required methods",
+        "Consider adding optional methods with default implementations",
+        "Keep interface minimal - easy to implement",
+        "Use Optional, List, Dict from typing for type hints",
+        "Consider async support - add async versions if needed"
+      ],
+      
+      "testing_strategy": {
+        "approach": "Create concrete implementations to verify interface is implementable",
+        "test_doubles": [
+          "EchoAgent - returns prompt as response (testing orchestration)",
+          "ErrorAgent - always fails (testing error handling)",
+          "SlowAgent - adds delays (testing timeouts)"
+        ]
+      },
+      
+      "files_to_create": [
+        "src/plugins/__init__.py",
+        "src/plugins/base.py",
+        "src/plugins/exceptions.py"
+      ]
+    },
+    
+    {
+      "id": "0.2",
+      "name": "plugin_registry",
+      "file": "src/plugins/registry.py",
+      "description": "Implement registration and discovery system for plugins",
+      "estimated_hours": 2,
+      "depends_on": ["0.1"],
+      
+      "requirements": [
+        "Create AgentRegistry class with register/get/list methods",
+        "Create LLMRegistry class with same interface",
+        "Implement decorator @register_agent(name) for auto-registration",
+        "Implement decorator @register_llm(name)",
+        "Add validation on registration (check implements interface)",
+        "Handle duplicate registrations gracefully (warn and override)",
+        "Raise clear exception when requesting unknown plugin",
+        "Support listing all registered plugins",
+        "Thread-safe registration (use locks if needed)"
+      ],
+      
+      "acceptance_criteria": [
+        "Can register plugin using decorator",
+        "Can retrieve registered plugin by name",
+        "Can list all registered plugins",
+        "Validation rejects classes that don't implement interface",
+        "Clear exception when requesting unregistered plugin",
+        "Duplicate registration logged as warning",
+        "100% test coverage",
+        "Thread-safe (tested with concurrent registration)"
+      ],
+      
+      "implementation_notes": [
+        "Use class-level dict for storage: _plugins = {}",
+        "Decorator returns the class unchanged (just registers it)",
+        "Consider supporting aliases (multiple names for same plugin)",
+        "Log all registrations at DEBUG level for troubleshooting",
+        "Use inspect module to validate interface implementation"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_register_and_retrieve",
+          "test_list_plugins",
+          "test_unknown_plugin_raises",
+          "test_duplicate_registration",
+          "test_invalid_plugin_rejected",
+          "test_thread_safe_registration"
+        ]
+      },
+      
+      "files_to_create": [
+        "src/plugins/registry.py",
+        "tests/test_plugin_registry.py"
+      ]
+    },
+    
+    {
+      "id": "0.3",
+      "name": "architecture_documentation",
+      "files": [
+        "docs/architecture/system_design.md",
+        "docs/architecture/plugin_system.md",
+        "docs/architecture/data_flow.md",
+        "docs/decisions/001_why_plugins.md",
+        "docs/decisions/002_deployment_models.md",
+        "docs/decisions/003_state_management.md"
+      ],
+      "description": "Comprehensive documentation of architecture and design decisions",
+      "estimated_hours": 4,
+      "depends_on": ["0.1", "0.2"],
+      
+      "requirements": {
+        "system_design_md": [
+          "High-level architecture diagram showing all layers",
+          "Component responsibilities clearly defined",
+          "Data flow diagrams for key scenarios",
+          "Technology stack and rationale",
+          "Non-functional requirements (performance, scalability)",
+          "Security considerations"
+        ],
+        "plugin_system_md": [
+          "Explanation of plugin architecture benefits",
+          "Step-by-step guide to creating a new agent plugin",
+          "Code examples of full plugin implementation",
+          "Interface reference for AgentPlugin and LLMPlugin",
+          "Common pitfalls and how to avoid them",
+          "Testing strategies for plugins"
+        ],
+        "data_flow_md": [
+          "Sequence diagrams for main scenarios (normal flow, error flow, breakpoint flow)",
+          "State transitions for tasks",
+          "Database schema relationships",
+          "File change detection flow"
+        ],
+        "adr_001_why_plugins": [
+          "Context: need to support multiple agents",
+          "Decision: plugin architecture",
+          "Alternatives considered and rejected",
+          "Consequences (positive and negative)",
+          "Follow standard ADR format"
+        ],
+        "adr_002_deployment_models": [
+          "Context: different isolation needs",
+          "Decision: multiple deployment plugins",
+          "Trade-offs for each model",
+          "Implementation approach"
+        ],
+        "adr_003_state_management": [
+          "Context: shared state across components",
+          "Decision: centralized StateManager",
+          "Why single source of truth matters",
+          "Rules for state access"
+        ]
+      },
+      
+      "acceptance_criteria": [
+        "New developer can understand architecture in 30 minutes",
+        "Can create new agent plugin following guide without asking questions",
+        "All major architectural decisions documented with rationale",
+        "Diagrams are clear and up-to-date",
+        "Examples are correct and runnable",
+        "Peer reviewed by another developer",
+        "No broken links or references"
+      ],
+      
+      "documentation_standards": {
+        "format": "Markdown for all docs",
+        "diagrams": "Use mermaid.js for inline diagrams, draw.io for complex diagrams",
+        "code_examples": "Include complete, runnable examples with expected output",
+        "adr_format": "Follow Nygard ADR template",
+        "tone": "Clear, concise, helpful - avoid jargon"
+      },
+      
+      "diagram_requirements": [
+        "System architecture overview (layers and components)",
+        "Plugin registration and instantiation flow",
+        "Main orchestration loop sequence diagram",
+        "Task state machine diagram",
+        "Database entity-relationship diagram"
+      ]
+    }
+  ],
+  
+  "testing_strategy": {
+    "approach": "Test-driven development for plugin system",
+    "test_deliverables": {
+      "test_plugins": {
+        "purpose": "Create mock plugins for testing orchestration without real agents",
+        "implementations": [
+          {
+            "name": "MockAgent",
+            "behavior": "Returns configurable responses, tracks calls",
+            "file": "tests/mocks/mock_agent.py"
+          },
+          {
+            "name": "EchoAgent",
+            "behavior": "Echoes prompt back as response",
+            "file": "tests/mocks/echo_agent.py"
+          },
+          {
+            "name": "ErrorAgent",
+            "behavior": "Always raises AgentException",
+            "file": "tests/mocks/error_agent.py"
+          },
+          {
+            "name": "SlowAgent",
+            "behavior": "Adds configurable delays to test timeouts",
+            "file": "tests/mocks/slow_agent.py"
+          }
+        ]
+      },
+      "unit_tests": [
+        "test_agent_interface_complete",
+        "test_llm_interface_complete",
+        "test_registry_registration",
+        "test_registry_retrieval",
+        "test_decorator_syntax",
+        "test_invalid_plugin_rejected"
+      ],
+      "integration_tests": [
+        "test_load_plugin_from_config",
+        "test_swap_plugins_at_runtime",
+        "test_multiple_agents_registered"
+      ]
+    },
+    "coverage_target": "95% - this is foundation code",
+    "testing_notes": [
+      "Plugin interfaces should be easy to mock",
+      "Test both successful and error paths",
+      "Verify type hints work with mypy",
+      "Test thread safety of registry"
+    ]
+  },
+  
+  "success_metrics": {
+    "quantitative": {
+      "test_coverage": "≥95%",
+      "documentation_completeness": "100% - all methods documented",
+      "example_code_works": "All examples runnable",
+      "interface_implementation_time": "<2 hours for experienced dev"
+    },
+    "qualitative": {
+      "clarity": "New developer understands system in <30 minutes",
+      "extensibility": "Can add new agent without modifying core code",
+      "maintainability": "Architecture decisions clearly documented"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "risk_interface_too_rigid": {
+      "description": "Plugin interface doesn't support future agent types",
+      "likelihood": "Low",
+      "impact": "High",
+      "mitigation": "Keep interface minimal, add optional methods, version plugins if breaking changes needed"
+    },
+    "risk_over_engineering": {
+      "description": "Plugin system adds complexity we don't need",
+      "likelihood": "Low",
+      "impact": "Medium",
+      "mitigation": "We have concrete need (multiple deployment models), benefits proven in similar systems"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented",
+      "Tests pass with ≥95% coverage",
+      "Pylint score ≥9.0",
+      "Type checking passes (mypy)",
+      "Code reviewed and approved"
+    ],
+    "documentation": [
+      "Architecture docs complete",
+      "ADRs written for all major decisions",
+      "Plugin creation guide with examples",
+      "All diagrams created and accurate"
+    ],
+    "validation": [
+      "Can create mock plugin in <30 minutes",
+      "Can instantiate different agents via config",
+      "New developer understands architecture"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M1",
+    "name": "Core Infrastructure",
+    "readiness_criteria": [
+      "Plugin interfaces defined and documented",
+      "Registry system working",
+      "Test doubles (MockAgent, EchoAgent) available",
+      "Architecture decisions documented"
+    ]
+  }
+}

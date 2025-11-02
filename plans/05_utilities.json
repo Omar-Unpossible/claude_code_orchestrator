@@ -1,0 +1,441 @@
+{
+  "milestone_id": "M5",
+  "milestone_name": "Utility Services",
+  "purpose": "Build supporting utilities for context management and confidence scoring",
+  "estimated_hours": 6,
+  "priority": "supporting",
+  "dependencies": ["M1", "M2"],
+  "week": "5",
+  
+  "overview": {
+    "why_this_matters": "These utilities prevent context overflow and provide accurate confidence for decision making. Without them, prompts fail or decisions are unreliable.",
+    "key_insight": "Context management is about priority, not just truncation. Keep the most important information, even if it means dropping less critical details.",
+    "success_indicator": "Context always fits within limits, confidence scores correlate with quality (>0.8 correlation)"
+  },
+  
+  "implementation_order": ["5.1", "5.2", "5.3"],
+  
+  "deliverables": [
+    {
+      "id": "5.1",
+      "name": "token_counter",
+      "file": "src/utils/token_counter.py",
+      "description": "Accurate token counting for context management",
+      "estimated_hours": 2,
+      "priority": "critical",
+      
+      "requirements": [
+        "Implement TokenCounter class",
+        "Add tiktoken integration for OpenAI models",
+        "Implement model-specific counting for different tokenizers",
+        "Add estimation for unknown models (character-based approximation)",
+        "Implement caching to avoid recounting same text",
+        "Add batch counting for multiple texts efficiently",
+        "Implement token budget checking (fits in context?)",
+        "Add truncation helpers (trim to token limit)"
+      ],
+      
+      "methods_required": {
+        "count_tokens": "def count_tokens(self, text: str, model: Optional[str] = None) -> int",
+        "estimate_tokens": "def estimate_tokens(self, text: str) -> int",
+        "count_batch": "def count_batch(self, texts: List[str], model: Optional[str] = None) -> List[int]",
+        "get_encoding_for_model": "def get_encoding_for_model(self, model: str) -> tiktoken.Encoding",
+        "fits_in_context": "def fits_in_context(self, text: str, max_tokens: int) -> bool",
+        "truncate_to_tokens": "def truncate_to_tokens(self, text: str, max_tokens: int) -> str"
+      },
+      
+      "supported_models": {
+        "claude_sonnet_4": {
+          "tokenizer": "cl100k_base (approximation)",
+          "context_window": 200000
+        },
+        "qwen2.5_coder": {
+          "tokenizer": "cl100k_base (approximation)",
+          "context_window": 32768
+        },
+        "gpt_4": {
+          "tokenizer": "cl100k_base",
+          "context_window": 8192
+        }
+      },
+      
+      "token_estimation": {
+        "method": "Character count / 4 (rough approximation)",
+        "use_case": "When exact tokenizer unavailable",
+        "accuracy": "Within 20% typically"
+      },
+      
+      "caching_strategy": {
+        "approach": "LRU cache with max 1000 entries",
+        "cache_key": "md5(model + text)",
+        "invalidation": "LRU eviction only",
+        "benefit": "Avoid recounting identical prompts"
+      },
+      
+      "truncation_strategy": {
+        "approach": "Truncate from middle, keep beginning and end",
+        "reason": "Preserves context (beginning) and conclusion (end)",
+        "implementation": "Keep first N/2 and last N/2 tokens",
+        "marker": "Insert '... [truncated] ...' in middle"
+      },
+      
+      "acceptance_criteria": [
+        "Token counts accurate within 1% for supported models",
+        "Fast performance (<10ms for typical text)",
+        "Handles all supported models",
+        "Caching reduces duplicate work (measurable hit rate)",
+        "Batch counting faster than individual (measured)",
+        "Truncation preserves meaning (qualitative assessment)",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_count_tokens",
+          "test_estimate_tokens",
+          "test_batch_counting",
+          "test_fits_in_context",
+          "test_truncation",
+          "test_caching"
+        ],
+        "accuracy_tests": "Compare against known token counts for various texts"
+      },
+      
+      "implementation_notes": [
+        "Use tiktoken library: import tiktoken",
+        "Get encoding: tiktoken.get_encoding('cl100k_base')",
+        "Count: len(encoding.encode(text))",
+        "Use functools.lru_cache for caching",
+        "For truncation: encode, truncate token list, decode",
+        "Handle encoding errors gracefully"
+      ]
+    },
+    
+    {
+      "id": "5.2",
+      "name": "context_manager",
+      "file": "src/utils/context_manager.py",
+      "description": "Context window management with prioritization and summarization",
+      "estimated_hours": 2.5,
+      "priority": "critical",
+      "depends_on": ["5.1"],
+      
+      "requirements": [
+        "Implement ContextManager class",
+        "Add context windowing (fit in token limit)",
+        "Implement priority-based inclusion (most relevant first)",
+        "Add summarization using local LLM",
+        "Implement relevance scoring for each context item",
+        "Add context compression (remove redundancy)",
+        "Implement semantic search (find relevant context)",
+        "Add context versioning (track changes)",
+        "Implement context caching (reuse common contexts)",
+        "Add incremental updates (add/remove items efficiently)"
+      ],
+      
+      "methods_required": {
+        "build_context": "def build_context(self, items: List[dict], max_tokens: int, priority_order: List[str]) -> str",
+        "add_to_context": "def add_to_context(self, item: dict, priority: int) -> None",
+        "prioritize_context": "def prioritize_context(self, items: List[dict], task: Task) -> List[Tuple[dict, float]]",
+        "summarize_context": "def summarize_context(self, text: str, target_tokens: int) -> str",
+        "compress_context": "def compress_context(self, text: str, compression_ratio: float) -> str",
+        "search_context": "def search_context(self, query: str, top_k: int = 5) -> List[str]",
+        "get_relevant_context": "def get_relevant_context(self, task: Task, max_tokens: int) -> str",
+        "update_context": "def update_context(self, updates: dict) -> None",
+        "clear_context": "def clear_context(self) -> None"
+      },
+      
+      "context_strategy": {
+        "max_tokens": 100000,
+        "priority_order": [
+          "current_task_description",
+          "recent_errors",
+          "active_code_files",
+          "task_dependencies",
+          "project_goals",
+          "conversation_history",
+          "documentation"
+        ],
+        "summarization_model": "local_llm (Qwen)",
+        "summarization_threshold_tokens": 50000,
+        "compression_ratio": 0.3
+      },
+      
+      "prioritization_algorithm": {
+        "approach": "Score each context item based on relevance",
+        "factors": [
+          {
+            "name": "recency",
+            "weight": 0.3,
+            "calculation": "1.0 / (1 + days_old)"
+          },
+          {
+            "name": "relevance",
+            "weight": 0.4,
+            "calculation": "Keyword overlap with task"
+          },
+          {
+            "name": "importance",
+            "weight": 0.2,
+            "calculation": "Manual priority assignment"
+          },
+          {
+            "name": "size_efficiency",
+            "weight": 0.1,
+            "calculation": "Information density (words/tokens)"
+          }
+        ],
+        "formula": "score = Σ(factor * weight)"
+      },
+      
+      "summarization_approach": {
+        "method": "Use local LLM to summarize",
+        "prompt_template": "Summarize the following context concisely, preserving key information:\n\n{context}\n\nTarget length: {target_tokens} tokens.",
+        "fallback": "If local LLM unavailable, use extractive summarization (key sentences)",
+        "compression_target": "Reduce by 60-70%"
+      },
+      
+      "context_building_algorithm": [
+        "1. Collect all available context items",
+        "2. Score each item for relevance",
+        "3. Sort by score (highest first)",
+        "4. Add items until token budget reached",
+        "5. If exceeded, summarize lowest priority items",
+        "6. Repeat until all fits"
+      ],
+      
+      "acceptance_criteria": [
+        "Context always fits within limits (never exceeds max)",
+        "Relevant info prioritized (most important first)",
+        "Summarization preserves key info (validated manually)",
+        "Semantic search accurate (finds relevant items)",
+        "Compression effective (reduces by target ratio)",
+        "Caching improves performance (measurable)",
+        "Incremental updates efficient (no full rebuild)",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_build_context",
+          "test_prioritization",
+          "test_summarization",
+          "test_compression",
+          "test_semantic_search",
+          "test_token_limit_enforcement"
+        ],
+        "integration_tests": [
+          "test_with_real_llm_summarization",
+          "test_context_quality_preservation"
+        ]
+      },
+      
+      "implementation_notes": [
+        "Use TokenCounter to measure all text",
+        "Use local LLM for summarization (via LocalLLMInterface)",
+        "Implement greedy packing for context items",
+        "Use keyword extraction for relevance scoring",
+        "Cache built contexts with md5(items + task_id)",
+        "For semantic search, consider using embeddings (future)"
+      ]
+    },
+    
+    {
+      "id": "5.3",
+      "name": "confidence_scorer",
+      "file": "src/utils/confidence_scorer.py",
+      "description": "Multi-factor confidence scoring with calibration and learning",
+      "estimated_hours": 1.5,
+      "priority": "critical",
+      "depends_on": [],
+      
+      "requirements": [
+        "Implement ConfidenceScorer class",
+        "Add multi-factor scoring (weighted factors)",
+        "Implement LLM-based assessment using local LLM",
+        "Add heuristic scoring (rule-based)",
+        "Implement ensemble scoring (combine methods)",
+        "Add calibration based on outcomes",
+        "Implement confidence tracking (historical accuracy)",
+        "Add uncertainty quantification (confidence intervals)",
+        "Implement confidence explanation (why this score)",
+        "Add confidence prediction (estimate before execution)"
+      ],
+      
+      "methods_required": {
+        "score_response": "def score_response(self, response: str, task: Task, context: dict) -> float",
+        "score_with_llm": "def score_with_llm(self, response: str, task: Task) -> float",
+        "score_heuristic": "def score_heuristic(self, response: str, task: Task) -> float",
+        "ensemble_score": "def ensemble_score(self, scores: dict, weights: dict) -> float",
+        "calibrate": "def calibrate(self, predicted_confidence: float, actual_outcome: bool) -> None",
+        "get_confidence_distribution": "def get_confidence_distribution(self, project_id: int) -> dict",
+        "explain_confidence": "def explain_confidence(self, score: float, factors: dict) -> str",
+        "predict_confidence": "def predict_confidence(self, task: Task, context: dict) -> float"
+      },
+      
+      "scoring_factors": {
+        "completeness": {
+          "weight": 0.25,
+          "description": "Has all required sections and information",
+          "calculation": "Count of required sections present / total required"
+        },
+        "coherence": {
+          "weight": 0.20,
+          "description": "Logical flow and consistency",
+          "calculation": "LLM assessment or heuristic (no contradictions)"
+        },
+        "correctness": {
+          "weight": 0.30,
+          "description": "Factually accurate and valid",
+          "calculation": "Syntax validation, logical checks"
+        },
+        "relevance": {
+          "weight": 0.15,
+          "description": "Addresses the task requirements",
+          "calculation": "Keyword overlap with requirements"
+        },
+        "specificity": {
+          "weight": 0.10,
+          "description": "Concrete vs vague",
+          "calculation": "Presence of specific details, numbers, examples"
+        }
+      },
+      
+      "scoring_methods": {
+        "heuristic": {
+          "approach": "Rule-based scoring using patterns",
+          "speed": "Fast (<100ms)",
+          "accuracy": "Moderate (70-80%)",
+          "use_case": "Quick initial assessment"
+        },
+        "llm_based": {
+          "approach": "Ask local LLM to score response",
+          "speed": "Slow (2-5s)",
+          "accuracy": "High (85-95%)",
+          "use_case": "Final assessment for critical tasks",
+          "prompt": "Rate this response on a scale of 0-1 for: completeness, coherence, correctness, relevance, specificity. Provide scores."
+        },
+        "ensemble": {
+          "approach": "Combine heuristic and LLM scores",
+          "weights": {"heuristic": 0.4, "llm": 0.6},
+          "benefit": "Balance speed and accuracy"
+        }
+      },
+      
+      "calibration_strategy": {
+        "method": "Isotonic regression",
+        "update_frequency": "After each interaction with known outcome",
+        "min_samples": 100,
+        "recalibrate_threshold": 0.1,
+        "storage": "Calibration curve stored in PatternLearning table"
+      },
+      
+      "acceptance_criteria": [
+        "Scores correlate with quality (correlation >0.8)",
+        "Calibration improves over time (measured)",
+        "Fast enough for real-time (<5s including LLM call)",
+        "Handles edge cases (extreme responses)",
+        "Ensemble better than individual methods (measured)",
+        "Explanations clear and accurate",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_heuristic_scoring",
+          "test_llm_scoring",
+          "test_ensemble_scoring",
+          "test_calibration",
+          "test_confidence_explanation"
+        ],
+        "validation_tests": [
+          "test_correlation_with_quality",
+          "test_calibration_improves_accuracy"
+        ],
+        "test_data": "Create corpus of responses with known quality ratings"
+      },
+      
+      "implementation_notes": [
+        "Use local LLM for LLM-based scoring",
+        "Parse LLM response to extract numeric scores",
+        "Store confidence predictions and outcomes in database",
+        "Use sklearn.isotonic.IsotonicRegression for calibration",
+        "Calculate correlation using scipy.stats.pearsonr",
+        "Log all confidence scores at DEBUG level"
+      ]
+    }
+  ],
+  
+  "integration_requirements": {
+    "token_counter_usage": [
+      "ContextManager uses TokenCounter",
+      "PromptGenerator uses TokenCounter",
+      "Anywhere text is sent to LLM"
+    ],
+    "context_manager_usage": [
+      "PromptGenerator uses ContextManager",
+      "Build context before generating prompts"
+    ],
+    "confidence_scorer_usage": [
+      "DecisionEngine uses ConfidenceScorer",
+      "Score every response before decision"
+    ]
+  },
+  
+  "testing_requirements": {
+    "overall_coverage": "85% for this phase",
+    "integration_tests": [
+      "test_token_counter_with_context_manager",
+      "test_confidence_scorer_with_real_responses",
+      "test_utilities_together"
+    ]
+  },
+  
+  "success_metrics": {
+    "performance": {
+      "token_counting": "<10ms per text",
+      "context_building": "<1s",
+      "confidence_scoring": "<5s"
+    },
+    "accuracy": {
+      "token_count_accuracy": "Within 1%",
+      "confidence_correlation": ">0.8",
+      "context_relevance": ">90% (qualitative)"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "token_count_inaccuracy": {
+      "risk": "Approximations cause context overflow",
+      "mitigation": "Use conservative estimates, buffer space (10% margin)"
+    },
+    "summarization_quality_loss": {
+      "risk": "Summarization drops critical information",
+      "mitigation": "Validate summaries, prefer truncation over aggressive summarization"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented",
+      "85% test coverage",
+      "Performance tests pass"
+    ],
+    "functionality": [
+      "Token counting accurate",
+      "Context always fits in limits",
+      "Confidence scores meaningful",
+      "Integration with other components works"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M6",
+    "name": "Integration & CLI",
+    "readiness_criteria": [
+      "All utilities functional",
+      "Can be used by other components",
+      "Performance acceptable"
+    ]
+  }
+}

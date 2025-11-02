@@ -1,0 +1,555 @@
+{
+  "milestone_id": "M1",
+  "milestone_name": "Core Infrastructure",
+  "purpose": "Build the data layer and state management - the foundation all other components depend on",
+  "estimated_hours": 12,
+  "priority": "critical_path",
+  "dependencies": ["M0"],
+  "week": "1-2",
+  
+  "overview": {
+    "why_this_matters": "StateManager is the single source of truth. If this is buggy or slow, everything built on top will be unreliable. This is the most critical phase - prioritize quality over speed.",
+    "key_insight": "Proper transaction support and thread safety here prevents race conditions throughout the system. Cutting corners here costs weeks of debugging later.",
+    "success_indicator": "Can create projects, tasks, and track state with perfect consistency even under concurrent load"
+  },
+  
+  "implementation_order": ["1.4", "1.3", "1.1", "1.2"],
+  "implementation_order_rationale": {
+    "1.4_first": "Exceptions are used everywhere - build them first",
+    "1.3_second": "Config is needed by StateManager initialization",
+    "1.1_third": "Models define database schema",
+    "1.2_last": "StateManager uses everything above"
+  },
+  
+  "deliverables": [
+    {
+      "id": "1.4",
+      "name": "exception_hierarchy",
+      "file": "src/core/exceptions.py",
+      "description": "Complete typed exception hierarchy with context preservation",
+      "estimated_hours": 1.5,
+      "priority": "implement_first",
+      
+      "requirements": [
+        "Define base OrchestratorException class",
+        "Create exception classes for each major component",
+        "Add context_data dict attribute to preserve error context",
+        "Implement __str__ and __repr__ for useful error messages",
+        "Add to_dict() method for serialization to JSON",
+        "Include recovery_suggestions attribute with actionable advice",
+        "Use proper exception chaining (raise X from Y)",
+        "Add docstrings explaining when each exception is raised"
+      ],
+      
+      "exception_types": {
+        "base": "OrchestratorException",
+        "state_management": [
+          "StateManagerException",
+          "DatabaseException",
+          "TransactionException",
+          "CheckpointException"
+        ],
+        "configuration": [
+          "ConfigException",
+          "ConfigValidationException",
+          "ConfigNotFoundException"
+        ],
+        "llm": [
+          "LocalLLMException",
+          "LLMTimeoutException",
+          "LLMConnectionException"
+        ],
+        "agent": [
+          "AgentException",
+          "AgentProcessException",
+          "AgentTimeoutException",
+          "AgentConnectionException"
+        ],
+        "validation": [
+          "ValidationException",
+          "ResponseIncompleteException",
+          "QualityTooLowException",
+          "ConfidenceTooLowException"
+        ],
+        "orchestration": [
+          "TaskDependencyError",
+          "BreakpointTriggered",
+          "RateLimitHit"
+        ],
+        "monitoring": [
+          "FileWatcherException",
+          "EventDetectionException"
+        ]
+      },
+      
+      "implementation_example": {
+        "base_class": "class OrchestratorException(Exception):\n    def __init__(self, message: str, context: dict = None, recovery: str = None):\n        super().__init__(message)\n        self.context_data = context or {}\n        self.recovery_suggestion = recovery\n    \n    def to_dict(self) -> dict:\n        return {\n            'type': self.__class__.__name__,\n            'message': str(self),\n            'context': self.context_data,\n            'recovery': self.recovery_suggestion\n        }",
+        "specific_exception": "class AgentConnectionException(AgentException):\n    \"\"\"Raised when unable to connect to agent.\n    \n    Common causes:\n    - SSH connection failed (VM not accessible)\n    - Docker container not running\n    - Network issues\n    \"\"\"\n    def __init__(self, agent_type: str, host: str, details: str):\n        context = {'agent_type': agent_type, 'host': host, 'details': details}\n        recovery = 'Check network connectivity and agent process status'\n        super().__init__(f'Cannot connect to {agent_type} at {host}', context, recovery)"
+      },
+      
+      "acceptance_criteria": [
+        "All exception types defined and documented",
+        "Context data preserved in all exceptions",
+        "Serialization to JSON works correctly",
+        "Recovery suggestions are actionable",
+        "Exception hierarchy is logical (specific extends general)",
+        "100% documentation coverage",
+        "Examples of raising/catching each exception in docstrings"
+      ],
+      
+      "testing_strategy": [
+        "test_exception_creation",
+        "test_context_preservation",
+        "test_serialization",
+        "test_exception_chaining",
+        "test_recovery_suggestions_present"
+      ]
+    },
+    
+    {
+      "id": "1.3",
+      "name": "configuration_management",
+      "file": "src/core/config.py",
+      "description": "Configuration loader with validation and hot-reload support",
+      "estimated_hours": 2.5,
+      "priority": "implement_second",
+      "depends_on": ["1.4"],
+      
+      "requirements": [
+        "Implement Config class as singleton",
+        "Load configuration from YAML file using PyYAML",
+        "Support environment variable overrides (ORCHESTRATOR_* prefix)",
+        "Validate configuration against schema using jsonschema",
+        "Provide default values for all optional settings",
+        "Implement hot-reload (watch config file for changes)",
+        "Add get/set methods with dot notation (config.get('agent.type'))",
+        "Secure credential handling (never log secrets)",
+        "Merge configuration from multiple sources with precedence",
+        "Export configuration for debugging (sanitize secrets)",
+        "Cache loaded config for performance"
+      ],
+      
+      "configuration_structure": {
+        "llm": "Local LLM (Ollama) configuration",
+        "agent": "Agent plugin type and configuration",
+        "monitoring": "File watching and output monitoring settings",
+        "orchestration": "Main loop behavior and limits",
+        "breakpoints": "Breakpoint rules and thresholds",
+        "validation": "Validation and quality control settings",
+        "context_management": "Context window and summarization",
+        "database": "Database connection string",
+        "logging": "Log levels and output"
+      },
+      
+      "precedence_order": [
+        "1. Command-line arguments (highest priority)",
+        "2. Environment variables",
+        "3. User config file (~/.orchestrator/config.yaml)",
+        "4. Project config file (./config/config.yaml)",
+        "5. Default config (./config/default_config.yaml) (lowest priority)"
+      ],
+      
+      "validation_schema": {
+        "description": "JSON schema defining valid configuration structure",
+        "enforcement": "Validate on load, reject invalid config",
+        "error_messages": "Clear error messages pointing to invalid values"
+      },
+      
+      "methods_required": {
+        "load": "def load(cls, config_path: Optional[str] = None) -> Config",
+        "get": "def get(self, key: str, default: Any = None) -> Any",
+        "set": "def set(self, key: str, value: Any) -> None",
+        "validate": "def validate(self) -> bool",
+        "reload": "def reload(self) -> None",
+        "export": "def export(self, sanitize_secrets: bool = True) -> dict",
+        "get_llm_config": "def get_llm_config(self) -> dict",
+        "get_agent_config": "def get_agent_config(self) -> dict",
+        "get_breakpoint_config": "def get_breakpoint_config(self, breakpoint_type: str) -> dict"
+      },
+      
+      "acceptance_criteria": [
+        "Loads configuration from YAML successfully",
+        "Validates against schema and rejects invalid config",
+        "Environment variables override file values",
+        "Dot notation access works (config.get('agent.type'))",
+        "Secrets never appear in logs or exports",
+        "Hot-reload works without restart",
+        "Default values applied when keys missing",
+        "85% test coverage",
+        "Handles malformed YAML gracefully"
+      ],
+      
+      "security_requirements": [
+        "Never log values of keys containing: password, key, secret, token",
+        "Export method sanitizes secrets by default",
+        "Environment variables preferred for secrets over config files",
+        "Warn if secrets found in config files"
+      ],
+      
+      "testing_strategy": [
+        "test_load_valid_config",
+        "test_load_invalid_config_raises",
+        "test_env_var_override",
+        "test_dot_notation_access",
+        "test_secrets_not_logged",
+        "test_hot_reload",
+        "test_default_values",
+        "test_malformed_yaml"
+      ]
+    },
+    
+    {
+      "id": "1.1",
+      "name": "database_schema_implementation",
+      "file": "src/core/models.py",
+      "description": "SQLAlchemy ORM models for all database tables with relationships and validation",
+      "estimated_hours": 3,
+      "priority": "implement_third",
+      "depends_on": ["1.4"],
+      
+      "requirements": [
+        "Implement SQLAlchemy ORM models for all tables",
+        "Add relationship definitions using backref",
+        "Implement indexes as specified in schema",
+        "Add model-level validation using SQLAlchemy validators",
+        "Implement soft delete capability (is_deleted flag)",
+        "Add audit trail timestamps (created_at, updated_at with auto-update)",
+        "Implement database migration support using Alembic",
+        "Add enum validation for status fields using SQLAlchemy Enum",
+        "Implement cascade delete rules for referential integrity",
+        "Add to_dict() method for JSON serialization",
+        "Add from_dict() classmethod for deserialization",
+        "Use type hints throughout"
+      ],
+      
+      "tables_to_implement": [
+        "ProjectState",
+        "Task",
+        "Interaction",
+        "Checkpoint",
+        "BreakpointEvent",
+        "UsageTracking",
+        "PatternLearning",
+        "FileState"
+      ],
+      
+      "relationships": {
+        "ProjectState_to_Task": "one-to-many (project has many tasks)",
+        "Task_to_Task": "self-referential (parent_task_id for hierarchy)",
+        "ProjectState_to_Interaction": "one-to-many",
+        "Task_to_Interaction": "one-to-many",
+        "ProjectState_to_Checkpoint": "one-to-many",
+        "ProjectState_to_BreakpointEvent": "one-to-many",
+        "Task_to_BreakpointEvent": "one-to-many",
+        "ProjectState_to_UsageTracking": "one-to-many",
+        "ProjectState_to_FileState": "one-to-many",
+        "Task_to_FileState": "one-to-many"
+      },
+      
+      "indexes_required": {
+        "ProjectState": ["project_name", "status"],
+        "Task": ["project_id", "status", "parent_task_id", "priority"],
+        "Interaction": ["project_id", "task_id", "timestamp", "source"],
+        "Checkpoint": ["project_id", "checkpoint_type", "created_at"],
+        "BreakpointEvent": ["project_id", "task_id", "resolved", "breakpoint_type"],
+        "UsageTracking": ["project_id", "date"],
+        "PatternLearning": ["pattern_type", "pattern_key", "last_used"],
+        "FileState": ["project_id", "file_path", "created_at"]
+      },
+      
+      "validation_rules": {
+        "Task.status": "ENUM('pending', 'ready', 'running', 'blocked', 'completed', 'failed', 'cancelled', 'retrying')",
+        "Task.assigned_to": "ENUM('human', 'local_llm', 'claude_code', 'system')",
+        "Task.priority": "INTEGER 1-10",
+        "Interaction.source": "ENUM('local_llm', 'claude_code')",
+        "Interaction.confidence_score": "REAL 0.0-1.0",
+        "BreakpointEvent.severity": "ENUM('low', 'medium', 'high', 'critical')"
+      },
+      
+      "alembic_setup": {
+        "init": "alembic init alembic",
+        "first_migration": "alembic revision --autogenerate -m 'Initial schema'",
+        "apply": "alembic upgrade head",
+        "rollback": "alembic downgrade -1"
+      },
+      
+      "acceptance_criteria": [
+        "All models match database schema specification",
+        "Relationships work bidirectionally",
+        "Indexes created correctly (verify with EXPLAIN QUERY)",
+        "Validation rejects invalid data",
+        "Migrations generate correct SQL",
+        "Enum constraints enforced at database level",
+        "Cascade deletes work correctly",
+        "to_dict/from_dict roundtrip preserves data",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": [
+        "test_create_models",
+        "test_relationships",
+        "test_validation_rules",
+        "test_soft_delete",
+        "test_timestamps_auto_update",
+        "test_cascade_deletes",
+        "test_serialization",
+        "test_indexes_exist"
+      ],
+      
+      "implementation_notes": [
+        "Use declarative base from SQLAlchemy",
+        "Timestamps should use server_default=func.now()",
+        "Use CheckConstraint for value validation",
+        "Consider using Alembic's batch mode for SQLite compatibility",
+        "Add __repr__ for debugging"
+      ]
+    },
+    
+    {
+      "id": "1.2",
+      "name": "state_manager_core",
+      "file": "src/core/state_manager.py",
+      "description": "Central state management class - THE single source of truth for all state operations",
+      "estimated_hours": 5,
+      "priority": "implement_last_most_critical",
+      "depends_on": ["1.4", "1.3", "1.1"],
+      
+      "requirements": [
+        "Implement StateManager as thread-safe singleton",
+        "Add CRUD operations for all entities with type hints",
+        "Implement transaction support using context managers",
+        "Add state snapshot capability (full project serialization)",
+        "Implement state restoration from checkpoint",
+        "Add concurrent access locking using threading.Lock",
+        "Implement query builders for common operations",
+        "Add state validation before persistence",
+        "Implement change tracking (log all mutations)",
+        "Add event emission on state changes",
+        "Implement connection pooling for efficiency",
+        "Add batch operations for bulk updates",
+        "Implement state diff calculation for checkpoints",
+        "Graceful error handling with proper rollback"
+      ],
+      
+      "critical_design_principles": {
+        "principle_1": "ALL state access must go through StateManager - no direct DB access",
+        "principle_2": "Every mutation must be in a transaction",
+        "principle_3": "Thread-safe by default - all public methods are locked",
+        "principle_4": "Fail-safe - errors trigger rollback",
+        "principle_5": "Auditable - every change is logged"
+      },
+      
+      "methods_required": {
+        "project_management": {
+          "create_project": "def create_project(self, name: str, description: str, working_dir: str, config: dict) -> ProjectState",
+          "get_project_state": "def get_project_state(self, project_id: int) -> ProjectState",
+          "update_project_state": "def update_project_state(self, project_id: int, updates: dict) -> ProjectState",
+          "list_projects": "def list_projects(self, status: Optional[str] = None) -> List[ProjectState]",
+          "delete_project": "def delete_project(self, project_id: int, soft: bool = True) -> None"
+        },
+        "task_management": {
+          "create_task": "def create_task(self, project_id: int, task_data: dict) -> Task",
+          "update_task_status": "def update_task_status(self, task_id: int, status: str, metadata: Optional[dict] = None) -> Task",
+          "get_task": "def get_task(self, task_id: int) -> Task",
+          "get_pending_tasks": "def get_pending_tasks(self, project_id: int, limit: Optional[int] = None) -> List[Task]",
+          "get_ready_tasks": "def get_ready_tasks(self, project_id: int) -> List[Task]",
+          "get_blocked_tasks": "def get_blocked_tasks(self, project_id: int) -> List[Task]",
+          "get_task_dependencies": "def get_task_dependencies(self, task_id: int) -> List[Task]",
+          "mark_task_complete": "def mark_task_complete(self, task_id: int, result: dict) -> Task",
+          "mark_task_failed": "def mark_task_failed(self, task_id: int, error: str) -> Task"
+        },
+        "interaction_tracking": {
+          "record_interaction": "def record_interaction(self, project_id: int, task_id: int, interaction_data: dict) -> Interaction",
+          "get_interactions": "def get_interactions(self, project_id: int, limit: int = 100) -> List[Interaction]",
+          "get_task_interactions": "def get_task_interactions(self, task_id: int) -> List[Interaction]"
+        },
+        "checkpoint_management": {
+          "create_checkpoint": "def create_checkpoint(self, project_id: int, checkpoint_type: str, description: str) -> Checkpoint",
+          "restore_checkpoint": "def restore_checkpoint(self, checkpoint_id: int) -> bool",
+          "get_latest_checkpoint": "def get_latest_checkpoint(self, project_id: int) -> Optional[Checkpoint]",
+          "list_checkpoints": "def list_checkpoints(self, project_id: int, limit: int = 10) -> List[Checkpoint]"
+        },
+        "breakpoint_management": {
+          "log_breakpoint_event": "def log_breakpoint_event(self, project_id: int, task_id: int, breakpoint_data: dict) -> BreakpointEvent",
+          "resolve_breakpoint": "def resolve_breakpoint(self, breakpoint_id: int, resolution_data: dict) -> BreakpointEvent",
+          "get_pending_breakpoints": "def get_pending_breakpoints(self, project_id: int) -> List[BreakpointEvent]",
+          "get_breakpoint_history": "def get_breakpoint_history(self, project_id: int, limit: int = 50) -> List[BreakpointEvent]"
+        },
+        "usage_tracking": {
+          "get_usage_status": "def get_usage_status(self, project_id: int, date: Optional[date] = None) -> UsageTracking",
+          "update_usage": "def update_usage(self, project_id: int, tokens: int, interaction_count: int) -> UsageTracking",
+          "record_rate_limit_hit": "def record_rate_limit_hit(self, project_id: int) -> None"
+        },
+        "pattern_learning": {
+          "record_pattern": "def record_pattern(self, pattern_type: str, pattern_data: dict, success: bool = True) -> PatternLearning",
+          "get_successful_patterns": "def get_successful_patterns(self, pattern_type: str, limit: int = 10) -> List[PatternLearning]",
+          "update_pattern_stats": "def update_pattern_stats(self, pattern_id: int, success: bool) -> PatternLearning"
+        },
+        "file_tracking": {
+          "save_file_state": "def save_file_state(self, project_id: int, task_id: int, file_path: str, content: str, change_type: str) -> FileState",
+          "get_file_history": "def get_file_history(self, project_id: int, file_path: str) -> List[FileState]",
+          "get_file_changes_since": "def get_file_changes_since(self, project_id: int, timestamp: datetime) -> List[FileState]"
+        },
+        "transaction_management": {
+          "transaction": "def transaction(self) -> ContextManager",
+          "rollback": "def rollback(self) -> None",
+          "commit": "def commit(self) -> None"
+        }
+      },
+      
+      "transaction_example": {
+        "usage": "with state_manager.transaction():\n    task = state_manager.create_task(project_id, task_data)\n    state_manager.record_interaction(project_id, task.id, interaction)\n    # Both operations commit together or rollback together"
+      },
+      
+      "acceptance_criteria": [
+        "All CRUD operations work correctly",
+        "Thread-safe - concurrent access tests pass",
+        "Transactions rollback on error",
+        "State snapshots are complete and restorable",
+        "Queries optimized - common operations <100ms",
+        "Proper error handling - all exceptions typed",
+        "Connection pooling works - no connection leaks",
+        "Batch operations are atomic",
+        "Event emission captured in tests",
+        "95% test coverage",
+        "Zero race conditions in concurrency tests"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_create_project",
+          "test_create_task_with_dependencies",
+          "test_transaction_commit",
+          "test_transaction_rollback",
+          "test_checkpoint_create_restore",
+          "test_concurrent_access",
+          "test_query_performance",
+          "test_batch_operations",
+          "test_state_validation"
+        ],
+        "concurrency_tests": [
+          "test_concurrent_task_updates",
+          "test_concurrent_interactions",
+          "test_no_race_conditions"
+        ],
+        "performance_tests": [
+          "test_query_performance_under_load",
+          "test_batch_insert_performance"
+        ]
+      },
+      
+      "implementation_notes": [
+        "Use threading.Lock for singleton initialization",
+        "Use threading.RLock for method-level locking (reentrant)",
+        "Context manager for transactions: __enter__ and __exit__",
+        "Use SQLAlchemy session.begin() for transactions",
+        "Connection pool: create_engine with pool_size and max_overflow",
+        "Emit events after successful commit, not before",
+        "Log all state changes at DEBUG level",
+        "Use prepared statements to prevent SQL injection"
+      ],
+      
+      "critical_warnings": [
+        "⚠️ NEVER access database directly - always through StateManager",
+        "⚠️ ALWAYS use transactions for multi-step operations",
+        "⚠️ NEVER hold lock during long operations (LLM calls)",
+        "⚠️ ALWAYS rollback on exception",
+        "⚠️ NEVER log full state (may contain sensitive data)"
+      ]
+    }
+  ],
+  
+  "testing_requirements": {
+    "overall_coverage": "90% minimum for this phase",
+    "critical_coverage": "95% for StateManager",
+    "test_categories": {
+      "unit_tests": "Test each method in isolation with mocks",
+      "integration_tests": "Test interactions between models and StateManager",
+      "concurrency_tests": "Test thread safety with concurrent operations",
+      "performance_tests": "Verify query performance meets targets"
+    },
+    "fixtures_needed": [
+      "sample_project",
+      "sample_tasks_with_dependencies",
+      "sample_interactions",
+      "test_database_in_memory"
+    ]
+  },
+  
+  "success_metrics": {
+    "code_quality": {
+      "test_coverage": "≥90% overall, ≥95% StateManager",
+      "pylint_score": "≥9.0/10",
+      "mypy_compliance": "100% - all type hints valid",
+      "complexity": "Cyclomatic complexity ≤10 per method"
+    },
+    "performance": {
+      "state_operations": "<100ms p95",
+      "transaction_commit": "<50ms p95",
+      "query_common_operations": "<10ms p95",
+      "checkpoint_creation": "<1s",
+      "checkpoint_restoration": "<5s"
+    },
+    "reliability": {
+      "transaction_success_rate": "100% (rollback on any error)",
+      "concurrent_access_no_corruption": "100%",
+      "no_connection_leaks": "100%"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "race_conditions": {
+      "risk": "Concurrent access causes state corruption",
+      "likelihood": "Medium",
+      "impact": "Critical",
+      "mitigation": "Thread-safe design, comprehensive concurrency tests, lock analysis"
+    },
+    "performance_degradation": {
+      "risk": "Queries too slow under load",
+      "likelihood": "Medium",
+      "impact": "High",
+      "mitigation": "Proper indexes, connection pooling, query optimization, performance tests"
+    },
+    "transaction_deadlocks": {
+      "risk": "Deadlocks between concurrent transactions",
+      "likelihood": "Low",
+      "impact": "High",
+      "mitigation": "Short transactions, consistent lock ordering, timeout handling"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented and tested",
+      "Test coverage ≥90% overall, ≥95% StateManager",
+      "All tests pass consistently (run 10 times)",
+      "Pylint score ≥9.0, mypy passes",
+      "Code reviewed and approved",
+      "No known race conditions"
+    ],
+    "documentation": [
+      "All public methods documented",
+      "Usage examples for complex operations",
+      "Database schema documented",
+      "Migration guide written"
+    ],
+    "validation": [
+      "Can create project and tasks via StateManager",
+      "Transactions rollback correctly on error",
+      "Checkpoints restore state completely",
+      "Concurrent access works without corruption",
+      "Performance meets targets"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M2",
+    "name": "LLM & Agent Interfaces",
+    "readiness_criteria": [
+      "StateManager fully functional",
+      "Database schema stable",
+      "Configuration system working",
+      "Exception handling robust"
+    ]
+  }
+}

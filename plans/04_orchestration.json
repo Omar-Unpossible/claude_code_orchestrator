@@ -1,0 +1,811 @@
+{
+  "milestone_id": "M4",
+  "milestone_name": "Orchestration Engine",
+  "purpose": "Implement the decision-making and task management logic - the brain of the system",
+  "estimated_hours": 14,
+  "priority": "critical_path",
+  "dependencies": ["M1", "M2", "M3"],
+  "week": "4-5",
+  
+  "overview": {
+    "why_this_matters": "This is where intelligence lives. Good decisions here mean fewer breakpoints and higher quality outputs. Poor decisions mean constant human intervention.",
+    "key_insight": "Confidence thresholds are critical. Too conservative = too many breakpoints. Too aggressive = poor quality outputs. Start conservative, tune based on data.",
+    "success_indicator": "Can autonomously complete 70% of simple tasks without human intervention"
+  },
+  
+  "implementation_order": ["4.1", "4.3", "4.2", "4.4"],
+  "implementation_order_rationale": {
+    "4.1_first": "TaskScheduler is foundation for orchestration",
+    "4.3_second": "BreakpointManager needed by DecisionEngine",
+    "4.2_third": "DecisionEngine uses scheduler and breakpoints",
+    "4.4_last": "QualityController used by DecisionEngine"
+  },
+  
+  "deliverables": [
+    {
+      "id": "4.1",
+      "name": "task_scheduler",
+      "file": "src/orchestration/task_scheduler.py",
+      "description": "Task scheduling with dependency resolution and priority management",
+      "estimated_hours": 4,
+      "priority": "critical",
+      
+      "requirements": [
+        "Implement TaskScheduler class",
+        "Add dependency resolution using topological sort",
+        "Implement priority queue (heap-based)",
+        "Add task state machine with proper transitions",
+        "Implement task retry logic with exponential backoff",
+        "Add deadline management (time-based priority boost)",
+        "Implement task cancellation and cleanup",
+        "Add deadlock detection (circular dependencies)",
+        "Implement task status tracking via StateManager",
+        "Add task estimation and planning",
+        "Implement batch task operations"
+      ],
+      
+      "methods_required": {
+        "schedule_task": "def schedule_task(self, task: Task) -> None",
+        "get_next_task": "def get_next_task(self, project_id: int) -> Optional[Task]",
+        "resolve_dependencies": "def resolve_dependencies(self, task: Task) -> List[Task]",
+        "mark_complete": "def mark_complete(self, task_id: int, result: dict) -> None",
+        "mark_failed": "def mark_failed(self, task_id: int, error: str) -> None",
+        "retry_task": "def retry_task(self, task_id: int) -> None",
+        "cancel_task": "def cancel_task(self, task_id: int, reason: str) -> None",
+        "get_ready_tasks": "def get_ready_tasks(self, project_id: int) -> List[Task]",
+        "get_blocked_tasks": "def get_blocked_tasks(self, project_id: int) -> List[Task]",
+        "detect_deadlock": "def detect_deadlock(self, project_id: int) -> Optional[List[Task]]",
+        "get_task_status": "def get_task_status(self, task_id: int) -> str"
+      },
+      
+      "task_states": {
+        "pending": "Created but dependencies not satisfied",
+        "ready": "All dependencies satisfied, ready to execute",
+        "running": "Currently being executed",
+        "blocked": "Waiting on external event or human input",
+        "completed": "Successfully finished",
+        "failed": "Execution failed",
+        "cancelled": "Manually cancelled",
+        "retrying": "Failed but retrying with backoff"
+      },
+      
+      "state_transitions": {
+        "valid_transitions": {
+          "pending -> ready": "All dependencies completed",
+          "ready -> running": "Picked for execution",
+          "running -> completed": "Execution successful",
+          "running -> failed": "Execution error",
+          "running -> blocked": "Waiting for breakpoint resolution",
+          "failed -> retrying": "Automatic retry triggered",
+          "retrying -> running": "Retry attempt started",
+          "running -> cancelled": "Cancellation requested",
+          "blocked -> ready": "Blocking condition resolved"
+        },
+        "invalid_transitions": [
+          "completed -> running (cannot re-run completed task)",
+          "cancelled -> running (cannot restart cancelled task)",
+          "pending -> running (must go through ready state)"
+        ]
+      },
+      
+      "dependency_resolution": {
+        "algorithm": "Topological sort (Kahn's algorithm)",
+        "dependency_format": "Comma-separated task IDs in Task.dependencies field",
+        "circular_detection": "Detect cycles during topological sort",
+        "missing_dependency_handling": "Raise TaskDependencyError if dependency not found"
+      },
+      
+      "priority_system": {
+        "range": "1-10 (10 is highest priority)",
+        "default": 5,
+        "priority_boosting": {
+          "deadline_approaching": "+2 when deadline within 1 hour",
+          "blocking_others": "+1 if other tasks depend on this",
+          "retried_task": "-1 to give other tasks chance"
+        },
+        "queue_implementation": "heapq with (-priority, task_id) tuples"
+      },
+      
+      "retry_strategy": {
+        "max_retries": 3,
+        "base_delay_seconds": 60,
+        "exponential_base": 2,
+        "backoff_formula": "delay = base_delay * (exponential_base ** retry_count)",
+        "retry_conditions": [
+          "Transient errors (connection, timeout)",
+          "Rate limits",
+          "Temporary resource unavailability"
+        ],
+        "no_retry_conditions": [
+          "Validation failures (bad input)",
+          "Authentication errors",
+          "Permanent errors (file not found)"
+        ]
+      },
+      
+      "deadlock_detection": {
+        "algorithm": "Graph cycle detection using DFS",
+        "check_frequency": "On every task state change",
+        "action_on_deadlock": "Log error, trigger breakpoint, suggest manual resolution"
+      },
+      
+      "acceptance_criteria": [
+        "Dependencies respected (tasks execute in correct order)",
+        "Priorities honored (high priority tasks execute first)",
+        "No deadlocks (circular dependencies detected)",
+        "Failed tasks retried appropriately (exponential backoff verified)",
+        "State machine transitions are valid (no illegal transitions)",
+        "Concurrent execution safe (if applicable - currently N=1)",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_schedule_task",
+          "test_dependency_resolution",
+          "test_priority_ordering",
+          "test_state_transitions",
+          "test_retry_logic",
+          "test_deadlock_detection",
+          "test_task_cancellation"
+        ],
+        "integration_tests": [
+          "test_complex_dependency_graph",
+          "test_retry_with_exponential_backoff",
+          "test_priority_boosting"
+        ],
+        "test_data": "Create various dependency graphs (linear, tree, diamond, circular)"
+      },
+      
+      "implementation_notes": [
+        "Use heapq for priority queue",
+        "Topological sort: maintain in-degree for each task",
+        "Store state transitions in StateManager",
+        "Validate state transitions before allowing",
+        "Use threading.Lock if concurrent access possible",
+        "Log all scheduling decisions at DEBUG level",
+        "Consider using networkx for graph algorithms"
+      ]
+    },
+    
+    {
+      "id": "4.2",
+      "name": "decision_engine",
+      "file": "src/orchestration/decision_engine.py",
+      "description": "Central decision making for action routing and confidence assessment",
+      "estimated_hours": 4,
+      "priority": "critical",
+      "depends_on": ["4.1", "4.3"],
+      
+      "requirements": [
+        "Implement DecisionEngine class",
+        "Add rule-based decision making with configurable rules",
+        "Implement confidence-based routing (proceed vs escalate)",
+        "Add action selection logic (proceed, clarify, escalate, retry, checkpoint)",
+        "Implement context evaluation (assess available information)",
+        "Add learning from outcomes (update decision weights)",
+        "Implement multi-criteria decision making (weight multiple factors)",
+        "Add risk assessment (evaluate consequences)",
+        "Implement decision logging for audit trail",
+        "Add decision explanation (why this choice)",
+        "Implement decision versioning (track rule changes)"
+      ],
+      
+      "methods_required": {
+        "decide_next_action": "def decide_next_action(self, context: dict) -> Action",
+        "should_trigger_breakpoint": "def should_trigger_breakpoint(self, context: dict) -> Tuple[bool, str]",
+        "evaluate_response_quality": "def evaluate_response_quality(self, response: str, task: Task) -> float",
+        "determine_follow_up": "def determine_follow_up(self, response: str, validation_result: dict) -> str",
+        "assess_confidence": "def assess_confidence(self, response: str, validation: dict) -> float",
+        "explain_decision": "def explain_decision(self, decision: str, context: dict) -> str",
+        "learn_from_outcome": "def learn_from_outcome(self, decision: str, outcome: dict) -> None"
+      },
+      
+      "decision_logic": {
+        "action_selection": {
+          "proceed": {
+            "conditions": [
+              "confidence >= 0.85",
+              "validation_passed == True",
+              "quality_score >= 0.7",
+              "no_critical_issues"
+            ],
+            "action": "Mark task complete, move to next task"
+          },
+          "clarify": {
+            "conditions": [
+              "0.5 <= confidence < 0.85",
+              "ambiguous_requirements",
+              "partial_validation_pass",
+              "missing_information"
+            ],
+            "action": "Generate clarifying prompt, send to agent"
+          },
+          "escalate": {
+            "conditions": [
+              "confidence < 0.5",
+              "validation_failed",
+              "quality_score < 0.6",
+              "safety_concern",
+              "conflicting_solutions"
+            ],
+            "action": "Trigger breakpoint, require human input"
+          },
+          "checkpoint": {
+            "conditions": [
+              "milestone_complete",
+              "major_change_detected",
+              "before_risky_operation",
+              "manual_checkpoint_requested"
+            ],
+            "action": "Create checkpoint, optionally pause"
+          },
+          "retry": {
+            "conditions": [
+              "transient_error",
+              "retry_count < max_retries",
+              "different_approach_available",
+              "rate_limit_temporary"
+            ],
+            "action": "Retry with modified prompt or wait"
+          }
+        },
+        "confidence_thresholds": {
+          "high_confidence": 0.85,
+          "medium_confidence": 0.5,
+          "low_confidence": 0.3,
+          "critical_threshold": 0.3
+        },
+        "decision_weights": {
+          "confidence_score": 0.35,
+          "validation_result": 0.25,
+          "quality_score": 0.25,
+          "task_complexity": 0.10,
+          "historical_success": 0.05
+        }
+      },
+      
+      "learning_mechanism": {
+        "approach": "Update decision weights based on outcomes",
+        "feedback_signals": [
+          "Task success/failure",
+          "Human overrides (breakpoint resolutions)",
+          "Quality scores",
+          "Confidence calibration"
+        ],
+        "learning_rate": 0.1,
+        "storage": "PatternLearning table in database",
+        "update_frequency": "After each decision outcome"
+      },
+      
+      "acceptance_criteria": [
+        "Appropriate actions chosen for given context",
+        "Confidence assessments accurate (calibrated)",
+        "Learns from past decisions (improves over time)",
+        "Decision explanations clear and accurate",
+        "Risk assessment identifies concerns",
+        "Breakpoints triggered at right times",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_action_selection_high_confidence",
+          "test_action_selection_low_confidence",
+          "test_breakpoint_triggering",
+          "test_confidence_assessment",
+          "test_learning_mechanism",
+          "test_decision_explanation"
+        ],
+        "scenario_tests": [
+          "test_complex_decision_scenario",
+          "test_conflicting_signals",
+          "test_edge_case_thresholds"
+        ]
+      },
+      
+      "implementation_notes": [
+        "Use dataclasses for Action and Decision objects",
+        "Store decision history in StateManager",
+        "Log all decisions at INFO level with explanation",
+        "Use weighted sum for multi-criteria decisions",
+        "Query PatternLearning for historical success rates",
+        "Consider using simple neural network for learning (future)"
+      ]
+    },
+    
+    {
+      "id": "4.3",
+      "name": "breakpoint_manager",
+      "file": "src/orchestration/breakpoint_manager.py",
+      "description": "Breakpoint triggering and resolution tracking with configurable rules",
+      "estimated_hours": 3,
+      "priority": "critical",
+      "depends_on": ["4.1"],
+      
+      "requirements": [
+        "Implement BreakpointManager class",
+        "Add rule evaluation engine (evaluate all conditions)",
+        "Implement threshold monitoring (continuous checks)",
+        "Add pattern detection (recognize breakpoint patterns)",
+        "Implement breakpoint queue (prioritized queue)",
+        "Add resolution tracking (log all resolutions)",
+        "Implement notification system (alert human)",
+        "Add breakpoint analytics (frequency, type, trends)",
+        "Implement custom rule addition (runtime configuration)",
+        "Add breakpoint suppression (temporary disable)",
+        "Implement breakpoint history (audit trail)",
+        "Add auto-resolution for eligible breakpoint types"
+      ],
+      
+      "methods_required": {
+        "evaluate_breakpoint_conditions": "def evaluate_breakpoint_conditions(self, context: dict) -> List[Breakpoint]",
+        "trigger_breakpoint": "def trigger_breakpoint(self, breakpoint_type: str, context: dict) -> BreakpointEvent",
+        "get_pending_breakpoints": "def get_pending_breakpoints(self, project_id: int) -> List[BreakpointEvent]",
+        "resolve_breakpoint": "def resolve_breakpoint(self, breakpoint_id: int, resolution: dict) -> None",
+        "get_breakpoint_history": "def get_breakpoint_history(self, project_id: int, limit: int = 50) -> List[BreakpointEvent]",
+        "add_custom_rule": "def add_custom_rule(self, rule_definition: dict) -> None",
+        "disable_breakpoint_type": "def disable_breakpoint_type(self, breakpoint_type: str) -> None",
+        "enable_breakpoint_type": "def enable_breakpoint_type(self, breakpoint_type: str) -> None",
+        "get_breakpoint_stats": "def get_breakpoint_stats(self, project_id: int) -> dict",
+        "should_notify": "def should_notify(self, breakpoint_type: str, severity: str) -> bool"
+      },
+      
+      "breakpoint_types": {
+        "architecture_decision": {
+          "enabled": true,
+          "priority": "high",
+          "auto_resolve": false,
+          "conditions": [
+            "task_type == 'design'",
+            "confidence < 0.9",
+            "affects_multiple_components == True"
+          ],
+          "notification": "immediate",
+          "description": "Major architectural decision requiring human judgment"
+        },
+        "breaking_test_failure": {
+          "enabled": true,
+          "priority": "high",
+          "auto_resolve": false,
+          "conditions": [
+            "test_failed == True",
+            "previously_passing == True",
+            "affects_critical_functionality == True"
+          ],
+          "notification": "immediate",
+          "description": "Previously passing test now fails - regression detected"
+        },
+        "conflicting_solutions": {
+          "enabled": true,
+          "priority": "medium",
+          "auto_resolve": false,
+          "conditions": [
+            "local_validation != remote_validation",
+            "confidence_difference > 0.3"
+          ],
+          "notification": "batched",
+          "description": "Local and remote LLM disagree on solution"
+        },
+        "milestone_completion": {
+          "enabled": true,
+          "priority": "medium",
+          "auto_resolve": false,
+          "conditions": [
+            "all_milestone_tasks_complete == True",
+            "tests_passing == True",
+            "documentation_complete == True"
+          ],
+          "notification": "batched",
+          "description": "Milestone complete - review before proceeding"
+        },
+        "rate_limit_hit": {
+          "enabled": true,
+          "priority": "high",
+          "auto_resolve": true,
+          "wait_duration_seconds": 3600,
+          "conditions": [
+            "rate_limit_detected == True"
+          ],
+          "notification": "immediate",
+          "auto_resolution_action": "wait_and_retry",
+          "description": "Claude Code rate limit hit - automatic wait"
+        },
+        "time_threshold_exceeded": {
+          "enabled": true,
+          "priority": "medium",
+          "auto_resolve": true,
+          "timeout_seconds": 3600,
+          "conditions": [
+            "task_running_time > timeout_seconds"
+          ],
+          "notification": "batched",
+          "auto_resolution_action": "cancel_and_retry",
+          "description": "Task taking too long - timeout"
+        },
+        "confidence_too_low": {
+          "enabled": true,
+          "priority": "high",
+          "auto_resolve": false,
+          "threshold": 0.3,
+          "conditions": [
+            "confidence_score < threshold",
+            "critical_task == True"
+          ],
+          "notification": "immediate",
+          "description": "Confidence too low for critical task"
+        },
+        "consecutive_failures": {
+          "enabled": true,
+          "priority": "high",
+          "auto_resolve": false,
+          "count_threshold": 3,
+          "conditions": [
+            "consecutive_task_failures >= count_threshold"
+          ],
+          "notification": "immediate",
+          "description": "Multiple consecutive failures - intervention needed"
+        }
+      },
+      
+      "rule_evaluation": {
+        "frequency": "Check at start of each iteration",
+        "evaluation_order": "Priority order (high to low)",
+        "condition_evaluation": "Python expression evaluation using eval() with safe context",
+        "context_variables": [
+          "task",
+          "confidence_score",
+          "validation_result",
+          "quality_score",
+          "project_state",
+          "recent_interactions",
+          "usage_stats"
+        ]
+      },
+      
+      "notification_system": {
+        "immediate": "Notify immediately when triggered",
+        "batched": "Batch multiple notifications (every 5 minutes)",
+        "methods": ["log_to_file", "stdout", "future: email, slack"],
+        "format": "Clear message with context and suggested actions"
+      },
+      
+      "auto_resolution": {
+        "eligible_types": ["rate_limit_hit", "time_threshold_exceeded"],
+        "rate_limit_action": "Wait for wait_duration_seconds, then retry",
+        "timeout_action": "Cancel task, increment retry count, retry with modifications",
+        "logging": "Log all auto-resolutions at INFO level"
+      },
+      
+      "acceptance_criteria": [
+        "All breakpoint types trigger correctly",
+        "False positives minimal (<5%)",
+        "Resolution tracking complete (audit trail)",
+        "Custom rules can be added at runtime",
+        "Auto-resolution works for eligible types",
+        "Notification system reliable",
+        "Analytics accurate and useful",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_trigger_breakpoint",
+          "test_resolve_breakpoint",
+          "test_auto_resolution",
+          "test_custom_rule_addition",
+          "test_rule_evaluation",
+          "test_notification_system"
+        ],
+        "scenario_tests": "Test each breakpoint type with realistic scenarios"
+      },
+      
+      "implementation_notes": [
+        "Load rules from config/breakpoint_rules.yaml",
+        "Use ast.literal_eval for safe expression evaluation",
+        "Store breakpoint events in StateManager",
+        "Use priority queue for pending breakpoints",
+        "Emit notifications via callback or event system",
+        "Track analytics: frequency, resolution time, false positives"
+      ]
+    },
+    
+    {
+      "id": "4.4",
+      "name": "quality_controller",
+      "file": "src/orchestration/quality_controller.py",
+      "description": "Multi-stage quality validation with gates and trending",
+      "estimated_hours": 3,
+      "priority": "critical",
+      "depends_on": ["4.2"],
+      
+      "requirements": [
+        "Implement QualityController class",
+        "Add multi-stage validation (4 stages)",
+        "Implement cross-validation (multiple checks per stage)",
+        "Add regression detection (compare to baseline)",
+        "Implement quality metrics calculation",
+        "Add improvement suggestions (actionable feedback)",
+        "Implement quality gates (block on failure)",
+        "Add quality trending (track over time)",
+        "Implement weighted scoring (stage weights)",
+        "Add quality report generation",
+        "Implement benchmark comparison"
+      ],
+      
+      "methods_required": {
+        "validate_output": "def validate_output(self, output: str, task: Task, context: dict) -> QualityResult",
+        "cross_validate": "def cross_validate(self, output: str, validators: List[Callable]) -> dict",
+        "check_regression": "def check_regression(self, current: dict, baseline: dict) -> bool",
+        "calculate_quality_score": "def calculate_quality_score(self, validation_results: dict) -> float",
+        "suggest_improvements": "def suggest_improvements(self, validation_results: dict) -> List[str]",
+        "enforce_quality_gate": "def enforce_quality_gate(self, quality_score: float, gate_config: dict) -> bool",
+        "get_quality_trends": "def get_quality_trends(self, project_id: int, days: int = 30) -> dict",
+        "generate_quality_report": "def generate_quality_report(self, project_id: int) -> dict"
+      },
+      
+      "validation_stages": {
+        "stage_1_syntax": {
+          "name": "Syntax and Format",
+          "weight": 0.2,
+          "blocking": true,
+          "checks": [
+            {
+              "name": "valid_syntax",
+              "description": "Code parses without syntax errors",
+              "method": "ast.parse() for Python"
+            },
+            {
+              "name": "no_obvious_errors",
+              "description": "No TODO, FIXME, XXX markers",
+              "method": "Regex search"
+            },
+            {
+              "name": "proper_formatting",
+              "description": "Follows style guide (PEP 8)",
+              "method": "Run black --check or pylint"
+            },
+            {
+              "name": "consistent_style",
+              "description": "Consistent naming, indentation",
+              "method": "Heuristic checks"
+            }
+          ]
+        },
+        "stage_2_requirements": {
+          "name": "Requirements Adherence",
+          "weight": 0.3,
+          "blocking": true,
+          "checks": [
+            {
+              "name": "meets_requirements",
+              "description": "Addresses all task requirements",
+              "method": "Check against task.requirements"
+            },
+            {
+              "name": "addresses_all_points",
+              "description": "No missing functionality",
+              "method": "Checklist validation"
+            },
+            {
+              "name": "complete_solution",
+              "description": "No partial implementations",
+              "method": "Check for NotImplementedError, pass statements"
+            },
+            {
+              "name": "no_missing_features",
+              "description": "All specified features present",
+              "method": "Feature checklist"
+            }
+          ]
+        },
+        "stage_3_quality": {
+          "name": "Code Quality",
+          "weight": 0.3,
+          "blocking": false,
+          "checks": [
+            {
+              "name": "has_error_handling",
+              "description": "Proper try/except usage",
+              "method": "Check for error handling patterns"
+            },
+            {
+              "name": "has_documentation",
+              "description": "Docstrings present",
+              "method": "Check for docstrings"
+            },
+            {
+              "name": "follows_conventions",
+              "description": "Naming conventions, best practices",
+              "method": "Static analysis"
+            },
+            {
+              "name": "efficient_implementation",
+              "description": "No obvious inefficiencies",
+              "method": "Heuristic checks (nested loops, etc.)"
+            },
+            {
+              "name": "maintainable_code",
+              "description": "Readable, not overly complex",
+              "method": "Cyclomatic complexity < 10"
+            },
+            {
+              "name": "no_code_smells",
+              "description": "No anti-patterns",
+              "method": "Static analysis (pylint)"
+            }
+          ]
+        },
+        "stage_4_testing": {
+          "name": "Testing Coverage",
+          "weight": 0.2,
+          "blocking": false,
+          "checks": [
+            {
+              "name": "has_tests",
+              "description": "Test file created",
+              "method": "Check for test_*.py file"
+            },
+            {
+              "name": "tests_comprehensive",
+              "description": "Tests cover edge cases",
+              "method": "Review test cases"
+            },
+            {
+              "name": "tests_passing",
+              "description": "All tests pass",
+              "method": "Run pytest"
+            },
+            {
+              "name": "edge_cases_covered",
+              "description": "Boundary conditions tested",
+              "method": "Test review"
+            }
+          ]
+        }
+      },
+      
+      "quality_gates": {
+        "minimum_score": 0.7,
+        "required_stages": ["syntax", "requirements"],
+        "block_on_failure": true,
+        "allow_override": false,
+        "override_requires": "human_approval"
+      },
+      
+      "scoring_formula": {
+        "stage_score": "Sum of passed checks / total checks",
+        "overall_score": "Weighted sum of stage scores",
+        "formula": "score = Σ(stage_score * stage_weight)",
+        "range": "0.0 to 1.0"
+      },
+      
+      "improvement_suggestions": {
+        "syntax_issues": "Run black for formatting, fix syntax errors",
+        "missing_requirements": "List specific missing features",
+        "quality_issues": "Add error handling, improve naming, reduce complexity",
+        "testing_gaps": "Add tests for edge cases, increase coverage"
+      },
+      
+      "acceptance_criteria": [
+        "All validation stages work correctly",
+        "Quality scores accurate and meaningful",
+        "Gates enforced correctly (block when should)",
+        "Trends calculated properly (show improvement/degradation)",
+        "Improvement suggestions actionable and specific",
+        "Regression detection catches quality drops",
+        "Cross-validation provides confidence",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_stage_1_validation",
+          "test_stage_2_validation",
+          "test_stage_3_validation",
+          "test_stage_4_validation",
+          "test_quality_score_calculation",
+          "test_quality_gate_enforcement",
+          "test_improvement_suggestions"
+        ],
+        "test_data": "Create samples of good, mediocre, and poor quality outputs"
+      },
+      
+      "implementation_notes": [
+        "Use ast.parse() for Python syntax validation",
+        "Use subprocess to run black, pylint, pytest",
+        "Store quality scores in Interaction records",
+        "Query StateManager for historical quality trends",
+        "Use local LLM for semantic quality checks",
+        "Generate improvement suggestions based on failed checks"
+      ]
+    }
+  ],
+  
+  "integration_requirements": {
+    "orchestration_flow": [
+      "1. TaskScheduler selects next ready task",
+      "2. BreakpointManager checks if breakpoint should trigger",
+      "3. If no breakpoint, proceed with task",
+      "4. Agent executes task",
+      "5. ResponseValidator checks response (from M2)",
+      "6. QualityController validates quality",
+      "7. DecisionEngine decides next action",
+      "8. Update task status via StateManager",
+      "9. Repeat"
+    ]
+  },
+  
+  "testing_requirements": {
+    "overall_coverage": "90% for this phase",
+    "integration_tests": [
+      "test_full_orchestration_loop",
+      "test_task_execution_with_dependencies",
+      "test_breakpoint_triggered_correctly",
+      "test_quality_gate_blocks_poor_output",
+      "test_decision_engine_routes_correctly"
+    ],
+    "scenario_tests": [
+      "test_simple_task_completion",
+      "test_task_with_retry",
+      "test_task_requiring_breakpoint",
+      "test_milestone_completion"
+    ]
+  },
+  
+  "success_metrics": {
+    "functionality": {
+      "autonomous_completion_rate": ">70%",
+      "false_breakpoint_rate": "<5%",
+      "quality_gate_effectiveness": ">90%",
+      "decision_accuracy": ">85%"
+    },
+    "performance": {
+      "task_scheduling_time": "<10ms",
+      "decision_making_time": "<100ms",
+      "quality_validation_time": "<5s"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "over_triggering_breakpoints": {
+      "risk": "Too many breakpoints slow development",
+      "mitigation": "Start conservative, tune thresholds based on data, track false positive rate"
+    },
+    "under_triggering_breakpoints": {
+      "risk": "Poor quality outputs slip through",
+      "mitigation": "Multiple validation stages, quality gates, trending analysis"
+    },
+    "complex_dependency_graphs": {
+      "risk": "Deadlocks or performance issues",
+      "mitigation": "Deadlock detection, graph simplification, clear error messages"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented",
+      "90% test coverage",
+      "Integration tests pass",
+      "Scenario tests cover key workflows"
+    ],
+    "functionality": [
+      "Can schedule and execute tasks with dependencies",
+      "Breakpoints trigger at appropriate times",
+      "Quality validation catches issues",
+      "Decisions are logical and well-explained",
+      "Can complete simple tasks autonomously"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M5",
+    "name": "Utility Services",
+    "readiness_criteria": [
+      "Orchestration loop functional",
+      "Can execute tasks end-to-end",
+      "Decision making works",
+      "Quality validation operational"
+    ]
+  }
+}

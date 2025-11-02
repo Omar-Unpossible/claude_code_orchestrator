@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obra - Pitch Deck</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reset.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/theme/black.css">
+    <style>
+        .reveal { font-size: 28px; }
+        .reveal h1 { font-size: 1.8em; margin-bottom: 0.3em; line-height: 1.1; }
+        .reveal h2 { font-size: 1.2em; margin-bottom: 0.3em; text-transform: uppercase; letter-spacing: 0.05em; }
+        .reveal h3 { font-size: 1.1em; margin-bottom: 0.2em; color: #42affa; }
+        .reveal p { font-size: 0.8em; margin: 0.3em 0; line-height: 1.3; }
+        .reveal li { font-size: 0.7em; margin-bottom: 0.3em; line-height: 1.3; }
+        .reveal ul, .reveal ol { margin: 0.5em 0; }
+        .reveal table { font-size: 0.6em; margin: 0.5em auto; }
+        .reveal table th { padding: 0.3em 0.5em; }
+        .reveal table td { padding: 0.3em 0.5em; }
+        .reveal .problem-box { background: #8B0000; padding: 0.8em; margin: 0.3em 0; border-radius: 8px; }
+        .reveal .solution-box { background: #006400; padding: 0.8em; margin: 0.3em 0; border-radius: 8px; }
+        .reveal .highlight { color: #42affa; font-weight: bold; }
+        .reveal .stats { font-size: 1.1em; color: #FFD700; font-weight: bold; }
+        .reveal blockquote { background: #1a1a1a; border-left: 3px solid #42affa; padding: 0.6em; font-style: italic; margin: 0.4em 0; }
+        .reveal blockquote p { font-size: 0.75em; }
+        .reveal .flow { font-family: monospace; background: #2a2a2a; padding: 0.6em; border-radius: 5px; font-size: 0.75em; line-height: 1.4; }
+        .reveal .roi-positive { color: #00FF00; font-weight: bold; }
+        .reveal .roi-negative { color: #FF6B6B; }
+        .columns { display: flex; gap: 1em; align-items: flex-start; }
+        .column { flex: 1; min-width: 0; }
+        .small-text { font-size: 0.65em; }
+        .tagline { font-size: 0.9em; color: #42affa; margin-top: 0.3em; }
+        .reveal .slides { max-width: 100%; }
+        .reveal .slides > section { padding: 20px; }
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8em; font-size: 0.85em; }
+        .grid-item { padding: 0.6em; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- Slide 1: Cover -->
+            <section data-background-gradient="linear-gradient(45deg, #1a1a2e, #16213e)">
+                <h1 style="font-size: 2.5em; color: #42affa; margin-bottom: 0.2em;">Obra</h1>
+                <p class="tagline" style="font-size: 1em;">Orchestrate your masterpiece</p>
+                <hr style="border-color: #42affa; width: 50%; margin: 0.8em auto;">
+                <p style="font-size: 0.9em; margin-top: 0.8em;">AI orchestration platform that reduces LLM costs by <span class="stats">60-75%</span> while accelerating feature delivery by <span class="stats">40-60%</span></p>
+                <p style="margin-top: 1.5em; font-size: 0.7em; opacity: 0.8;">[Your Name]<br>[Contact Information]</p>
+            </section>
+
+            <!-- Slide 2: The Problem -->
+            <section>
+                <h2>The Problem</h2>
+                <h1 style="font-size: 1.4em; margin-bottom: 0.5em;">Enterprises are drowning in LLM orchestration overhead</h1>
+                <div class="columns" style="margin-top: 0.8em;">
+                    <div class="column problem-box">
+                        <h3 style="color: #fff; font-size: 0.95em;">Developer Time Waste</h3>
+                        <ul style="margin: 0.3em 0;">
+                            <li>20-40% time on prompt engineering</li>
+                            <li><span class="stats">8.3 iterations</span> per feature</li>
+                            <li>Constant context switching</li>
+                        </ul>
+                    </div>
+                    <div class="column problem-box">
+                        <h3 style="color: #fff; font-size: 0.95em;">Exploding API Costs</h3>
+                        <ul style="margin: 0.3em 0;">
+                            <li><span class="stats">$1k-$5k/mo</span> per dev</li>
+                            <li>50 devs = <span class="stats">$50k-$250k/mo</span></li>
+                            <li>3-5% monthly growth</li>
+                        </ul>
+                    </div>
+                    <div class="column problem-box">
+                        <h3 style="color: #fff; font-size: 0.95em;">No Turnkey Solution</h3>
+                        <ul style="margin: 0.3em 0;">
+                            <li>IDE assistants, not orchestration</li>
+                            <li>Every team reinvents wheel</li>
+                            <li>Engineers = prompt operators</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 3: The Solution -->
+            <section>
+                <h2>The Solution</h2>
+                <h1 style="font-size: 1.8em;">Obra is the orchestration layer between developers and LLMs</h1>
+                <div class="solution-box" style="margin-top: 1.5em;">
+                    <div class="columns">
+                        <div class="column">
+                            <h3 style="color: #fff;">What Obra Does:</h3>
+                            <ul>
+                                <li><span class="highlight">Automates</span> prompt generation</li>
+                                <li><span class="highlight">Orchestrates</span> validation loops</li>
+                                <li><span class="highlight">Manages</span> testing & integration</li>
+                                <li><span class="highlight">Learns</span> from your codebase</li>
+                                <li><span class="highlight">Operates hybrid:</span> Local + Remote LLMs</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 style="color: #fff;">The Result:</h3>
+                            <p style="font-size: 1.2em; line-height: 1.6;">Developer expresses intent<br>↓<br>Obra delivers tested features<br>↓<br>Developer approves & ships</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 4: Value Proposition -->
+            <section>
+                <h2>Value Proposition</h2>
+                <h1>Three Value Props for Three Buyers</h1>
+                <div style="margin-top: 1.5em;">
+                    <blockquote>
+                        <h3 style="color: #42affa;">For Development Teams:</h3>
+                        <p>"Reduce your LLM API costs by 60-75% while shipping features 40-60% faster through automated AI orchestration"</p>
+                    </blockquote>
+                    <blockquote>
+                        <h3 style="color: #42affa;">For CTOs/Engineering Leaders:</h3>
+                        <p>"Enterprise-grade LLM workflow platform that learns your codebase, enforces standards, and eliminates prompt engineering overhead—deployed on your infrastructure"</p>
+                    </blockquote>
+                    <blockquote>
+                        <h3 style="color: #42affa;">For Compliance/Security-Conscious Orgs:</h3>
+                        <p>"Hybrid architecture keeps sensitive code local while leveraging remote LLMs only for generation—full data sovereignty with AI acceleration"</p>
+                    </blockquote>
+                </div>
+            </section>
+
+            <!-- Slide 5: How It Works -->
+            <section>
+                <h2>How It Works</h2>
+                <h1 style="font-size: 1.5em;">The Obra Orchestration Loop</h1>
+                <div class="flow" style="margin-top: 0.5em; text-align: center;">
+                    Developer Intent<br>
+                    ↓<br>
+                    <span class="highlight">Obra Planning (Local)</span><br>
+                    ↓<br>
+                    Remote LLM Generation<br>
+                    ↓<br>
+                    <span class="highlight">Obra Validation (Local)</span><br>
+                    ↓<br>
+                    Automated Testing<br>
+                    ↓<br>
+                    Integration or Refinement Loop<br>
+                    ↓<br>
+                    Human Approval → Ship
+                </div>
+                <div style="margin-top: 0.8em;">
+                    <h3 style="font-size: 1em;">Key Innovation: Hybrid Architecture</h3>
+                    <p style="font-size: 0.75em;"><span class="stats">25% remote LLM</span> (high-quality generation) + <span class="stats">75% local LLM</span> (reasoning, validation)</p>
+                    <p style="font-size: 0.75em;">Average iterations: <span class="stats">2.1</span> vs. industry baseline of <span class="roi-negative">8.3</span></p>
+                </div>
+            </section>
+
+            <!-- Slide 6: Customer ROI -->
+            <section>
+                <h2>Customer ROI</h2>
+                <h1>Real Numbers: 50-Developer Team</h1>
+                <table style="margin-top: 1em; width: 100%;">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Before Obra</th>
+                            <th>With Obra</th>
+                            <th>Savings</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>LLM API Costs</strong></td>
+                            <td class="roi-negative">$60k/month</td>
+                            <td>$18k/month</td>
+                            <td class="roi-positive">-70%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Obra Subscription</strong></td>
+                            <td>$0</td>
+                            <td>$15k/month</td>
+                            <td>-</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Dev Time Waste</strong></td>
+                            <td class="roi-negative">30% (15 devs)</td>
+                            <td>12% (6 devs)</td>
+                            <td class="roi-positive">9 devs freed</td>
+                        </tr>
+                        <tr style="border-top: 2px solid #42affa;">
+                            <td><strong>Net Monthly Savings</strong></td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="roi-positive">$27k</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Annual Value</strong></td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="roi-positive">$324k + 10.8 dev-years</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 1em; font-size: 1.3em;">Payback Period: <span class="stats">Immediate</span> (cash-flow positive month 1)</p>
+            </section>
+
+            <!-- Slide 7: Market Opportunity -->
+            <section>
+                <h2>Market Opportunity</h2>
+                <h1><span class="stats">$450M</span> Addressable Market</h1>
+                <div class="columns" style="margin-top: 1.5em;">
+                    <div class="column">
+                        <h3>Market Validation</h3>
+                        <ul>
+                            <li><span class="stats">67%</span> of enterprise teams use AI assistants</li>
+                            <li><span class="stats">$1,200/month</span> per AI-heavy developer</li>
+                            <li><span class="stats">40% CAGR</span> through 2027</li>
+                        </ul>
+                        <h3 style="margin-top: 1em;">Pain Points Confirmed</h3>
+                        <ul>
+                            <li>73% report time waste in prompting</li>
+                            <li>58% of CTOs cite cost management concern</li>
+                            <li>API costs = #2 blocker to adoption</li>
+                        </ul>
+                    </div>
+                    <div class="column">
+                        <h3>Target Market</h3>
+                        <ul>
+                            <li><span class="stats">12,000 organizations</span> with 20+ devs using AI</li>
+                            <li><span class="stats">600,000 developer seats</span> addressable</li>
+                            <li><span class="stats">2,000 seats</span> target in 3 years</li>
+                        </ul>
+                        <div style="background: #2a2a2a; padding: 1em; border-radius: 10px; margin-top: 1em;">
+                            <p><strong>Initial TAM:</strong></p>
+                            <p class="stats">600k seats × $250/mo × 25% = $450M ARR potential</p>
+                            <p class="small-text" style="margin-top: 0.5em;">Realistic 3-year: $6M ARR</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 8: Business Model -->
+            <section>
+                <h2>Business Model</h2>
+                <h1>Two-Tier Pricing</h1>
+                <div class="columns" style="margin-top: 1.5em;">
+                    <div class="column" style="background: #1a4d2e; padding: 1.5em; border-radius: 10px;">
+                        <h3 style="color: #fff;">Tier 1: Software License</h3>
+                        <p class="stats" style="font-size: 1.8em;">$250-400/seat/month</p>
+                        <ul>
+                            <li>Self-hosted on customer infrastructure</li>
+                            <li><span class="highlight">80% gross margin</span></li>
+                            <li>AI-native companies, cost-conscious teams</li>
+                        </ul>
+                    </div>
+                    <div class="column" style="background: #1a2f4d; padding: 1.5em; border-radius: 10px;">
+                        <h3 style="color: #fff;">Tier 2: Managed Appliance</h3>
+                        <p class="stats" style="font-size: 1.8em;">$600-900/seat/month</p>
+                        <ul>
+                            <li>Pre-configured hardware + Obra</li>
+                            <li><span class="highlight">65% gross margin</span></li>
+                            <li>Regulated industries (finance, healthcare, defense)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="margin-top: 1.5em;">
+                    <h3>3-Year Revenue Projections</h3>
+                    <table style="width: 80%; margin: 1em auto;">
+                        <thead>
+                            <tr><th>Year</th><th>Customers</th><th>Avg Seats</th><th>ARR</th><th>Gross Margin</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Y1 (Alpha)</td><td>5</td><td>30</td><td class="highlight">$450k</td><td>75%</td></tr>
+                            <tr><td>Y2</td><td>20</td><td>45</td><td class="highlight">$3.2M</td><td>78%</td></tr>
+                            <tr><td>Y3</td><td>50</td><td>50</td><td class="highlight">$9.0M</td><td>80%</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Slide 9: Competition -->
+            <section>
+                <h2>Competition</h2>
+                <h1>Obra's Unique Position</h1>
+                <table style="margin-top: 1em; font-size: 0.7em;">
+                    <thead>
+                        <tr>
+                            <th>Vendor</th>
+                            <th>Price/Seat</th>
+                            <th>Orchestration</th>
+                            <th>Data Sovereignty</th>
+                            <th>Target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>GitHub Copilot Enterprise</td>
+                            <td>$39</td>
+                            <td>None</td>
+                            <td>Cloud-only</td>
+                            <td>All developers</td>
+                        </tr>
+                        <tr>
+                            <td>Cursor Pro</td>
+                            <td>$20</td>
+                            <td>Minimal</td>
+                            <td>Cloud-only</td>
+                            <td>Individual devs</td>
+                        </tr>
+                        <tr>
+                            <td>Replit Teams</td>
+                            <td>$200</td>
+                            <td>Builder-focused</td>
+                            <td>Cloud-only</td>
+                            <td>Prototyping</td>
+                        </tr>
+                        <tr style="background: #1a4d2e;">
+                            <td><strong>Obra Software</strong></td>
+                            <td><strong>$250-$400</strong></td>
+                            <td><strong>Full project</strong></td>
+                            <td><strong>Hybrid/local</strong></td>
+                            <td><strong>Enterprise</strong></td>
+                        </tr>
+                        <tr style="background: #1a2f4d;">
+                            <td><strong>Obra Appliance</strong></td>
+                            <td><strong>$600-$900</strong></td>
+                            <td><strong>Full project</strong></td>
+                            <td><strong>100% local</strong></td>
+                            <td><strong>Regulated</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div style="margin-top: 1.5em;">
+                    <h3>Obra's Moat</h3>
+                    <ol style="font-size: 0.9em;">
+                        <li><strong>Project-level orchestration</strong> (not just code suggestions)</li>
+                        <li><strong>60-75% cost reduction</strong> via hybrid architecture</li>
+                        <li><strong>Validation intelligence</strong> (prevents bad outputs)</li>
+                        <li><strong>Continuous workflow improvement</strong> (no LLM pipeline maintenance)</li>
+                        <li><strong>Enterprise deployment</strong> (compliance, security, data sovereignty)</li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- Slide 10: Why Now -->
+            <section>
+                <h2>Why Now?</h2>
+                <h1>Three Convergences Enable Obra Today</h1>
+                <div style="margin-top: 1.5em;">
+                    <div style="background: #2a2a2a; padding: 1em; border-radius: 10px; margin-bottom: 1em;">
+                        <h3>1. LLM Capability Threshold (2024-2025)</h3>
+                        <ul>
+                            <li>Claude 3.5 Sonnet, GPT-4o cross "production-ready" bar</li>
+                            <li>Error rates <span class="highlight">&lt;15%</span> for well-prompted tasks</li>
+                            <li><span class="highlight">200k+ token</span> context windows handle entire codebases</li>
+                        </ul>
+                    </div>
+                    <div style="background: #2a2a2a; padding: 1em; border-radius: 10px; margin-bottom: 1em;">
+                        <h3>2. Local Model Viability (2024)</h3>
+                        <ul>
+                            <li>Llama 3.1 70B, Qwen 2.5 72B rival GPT-3.5 at <span class="highlight">1/100th cost</span></li>
+                            <li>Consumer GPUs (RTX 4090) run 70B models at usable speeds</li>
+                            <li>Local deployment is now <span class="highlight">technically AND economically feasible</span></li>
+                        </ul>
+                    </div>
+                    <div style="background: #2a2a2a; padding: 1em; border-radius: 10px;">
+                        <h3>3. Enterprise Cost Pressure (2025)</h3>
+                        <ul>
+                            <li>LLM API budgets grew <span class="highlight">300% YoY</span> in 2024</li>
+                            <li>CFOs demanding ROI on AI investments</li>
+                            <li>"Tool sprawl": 5-10 AI tools without integration</li>
+                        </ul>
+                    </div>
+                </div>
+                <p style="margin-top: 1em; font-size: 1.2em;"><span class="stats">Window:</span> 18 months before incumbents add orchestration or enterprises build internal solutions</p>
+            </section>
+
+            <!-- Slide 11: Go-to-Market -->
+            <section>
+                <h2>Go-to-Market</h2>
+                <h1>Three-Phase GTM Strategy</h1>
+                <div style="margin-top: 1.5em;">
+                    <div style="background: #1a1a2e; padding: 1em; border-left: 5px solid #42affa; margin-bottom: 1em;">
+                        <h3>Phase 1: Alpha Partners (Months 1-6)</h3>
+                        <ul class="small-text">
+                            <li><strong>Target:</strong> 3-5 early adopter companies (50-200 devs, $10k+/month LLM spend)</li>
+                            <li><strong>Verticals:</strong> AI-native startups, crypto/web3, dev tools companies</li>
+                            <li><strong>Offer:</strong> Free deployment + support for usage data and testimonials</li>
+                            <li><strong>Success:</strong> 50% API cost reduction, 30% time savings, NPS &gt;50</li>
+                        </ul>
+                    </div>
+                    <div style="background: #1a1a2e; padding: 1em; border-left: 5px solid #FFD700; margin-bottom: 1em;">
+                        <h3>Phase 2: Controlled Launch (Months 7-12)</h3>
+                        <ul class="small-text">
+                            <li><strong>Target:</strong> 15-20 paying customers</li>
+                            <li><strong>Channel:</strong> Direct sales (founder-led), developer community</li>
+                            <li><strong>Pricing:</strong> $300/seat (early adopter discount)</li>
+                            <li><strong>Focus:</strong> Nail onboarding, gather features, build case studies</li>
+                        </ul>
+                    </div>
+                    <div style="background: #1a1a2e; padding: 1em; border-left: 5px solid #00FF00;">
+                        <h3>Phase 3: Scale (Year 2+)</h3>
+                        <ul class="small-text">
+                            <li><strong>Target:</strong> 50+ customers, expand to regulated industries</li>
+                            <li><strong>Channels:</strong> AWS Marketplace, resellers for appliance tier</li>
+                            <li><strong>Product:</strong> Launch managed appliance</li>
+                            <li><strong>Team:</strong> VP Sales, 3-5 AEs, customer success</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 12: Traction & Validation -->
+            <section>
+                <h2>Traction & Validation</h2>
+                <h1>Alpha Metrics to Prove</h1>
+                <div class="columns" style="margin-top: 1.5em;">
+                    <div class="column">
+                        <div style="background: #1a4d2e; padding: 1.5em; border-radius: 10px; margin-bottom: 1em;">
+                            <h3 style="color: #fff;">Cost Reduction</h3>
+                            <p class="stats">60-75%</p>
+                            <p class="small-text">reduction in LLM API spend within 90 days</p>
+                        </div>
+                        <div style="background: #1a2f4d; padding: 1.5em; border-radius: 10px;">
+                            <h3 style="color: #fff;">Productivity Gains</h3>
+                            <p class="stats">40-60%</p>
+                            <p class="small-text">reduction in feature delivery cycle time</p>
+                        </div>
+                    </div>
+                    <div class="column">
+                        <div style="background: #4d1a2e; padding: 1.5em; border-radius: 10px; margin-bottom: 1em;">
+                            <h3 style="color: #fff;">Developer Satisfaction</h3>
+                            <p class="stats">70%</p>
+                            <p class="small-text">reduction in "AI overhead" time, NPS &gt;40</p>
+                        </div>
+                        <div style="background: #2e1a4d; padding: 1.5em; border-radius: 10px;">
+                            <h3 style="color: #fff;">Quality Maintenance</h3>
+                            <p class="stats">No degradation</p>
+                            <p class="small-text">in bug rate vs. human-written code</p>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 1.5em; background: #2a2a2a; padding: 1em; border-radius: 10px;">
+                    <h3>Alpha Program Success Criteria</h3>
+                    <ul class="small-text">
+                        <li>✓ 3 of 5 customers achieve &gt;50% API cost reduction</li>
+                        <li>✓ 4 of 5 customers willing to pay $250/seat</li>
+                        <li>✓ 2 reference customers for case studies</li>
+                        <li>✓ Product NPS &gt;40</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Slide 13: Roadmap -->
+            <section>
+                <h2>Roadmap</h2>
+                <h1 style="font-size: 1.5em;">18-Month Product Roadmap</h1>
+                <div class="grid-container" style="margin-top: 0.5em;">
+                    <div class="grid-item" style="background: #1a4d2e;">
+                        <h3 style="color: #fff; font-size: 0.95em; margin-bottom: 0.3em;">MVP (Months 0-3)</h3>
+                        <ul style="font-size: 0.7em; margin: 0.2em 0;">
+                            <li>✓ Core orchestration engine</li>
+                            <li>✓ Claude + GPT-4 integration</li>
+                            <li>✓ Local reasoning (Llama 3.1)</li>
+                            <li>✓ GitHub/GitLab integration</li>
+                            <li>✓ CLI + web UI</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item" style="background: #1a2f4d;">
+                        <h3 style="color: #fff; font-size: 0.95em; margin-bottom: 0.3em;">Alpha (Months 4-6)</h3>
+                        <ul style="font-size: 0.7em; margin: 0.2em 0;">
+                            <li>□ 5 customer deployments</li>
+                            <li>□ IDE plugins (VSCode, JetBrains)</li>
+                            <li>□ Team pattern learning</li>
+                            <li>□ Metrics dashboard</li>
+                            <li>□ Multi-language support</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item" style="background: #4d1a2e;">
+                        <h3 style="color: #fff; font-size: 0.95em; margin-bottom: 0.3em;">Beta / Paid (Mo 7-12)</h3>
+                        <ul style="font-size: 0.7em; margin: 0.2em 0;">
+                            <li>□ Self-serve onboarding</li>
+                            <li>□ Custom validation rules</li>
+                            <li>□ Jira/Linear integration</li>
+                            <li>□ SSO, RBAC, audit logs</li>
+                            <li>□ SOC 2 Type 1</li>
+                        </ul>
+                    </div>
+                    <div class="grid-item" style="background: #2e1a4d;">
+                        <h3 style="color: #fff; font-size: 0.95em; margin-bottom: 0.3em;">Scale (Year 2)</h3>
+                        <ul style="font-size: 0.7em; margin: 0.2em 0;">
+                            <li>□ Managed appliance</li>
+                            <li>□ SOC 2 Type 2, HIPAA</li>
+                            <li>□ Multi-LLM orchestration</li>
+                            <li>□ Custom fine-tuning</li>
+                            <li>□ White-label options</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 14: Risks & Mitigations -->
+            <section>
+                <h2>Risks & Mitigations</h2>
+                <h1>Key Risks and How We Address Them</h1>
+                <table style="margin-top: 1em; font-size: 0.65em;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Risk</th>
+                            <th style="width: 60%;">Mitigation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>LLM quality improves, reducing need for validation</strong></td>
+                            <td>Shift focus to workflow optimization, codebase knowledge, team pattern enforcement</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Incumbents (GitHub, Cursor) add orchestration</strong></td>
+                            <td>12-18 month head start; focus on compliance, data sovereignty, cost optimization</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Customers build internal solutions</strong></td>
+                            <td>Building costs $500k+/year vs. $180k/year for Obra; continuous workflow updates</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Adoption slower than expected</strong></td>
+                            <td>Alpha de-risks; pivot to consulting → SaaS; diversified GTM</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Local LLM inference too expensive</strong></td>
+                            <td>Customer provides hardware; appliance includes hardware in price; ROI works at 2x cost</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Slide 15: The Ask -->
+            <section data-background-gradient="linear-gradient(135deg, #1a1a2e, #16213e)">
+                <h2>The Ask</h2>
+                <h1>Raising <span class="stats">$750k</span> Pre-Seed</h1>
+                <div class="columns" style="margin-top: 1.5em;">
+                    <div class="column">
+                        <h3>Use of Funds</h3>
+                        <ul style="font-size: 0.9em;">
+                            <li><strong>Engineering (50% / $375k):</strong><br>2 senior engineers + founder for 12 months</li>
+                            <li><strong>GTM & Sales (25% / $187k):</strong><br>First sales hire + marketing</li>
+                            <li><strong>Operations (15% / $112k):</strong><br>Cloud infrastructure, legal, SOC 2 prep</li>
+                            <li><strong>Contingency (10% / $76k):</strong><br>Buffer</li>
+                        </ul>
+                    </div>
+                    <div class="column">
+                        <div style="background: #1a4d2e; padding: 1.5em; border-radius: 10px;">
+                            <h3 style="color: #fff;">Milestones at $750k</h3>
+                            <ul>
+                                <li>✓ 5 alpha customers with validated metrics</li>
+                                <li>✓ <span class="stats">$450k ARR</span> (15 customers, 30 seats avg)</li>
+                                <li>✓ Product ready for Series A</li>
+                            </ul>
+                        </div>
+                        <p style="margin-top: 1.5em; font-size: 1.3em;">Path to <span class="stats">$5M ARR</span> in 24 months</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 16: Team -->
+            <section>
+                <h2>Team</h2>
+                <h1>[Your Name & Background]</h1>
+                <div style="margin-top: 2em; font-size: 1.1em;">
+                    <p><em>[Add your details here—focus on:]</em></p>
+                    <ul style="margin-top: 1em;">
+                        <li><em>Why you're uniquely positioned to build this</em></li>
+                        <li><em>Relevant experience (AI/ML, dev tools, enterprise software)</em></li>
+                        <li><em>Technical credibility and domain expertise</em></li>
+                        <li><em>Any co-founders or key early hires</em></li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Slide 17: Call to Action -->
+            <section data-background-gradient="linear-gradient(45deg, #1a1a2e, #16213e)">
+                <h2>Next Steps</h2>
+                <div class="columns" style="margin-top: 1.5em;">
+                    <div class="column" style="background: #1a4d2e; padding: 1.5em; border-radius: 10px;">
+                        <h3 style="color: #fff;">For Investors</h3>
+                        <p>Join us in building the orchestration layer for AI-powered development.</p>
+                        <p class="stats" style="margin-top: 1em;">$750k to prove 60%+ cost reduction with 5 alpha customers</p>
+                        <p>Clear path to $5M ARR in an underserved $450M market</p>
+                    </div>
+                    <div class="column" style="background: #1a2f4d; padding: 1.5em; border-radius: 10px;">
+                        <h3 style="color: #fff;">For Alpha Partners</h3>
+                        <p>Does your team spend $50k+/month on LLM APIs?</p>
+                        <p class="stats" style="margin-top: 1em;">Free deployment + dedicated support</p>
+                        <p>Cut costs by 60-75%, ship 40-60% faster</p>
+                    </div>
+                </div>
+                <div style="margin-top: 2em; font-size: 1.2em;">
+                    <p><strong>Contact:</strong></p>
+                    <p>[Your Email]<br>[Your Phone]<br>[Company Website]</p>
+                </div>
+            </section>
+
+            <!-- Slide 18: Closing -->
+            <section data-background-gradient="linear-gradient(135deg, #1a1a2e, #16213e)">
+                <h1 style="font-size: 2.8em; color: #42affa; margin-bottom: 0.3em;">Obra</h1>
+                <p class="tagline" style="font-size: 1.1em;">Orchestrate your masterpiece.</p>
+                <hr style="border-color: #42affa; width: 60%; margin: 0.8em auto;">
+                <p style="font-size: 0.9em; margin-top: 1em;">Where developer intent becomes production-ready work.</p>
+                <p class="small-text" style="margin-top: 1.5em; font-style: italic; opacity: 0.8;">From Latin <em>opus</em> (work)—the same root as "opus," "opera," and "operate"</p>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            transition: 'slide',
+            controls: true,
+            progress: true,
+            center: true,
+            slideNumber: 'c/t',
+            showSlideNumber: 'all',
+            width: 1280,
+            height: 720,
+            margin: 0.04,
+            minScale: 0.2,
+            maxScale: 2.0
+        });
+    </script>
+</body>
+</html>

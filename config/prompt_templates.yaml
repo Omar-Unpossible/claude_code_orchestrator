@@ -1,0 +1,333 @@
+# Prompt Templates for Claude Code Orchestrator
+# Uses Jinja2 templating syntax with custom filters
+
+# Task execution template - used for generating prompts for Claude Code
+task_execution: |
+  You are working on the following task for the "{{ project_name }}" project.
+
+  ## Task Information
+  **Task ID**: {{ task_id }}
+  **Title**: {{ task_title }}
+  **Description**: {{ task_description }}
+  **Priority**: {{ task_priority | default(5) }}
+  {% if task_dependencies %}
+  **Dependencies**: {{ task_dependencies | join(', ') }}
+  {% endif %}
+
+  ## Project Context
+  Working Directory: {{ working_directory }}
+  {% if project_goals %}
+  Project Goals:
+  {{ project_goals | truncate(500) }}
+  {% endif %}
+
+  {% if current_files %}
+  ## Current Active Files
+  {% for file in current_files %}
+  - {{ file.path }} ({{ file.size }} bytes, last modified: {{ file.modified }})
+  {% endfor %}
+  {% endif %}
+
+  {% if recent_errors %}
+  ## Recent Errors to Address
+  {% for error in recent_errors %}
+  - {{ error.message }} ({{ error.timestamp }})
+  {% endfor %}
+  {% endif %}
+
+  {% if conversation_history %}
+  ## Recent Conversation
+  {{ conversation_history | summarize(max_tokens=1000) }}
+  {% endif %}
+
+  {% if examples %}
+  ## Example Solutions
+  {% for example in examples %}
+  ### Example {{ loop.index }}
+  {{ example.description }}
+  ```{{ example.language | default('python') }}
+  {{ example.code | format_code }}
+  ```
+  {% endfor %}
+  {% endif %}
+
+  ## Instructions
+  {{ instructions }}
+
+  Please complete this task efficiently and report your progress.
+
+# Validation prompt - for QualityController to validate work
+validation: |
+  You are validating the work completed for the following task.
+
+  ## Task Details
+  **Task**: {{ task_title }}
+  **Description**: {{ task_description }}
+  **Expected Outcome**: {{ expected_outcome }}
+
+  ## Work Submitted
+  {{ work_output | truncate(3000) }}
+
+  {% if file_changes %}
+  ## Files Changed
+  {% for change in file_changes %}
+  - {{ change.path }} ({{ change.change_type }}): {{ change.summary }}
+  {% endfor %}
+  {% endif %}
+
+  {% if test_results %}
+  ## Test Results
+  {{ test_results | summarize(max_tokens=500) }}
+  {% endif %}
+
+  ## Validation Criteria
+  Please assess the work against these criteria:
+  {% for criterion in validation_criteria %}
+  - {{ criterion }}
+  {% endfor %}
+
+  Respond with a JSON object containing:
+  - "is_valid": boolean
+  - "quality_score": float (0.0-1.0)
+  - "issues": list of strings (any problems found)
+  - "suggestions": list of strings (improvement recommendations)
+
+# Error analysis prompt - for local LLM to analyze failures
+error_analysis: |
+  An error occurred during task execution. Please analyze it.
+
+  ## Error Details
+  **Error Type**: {{ error_type }}
+  **Error Message**: {{ error_message }}
+  {% if error_stacktrace %}
+  **Stacktrace**:
+  ```
+  {{ error_stacktrace | truncate(1500) }}
+  ```
+  {% endif %}
+
+  ## Task Context
+  **Task**: {{ task_title }}
+  {{ task_description | truncate(300) }}
+
+  ## Agent Output
+  {{ agent_output | truncate(1000) }}
+
+  {% if recent_interactions %}
+  ## Recent Interactions
+  {% for interaction in recent_interactions %}
+  - {{ interaction.timestamp }}: {{ interaction.summary }}
+  {% endfor %}
+  {% endif %}
+
+  ## Analysis Required
+  Please analyze this error and provide:
+  1. Root cause identification
+  2. Whether this is recoverable with a retry
+  3. Suggested fix or next steps
+  4. Whether human intervention is needed
+
+  Respond in JSON format with these fields.
+
+# Decision prompt - for DecisionEngine to decide next action
+decision: |
+  Based on the current state, determine the next action.
+
+  ## Current Task
+  **Task ID**: {{ task_id }}
+  **Title**: {{ task_title }}
+  **Status**: {{ task_status }}
+  **Attempts**: {{ attempt_count }} / {{ max_attempts }}
+
+  ## Latest Interaction
+  **Agent**: {{ agent_name }}
+  **Response**: {{ agent_response | truncate(800) }}
+  {% if validation_result %}
+  **Validation**: {{ validation_result.is_valid }} (score: {{ validation_result.quality_score }})
+  {% if validation_result.issues %}
+  **Issues Found**: {{ validation_result.issues | join(', ') }}
+  {% endif %}
+  {% endif %}
+
+  ## Project State
+  **Active Tasks**: {{ active_task_count }}
+  **Pending Tasks**: {{ pending_task_count }}
+  **Recent Breakpoints**: {{ recent_breakpoint_count }}
+
+  {% if context %}
+  ## Additional Context
+  {{ context | summarize(max_tokens=500) }}
+  {% endif %}
+
+  ## Decision Options
+  1. PROCEED - Task completed successfully, move to next task
+  2. RETRY - Task failed but recoverable, retry with improved prompt
+  3. BREAKPOINT - Human intervention needed
+  4. DELEGATE - Assign to different agent
+  5. SKIP - Mark task as blocked, move to next
+
+  Please decide the best action and explain your reasoning.
+
+# Summarization prompt - for condensing long content
+summarization: |
+  Please provide a concise summary of the following content.
+
+  {% if content_type %}
+  Content Type: {{ content_type }}
+  {% endif %}
+
+  Target Length: {{ target_tokens | default(500) }} tokens
+
+  ## Content
+  {{ content }}
+
+  ## Summary Requirements
+  - Focus on key information relevant to {{ focus | default('task completion') }}
+  - Preserve critical details
+  - Remove redundancy and verbose explanations
+  - Maintain technical accuracy
+
+  Provide only the summary, no preamble.
+
+# Breakpoint notification - for human review
+breakpoint_notification: |
+  BREAKPOINT TRIGGERED
+
+  ## Severity: {{ severity | upper }}
+
+  ## Reason
+  {{ reason }}
+
+  ## Task Information
+  **Task**: {{ task_title }}
+  **Status**: {{ task_status }}
+  **Project**: {{ project_name }}
+
+  {% if context %}
+  ## Context
+  {{ context | truncate(1000) }}
+  {% endif %}
+
+  {% if agent_output %}
+  ## Last Agent Output
+  {{ agent_output | truncate(800) }}
+  {% endif %}
+
+  {% if suggested_actions %}
+  ## Suggested Actions
+  {% for action in suggested_actions %}
+  {{ loop.index }}. {{ action }}
+  {% endfor %}
+  {% endif %}
+
+  Please review and provide guidance on how to proceed.
+
+# Follow-up prompt generation - for PromptGenerator to create optimized retry prompts
+followup_generation: |
+  Generate an improved prompt for retrying a failed task.
+
+  ## Original Task
+  {{ original_task_description }}
+
+  ## Original Prompt
+  {{ original_prompt | truncate(1000) }}
+
+  ## What Went Wrong
+  {{ failure_reason }}
+  {% if validation_issues %}
+  Validation Issues:
+  {% for issue in validation_issues %}
+  - {{ issue }}
+  {% endfor %}
+  {% endif %}
+
+  ## Previous Attempts
+  This is attempt {{ attempt_number }} of {{ max_attempts }}.
+
+  {% if learned_patterns %}
+  ## Learned Patterns (what worked before)
+  {% for pattern in learned_patterns %}
+  - {{ pattern.description }}: {{ pattern.solution | truncate(200) }}
+  {% endfor %}
+  {% endif %}
+
+  ## Requirements for Improved Prompt
+  - Address the specific failures from previous attempt
+  - Add clearer constraints and requirements
+  - Include relevant examples if available
+  - Be more specific about expected output format
+  - Keep token count under {{ max_tokens | default(3000) }}
+
+  Generate the improved prompt text only.
+
+# Code review prompt - for reviewing code changes
+code_review: |
+  Review the following code changes for quality and correctness.
+
+  ## Context
+  **Task**: {{ task_title }}
+  **Files Changed**: {{ files_changed | length }}
+
+  {% for file in file_changes %}
+  ### {{ file.path }}
+  **Change Type**: {{ file.change_type }}
+  {% if file.diff %}
+  ```diff
+  {{ file.diff | truncate(2000) }}
+  ```
+  {% endif %}
+  {% endfor %}
+
+  ## Review Criteria
+  - Code correctness and logic
+  - Error handling
+  - Code style and readability
+  - Performance considerations
+  - Security implications
+  - Test coverage
+
+  {% if project_standards %}
+  ## Project Standards
+  {{ project_standards | truncate(500) }}
+  {% endif %}
+
+  Provide feedback in JSON format with:
+  - "approved": boolean
+  - "severity": "low" | "medium" | "high" (highest issue severity)
+  - "issues": list of {"file": str, "line": int, "severity": str, "message": str}
+  - "suggestions": list of improvement recommendations
+
+# Context extraction - for extracting relevant context from codebase
+context_extraction: |
+  Extract relevant context for the following task.
+
+  ## Task
+  {{ task_description }}
+
+  ## Codebase Information
+  Working Directory: {{ working_directory }}
+  Total Files: {{ total_files }}
+
+  {% if file_patterns %}
+  Relevant File Patterns:
+  {% for pattern in file_patterns %}
+  - {{ pattern }}
+  {% endfor %}
+  {% endif %}
+
+  ## What to Extract
+  1. Related source files and their purposes
+  2. Relevant dependencies and imports
+  3. Existing implementations of similar functionality
+  4. Configuration files that might be affected
+  5. Test files that should be updated
+
+  Provide a structured summary focusing on information needed to complete the task.
+
+# Simple instruction prompt - minimal template for basic commands
+simple_instruction: |
+  {{ instruction }}
+  {% if context %}
+
+  Context: {{ context }}
+  {% endif %}

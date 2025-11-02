@@ -1,0 +1,636 @@
+{
+  "milestone_id": "M2",
+  "milestone_name": "LLM & Agent Interfaces",
+  "purpose": "Connect to local LLM (Qwen) and implement agent plugins (Claude Code) with prompt generation and validation",
+  "estimated_hours": 10,
+  "priority": "critical_path",
+  "dependencies": ["M0", "M1"],
+  "week": "2-3",
+  
+  "overview": {
+    "why_this_matters": "This connects the brain (local LLM) to the hands (agent). The plugin architecture from M0 pays off here - we can swap agents without changing core logic.",
+    "key_insight": "SSH reliability is critical. Implement robust reconnection logic and health checks. A flaky connection will make the entire system unusable.",
+    "success_indicator": "Can send prompts to both local LLM and Claude Code, receive valid responses, and detect completion accurately"
+  },
+  
+  "implementation_order": ["2.1", "2.4", "2.5", "2.2", "2.3"],
+  "implementation_order_rationale": {
+    "2.1_first": "Local LLM needed by PromptGenerator for context summarization",
+    "2.4_second": "PromptGenerator needed before agent integration",
+    "2.5_third": "ResponseValidator needed to validate agent responses",
+    "2.2_fourth": "Main agent implementation (SSH to VM)",
+    "2.3_fifth": "OutputMonitor works with agent"
+  },
+  
+  "deliverables": [
+    {
+      "id": "2.1",
+      "name": "local_llm_interface",
+      "file": "src/llm/local_interface.py",
+      "description": "Interface to Ollama for local LLM (Qwen) with streaming and caching",
+      "estimated_hours": 2,
+      "priority": "implement_first",
+      
+      "requirements": [
+        "Implement LocalLLMInterface class conforming to LLMPlugin interface",
+        "Integrate with Ollama API (HTTP REST)",
+        "Implement streaming response handling (Server-Sent Events)",
+        "Add token counting using tiktoken (approximation for Qwen)",
+        "Implement retry logic with exponential backoff (max 3 retries)",
+        "Add request queuing for rate limiting (if needed)",
+        "Implement response caching using LRU cache",
+        "Add performance metrics tracking (latency, tokens/sec)",
+        "Implement model warmup (preload on startup)",
+        "Add graceful degradation (handle Ollama downtime)",
+        "Implement health check (ping Ollama endpoint)",
+        "Add connection pooling (reuse HTTP sessions)"
+      ],
+      
+      "ollama_api_endpoints": {
+        "generate": "POST /api/generate - non-streaming generation",
+        "chat": "POST /api/chat - chat-style generation",
+        "embeddings": "POST /api/embeddings - for future semantic search",
+        "list_models": "GET /api/tags - list available models",
+        "show_model": "POST /api/show - model details"
+      },
+      
+      "methods_required": {
+        "generate": "def generate(self, prompt: str, **kwargs) -> str",
+        "generate_stream": "def generate_stream(self, prompt: str, **kwargs) -> Iterator[str]",
+        "is_available": "def is_available(self) -> bool",
+        "warmup": "def warmup(self) -> None",
+        "get_model_info": "def get_model_info(self) -> dict",
+        "estimate_tokens": "def estimate_tokens(self, text: str) -> int",
+        "clear_cache": "def clear_cache(self) -> None",
+        "get_metrics": "def get_metrics(self) -> dict"
+      },
+      
+      "configuration": {
+        "endpoint": "http://localhost:11434",
+        "model": "qwen2.5-coder:32b",
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "timeout": 120,
+        "retry_attempts": 3,
+        "retry_delay_seconds": 2,
+        "stream": true,
+        "cache_size": 100
+      },
+      
+      "retry_strategy": {
+        "max_attempts": 3,
+        "base_delay_seconds": 2,
+        "exponential_base": 2,
+        "jitter": true,
+        "retryable_errors": ["ConnectionError", "Timeout", "503 Service Unavailable"],
+        "non_retryable_errors": ["400 Bad Request", "401 Unauthorized"]
+      },
+      
+      "acceptance_criteria": [
+        "Ollama connection works and is stable",
+        "Streaming responses yield chunks correctly",
+        "Retry logic handles failures with exponential backoff",
+        "Token counting accurate within 5%",
+        "Performance <10s for typical prompts (500 tokens in, 1000 tokens out)",
+        "Caching reduces duplicate calls (cache hit rate tracked)",
+        "Health check detects Ollama unavailability",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_generate_success",
+          "test_generate_stream",
+          "test_retry_on_failure",
+          "test_token_estimation",
+          "test_caching",
+          "test_health_check"
+        ],
+        "integration_tests": [
+          "test_real_ollama_connection",
+          "test_streaming_response",
+          "test_model_info_retrieval"
+        ],
+        "mocks": "Mock Ollama API for unit tests, use real Ollama for integration tests"
+      },
+      
+      "implementation_notes": [
+        "Use requests library for HTTP, or httpx for async support",
+        "Parse SSE (Server-Sent Events) for streaming",
+        "Use functools.lru_cache for response caching",
+        "Log all requests/responses at DEBUG level",
+        "Track metrics in a dict: {calls, total_tokens, total_latency_ms, cache_hits}",
+        "Use session.mount() for connection pooling"
+      ]
+    },
+    
+    {
+      "id": "2.2",
+      "name": "claude_code_ssh_agent",
+      "file": "src/agents/claude_code_ssh.py",
+      "description": "Claude Code agent implementation using SSH to VM",
+      "estimated_hours": 3,
+      "priority": "critical",
+      "depends_on": ["2.1"],
+      
+      "requirements": [
+        "Implement ClaudeCodeSSHAgent conforming to AgentPlugin interface",
+        "Use paramiko for SSH connection management",
+        "Maintain persistent SSH channel (don't reconnect per prompt)",
+        "Implement prompt sending via stdin",
+        "Implement output reading via stdout (non-blocking)",
+        "Add stderr monitoring for errors",
+        "Implement process health monitoring (keep-alive)",
+        "Add automatic reconnection on connection loss (exponential backoff)",
+        "Implement graceful shutdown (send Ctrl+C, wait, then kill)",
+        "Add session persistence across restarts if possible",
+        "Implement timeout handling (configurable per-operation)",
+        "Add rate limit detection from output patterns"
+      ],
+      
+      "ssh_configuration": {
+        "host": "from config: agent.config.vm_host",
+        "port": 22,
+        "username": "from config: agent.config.vm_user",
+        "key_filename": "from config: agent.config.vm_key_path",
+        "timeout": 30,
+        "keepalive_interval": 30,
+        "working_directory": "/home/user/projects"
+      },
+      
+      "methods_required": {
+        "initialize": "def initialize(self, config: dict) -> None",
+        "send_prompt": "def send_prompt(self, prompt: str, context: Optional[dict] = None) -> str",
+        "get_workspace_files": "def get_workspace_files(self) -> List[Path]",
+        "read_file": "def read_file(self, path: Path) -> str",
+        "get_file_changes": "def get_file_changes(self, since: Optional[float] = None) -> List[dict]",
+        "is_healthy": "def is_healthy(self) -> bool",
+        "cleanup": "def cleanup(self) -> None",
+        "_connect": "def _connect(self) -> None (private)",
+        "_reconnect": "def _reconnect(self) -> None (private)",
+        "_wait_for_ready": "def _wait_for_ready(self, timeout: int) -> None (private)",
+        "_is_complete": "def _is_complete(self, output: str) -> bool (private)"
+      },
+      
+      "connection_management": {
+        "initialization": "Connect on initialize(), not on first use",
+        "persistence": "Keep channel open between prompts",
+        "health_checks": "Send keep-alive every 30 seconds",
+        "reconnection": "On disconnect: exponential backoff (2s, 4s, 8s), max 5 attempts",
+        "timeout_handling": "Per-operation timeout, raise exception on timeout",
+        "cleanup": "Close channel and client on cleanup()"
+      },
+      
+      "output_detection": {
+        "completion_markers": ["Ready for next", ">>>", "Command completed"],
+        "error_markers": ["Error:", "Exception:", "Traceback:", "FAILED"],
+        "rate_limit_markers": ["rate limit", "too many requests", "try again later"],
+        "timeout_seconds": 300,
+        "buffer_size": 4096
+      },
+      
+      "acceptance_criteria": [
+        "SSH connection establishes successfully",
+        "Can send prompts and receive responses",
+        "Persistent channel maintained between prompts",
+        "Detects response completion accurately",
+        "Handles disconnections gracefully with reconnection",
+        "Rate limit detection works from output",
+        "Clean shutdown without zombie processes",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_connection_establishment",
+          "test_send_prompt",
+          "test_completion_detection",
+          "test_reconnection_on_disconnect",
+          "test_timeout_handling",
+          "test_cleanup"
+        ],
+        "integration_tests": [
+          "test_real_ssh_connection (optional, requires VM)",
+          "test_persistent_session",
+          "test_multiple_prompts_same_session"
+        ],
+        "mocks": "Mock paramiko for unit tests, optional real VM for integration"
+      },
+      
+      "implementation_notes": [
+        "Use paramiko.SSHClient() for connection",
+        "Use invoke_shell() for interactive channel",
+        "Use select.select() or channel.recv_ready() for non-blocking reads",
+        "Send keepalive with transport.set_keepalive(30)",
+        "Handle SSH exceptions: AuthenticationException, SSHException, socket.timeout",
+        "Use threading.Lock if methods called from multiple threads",
+        "Log all SSH operations at DEBUG level"
+      ],
+      
+      "critical_warnings": [
+        "⚠️ NEVER restart SSH connection unnecessarily - keep it alive",
+        "⚠️ ALWAYS use non-blocking reads (avoid blocking main thread)",
+        "⚠️ ALWAYS close channel before closing client",
+        "⚠️ NEVER send multiple prompts before receiving response",
+        "⚠️ ALWAYS implement timeout (Claude Code can hang)"
+      ]
+    },
+    
+    {
+      "id": "2.3",
+      "name": "claude_code_output_monitor",
+      "file": "src/agents/output_monitor.py",
+      "description": "Monitors Claude Code output for completion and events in real-time",
+      "estimated_hours": 1.5,
+      "priority": "support",
+      "depends_on": ["2.2"],
+      
+      "requirements": [
+        "Implement OutputMonitor class",
+        "Add output buffering using circular buffer",
+        "Implement completion detection with multiple heuristics",
+        "Add error detection from output patterns",
+        "Implement rate limit detection from output",
+        "Add pattern matching using regex",
+        "Implement event emission (observer pattern)",
+        "Add output logging to file",
+        "Implement response extraction from buffer",
+        "Add real-time streaming to observers"
+      ],
+      
+      "methods_required": {
+        "start_monitoring": "def start_monitoring(self, output_stream) -> None",
+        "stop_monitoring": "def stop_monitoring(self) -> None",
+        "is_complete": "def is_complete(self) -> bool",
+        "get_response": "def get_response(self) -> str",
+        "detect_error": "def detect_error(self) -> Optional[str]",
+        "detect_rate_limit": "def detect_rate_limit(self) -> bool",
+        "get_buffer": "def get_buffer(self, lines: int = 100) -> List[str]",
+        "register_observer": "def register_observer(self, callback: Callable) -> None",
+        "clear_buffer": "def clear_buffer(self) -> None"
+      },
+      
+      "detection_patterns": {
+        "completion_markers": {
+          "patterns": ["Ready for", ">>>", "Command completed", "Finished"],
+          "method": "regex or simple string match",
+          "confirmation": "No output for 2 seconds after marker"
+        },
+        "error_markers": {
+          "patterns": ["Error:", "Exception:", "Traceback:", "FAILED", "AssertionError"],
+          "extraction": "Capture error message and context"
+        },
+        "rate_limit_markers": {
+          "patterns": ["rate limit", "too many requests", "try again", "quota exceeded"],
+          "action": "Trigger breakpoint or wait"
+        }
+      },
+      
+      "buffer_management": {
+        "type": "Circular buffer (collections.deque)",
+        "size": 10000,
+        "behavior": "FIFO - oldest lines dropped when full",
+        "persistence": "Optionally save to file for debugging"
+      },
+      
+      "completion_detection_heuristics": [
+        "1. Completion marker found in output",
+        "2. No new output for 2 seconds after marker",
+        "3. Expected file changes detected (if known)",
+        "4. Prompt appears (if interactive mode)"
+      ],
+      
+      "acceptance_criteria": [
+        "Completion detection accurate (>95% accuracy)",
+        "Error detection catches all error types",
+        "Rate limit detection reliable",
+        "Minimal false positives (<5%)",
+        "Real-time monitoring has low latency (<100ms)",
+        "Buffer management prevents overflow",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_completion_detection",
+          "test_error_detection",
+          "test_rate_limit_detection",
+          "test_buffer_overflow_handling",
+          "test_observer_notification"
+        ],
+        "test_data": "Create sample output files with various patterns"
+      },
+      
+      "implementation_notes": [
+        "Use collections.deque for circular buffer",
+        "Use re.compile() for pattern matching (performance)",
+        "Run monitoring in separate thread if needed",
+        "Use threading.Event for completion signaling",
+        "Log all detected events at INFO level",
+        "Consider using rich.live for real-time display"
+      ]
+    },
+    
+    {
+      "id": "2.4",
+      "name": "prompt_generator",
+      "file": "src/llm/prompt_generator.py",
+      "description": "Jinja2-based prompt generator with context management and optimization",
+      "estimated_hours": 2,
+      "priority": "critical",
+      "depends_on": ["2.1"],
+      
+      "requirements": [
+        "Implement PromptGenerator class",
+        "Integrate Jinja2 templates from config/prompt_templates.yaml",
+        "Implement context injection with prioritization",
+        "Add template validation (syntax and required variables)",
+        "Implement prompt optimization (reduce token count)",
+        "Add token budget awareness (truncate if needed)",
+        "Implement context window management (fit model limits)",
+        "Add few-shot example injection from pattern learning",
+        "Implement prompt versioning (track template changes)",
+        "Add prompt caching (identical prompts)",
+        "Implement variable substitution with defaults",
+        "Add prompt preview (show before sending)"
+      ],
+      
+      "methods_required": {
+        "generate_prompt": "def generate_prompt(self, template_name: str, variables: dict, **kwargs) -> str",
+        "load_template": "def load_template(self, template_name: str) -> jinja2.Template",
+        "validate_template": "def validate_template(self, template_name: str) -> bool",
+        "optimize_for_tokens": "def optimize_for_tokens(self, prompt: str, max_tokens: int) -> str",
+        "inject_context": "def inject_context(self, prompt: str, context_data: dict, max_tokens: int) -> str",
+        "add_examples": "def add_examples(self, prompt: str, pattern_type: str, count: int = 3) -> str",
+        "get_prompt_stats": "def get_prompt_stats(self, prompt: str) -> dict",
+        "preview_prompt": "def preview_prompt(self, template_name: str, variables: dict) -> str"
+      },
+      
+      "template_system": {
+        "engine": "Jinja2",
+        "template_location": "config/prompt_templates.yaml",
+        "syntax": "{{ variable }} for substitution, {% for %} for loops",
+        "filters": "Custom filters for formatting (truncate, summarize)",
+        "validation": "Check required variables present before rendering"
+      },
+      
+      "context_management": {
+        "max_context_tokens": 100000,
+        "priority_order": [
+          "current_task_description",
+          "recent_errors",
+          "active_code_files",
+          "task_dependencies",
+          "project_goals",
+          "conversation_history"
+        ],
+        "summarization_threshold": 50000,
+        "summarization_method": "Use local LLM to summarize",
+        "summarization_target": 20000
+      },
+      
+      "optimization_strategies": [
+        "Remove redundant whitespace",
+        "Truncate verbose sections",
+        "Summarize long context using local LLM",
+        "Remove less important context items",
+        "Use concise language in system messages"
+      ],
+      
+      "acceptance_criteria": [
+        "Templates render correctly with all variables substituted",
+        "Context fits within token limits (never exceeds max)",
+        "Prompts include all required sections",
+        "Optimization reduces tokens by ≥20% when needed",
+        "Examples are relevant (from pattern learning)",
+        "Caching works (duplicate prompts not regenerated)",
+        "Preview matches final prompt",
+        "85% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_template_rendering",
+          "test_context_injection",
+          "test_prompt_optimization",
+          "test_token_limit_enforcement",
+          "test_example_injection",
+          "test_missing_variables_handled"
+        ]
+      },
+      
+      "implementation_notes": [
+        "Use jinja2.Environment for template loading",
+        "Add custom filters: truncate, summarize, format_code",
+        "Use TokenCounter to measure prompt tokens",
+        "Cache rendered prompts with hashlib.md5(template+vars)",
+        "Query PatternLearning table for examples",
+        "Use local LLM for context summarization"
+      ]
+    },
+    
+    {
+      "id": "2.5",
+      "name": "response_validator",
+      "file": "src/llm/response_validator.py",
+      "description": "Multi-stage response validation with syntax checking and completeness verification",
+      "estimated_hours": 1.5,
+      "priority": "critical",
+      "depends_on": [],
+      
+      "requirements": [
+        "Implement ResponseValidator class",
+        "Add completeness checking (has all required sections)",
+        "Implement format validation (JSON, YAML, Markdown)",
+        "Add code syntax validation using ast.parse for Python",
+        "Implement logical consistency checks (basic heuristics)",
+        "Add requirement adherence validation (check vs original task)",
+        "Implement confidence scoring based on validation results",
+        "Add hallucination detection (check for known false patterns)",
+        "Implement output sanitization (remove harmful content)",
+        "Add code block extraction (parse markdown code blocks)",
+        "Implement truncation detection (incomplete responses)",
+        "Add quality heuristics (length, coherence, specificity)"
+      ],
+      
+      "methods_required": {
+        "is_complete": "def is_complete(self, response: str) -> bool",
+        "validate_format": "def validate_format(self, response: str, expected_format: str) -> bool",
+        "validate_code_syntax": "def validate_code_syntax(self, code: str, language: str) -> Tuple[bool, List[str]]",
+        "check_consistency": "def check_consistency(self, response: str) -> Tuple[bool, List[str]]",
+        "score_confidence": "def score_confidence(self, response: str, task_requirements: dict) -> float",
+        "extract_code_blocks": "def extract_code_blocks(self, response: str) -> List[Tuple[str, str]]",
+        "detect_truncation": "def detect_truncation(self, response: str) -> bool",
+        "validate_against_requirements": "def validate_against_requirements(self, response: str, requirements: dict) -> Tuple[bool, List[str]]",
+        "sanitize_output": "def sanitize_output(self, response: str) -> str"
+      },
+      
+      "validation_rules": {
+        "completeness": {
+          "min_length": 50,
+          "max_length": 50000,
+          "required_sections": ["explanation", "solution"],
+          "code_blocks_closed": true
+        },
+        "format": {
+          "json": "Valid JSON - use json.loads()",
+          "yaml": "Valid YAML - use yaml.safe_load()",
+          "markdown": "Valid markdown with proper structure",
+          "code": "Syntactically valid for specified language"
+        },
+        "forbidden_patterns": [
+          "I cannot",
+          "I'm unable",
+          "I don't have access",
+          "I apologize but I cannot",
+          "As an AI"
+        ],
+        "truncation_indicators": [
+          "...",
+          "[truncated]",
+          "Continued in next",
+          "Due to length"
+        ]
+      },
+      
+      "code_syntax_validation": {
+        "python": "Use ast.parse(code) - catches syntax errors",
+        "javascript": "Use external validator or regex heuristics",
+        "json": "Use json.loads()",
+        "yaml": "Use yaml.safe_load()",
+        "fallback": "Basic checks - brackets balanced, quotes closed"
+      },
+      
+      "confidence_scoring": {
+        "factors": [
+          "Completeness (0-1): has all required sections",
+          "Length appropriateness (0-1): not too short or long",
+          "Code validity (0-1): syntax correct",
+          "No forbidden patterns (0-1): professional tone",
+          "Specificity (0-1): concrete vs vague"
+        ],
+        "formula": "Weighted average of factors",
+        "weights": [0.3, 0.2, 0.3, 0.1, 0.1]
+      },
+      
+      "acceptance_criteria": [
+        "Detects incomplete responses (catches truncation)",
+        "Validates code syntax accurately using ast",
+        "Confidence scores correlate with quality (validated empirically)",
+        "False positive rate <5%",
+        "Sanitization removes harmful content (tested)",
+        "Code extraction handles multiple languages",
+        "Consistency checks catch contradictions",
+        "90% test coverage"
+      ],
+      
+      "testing_strategy": {
+        "unit_tests": [
+          "test_complete_response",
+          "test_incomplete_response",
+          "test_code_syntax_valid",
+          "test_code_syntax_invalid",
+          "test_confidence_scoring",
+          "test_truncation_detection",
+          "test_forbidden_patterns",
+          "test_code_block_extraction"
+        ],
+        "test_data": "Create corpus of valid/invalid responses"
+      },
+      
+      "implementation_notes": [
+        "Use ast.parse() for Python syntax validation",
+        "Use regex for markdown code block extraction: ```language\\n...\\n```",
+        "Forbidden patterns case-insensitive match",
+        "Log all validation failures at WARNING level",
+        "Confidence score between 0.0 and 1.0",
+        "Consider using local LLM for advanced consistency checks"
+      ]
+    }
+  ],
+  
+  "integration_requirements": {
+    "component_interactions": {
+      "PromptGenerator_uses_LocalLLM": "For context summarization",
+      "ClaudeCodeSSHAgent_uses_OutputMonitor": "For completion detection",
+      "ResponseValidator_runs_before_QualityController": "Critical ordering"
+    },
+    "data_flow": [
+      "1. PromptGenerator creates optimized prompt",
+      "2. ClaudeCodeSSHAgent sends prompt via SSH",
+      "3. OutputMonitor watches for completion",
+      "4. ResponseValidator checks completeness",
+      "5. If valid, proceed to QualityController (M4)",
+      "6. If invalid, retry or trigger breakpoint"
+    ]
+  },
+  
+  "testing_requirements": {
+    "overall_coverage": "90% for this phase",
+    "integration_tests": [
+      "test_end_to_end_prompt_to_response",
+      "test_local_llm_and_agent_together",
+      "test_validation_pipeline"
+    ],
+    "performance_tests": [
+      "test_local_llm_response_time",
+      "test_ssh_latency",
+      "test_prompt_generation_speed"
+    ]
+  },
+  
+  "success_metrics": {
+    "performance": {
+      "local_llm_response_p95": "<10s",
+      "ssh_connection_latency": "<200ms",
+      "prompt_generation": "<1s",
+      "response_validation": "<1s"
+    },
+    "reliability": {
+      "ssh_connection_stability": ">99% uptime",
+      "completion_detection_accuracy": ">95%",
+      "validation_false_positive_rate": "<5%"
+    }
+  },
+  
+  "risks_and_mitigations": {
+    "ssh_connection_instability": {
+      "risk": "SSH connection drops frequently",
+      "mitigation": "Robust reconnection with exponential backoff, health checks, keep-alive packets"
+    },
+    "completion_detection_false_positives": {
+      "risk": "Detect completion too early (truncated response)",
+      "mitigation": "Multiple heuristics, timeout confirmation, pattern validation"
+    },
+    "prompt_token_overflow": {
+      "risk": "Prompts exceed context window",
+      "mitigation": "Token counting, aggressive summarization, priority-based truncation"
+    }
+  },
+  
+  "definition_of_done": {
+    "code": [
+      "All deliverables implemented",
+      "90% test coverage",
+      "Integration tests pass",
+      "Performance tests meet targets"
+    ],
+    "functionality": [
+      "Can generate prompts with context",
+      "Can connect to Claude Code via SSH",
+      "Can detect response completion",
+      "Can validate responses",
+      "Can handle connection failures gracefully"
+    ]
+  },
+  
+  "next_milestone": {
+    "id": "M3",
+    "name": "File Monitoring",
+    "readiness_criteria": [
+      "Agent interface working",
+      "Can send prompts and receive responses",
+      "Validation pipeline functional"
+    ]
+  }
+}

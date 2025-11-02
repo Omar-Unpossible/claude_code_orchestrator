@@ -1,0 +1,590 @@
+{
+  "milestone_id": "M7",
+  "milestone_name": "Testing & Deployment",
+  "purpose": "Achieve production-ready quality with comprehensive testing and easy deployment",
+  "estimated_hours": 8,
+  "priority": "essential",
+  "dependencies": ["M1", "M2", "M3", "M4", "M5", "M6"],
+  "week": "7-8",
+  
+  "overview": {
+    "why_this_matters": "This makes the system shareable and maintainable. Without proper tests and docs, the project dies when you step away from it.",
+    "key_insight": "Good tests are your insurance policy. They give you confidence to refactor, extend, and share your work.",
+    "success_indicator": "New user can get started in <10 minutes, all tests pass consistently, docs are complete"
+  },
+  
+  "implementation_order": ["7.1", "7.2", "7.4", "7.3"],
+  "implementation_order_rationale": {
+    "7.1_first": "Unit tests should already be done alongside code",
+    "7.2_second": "Integration tests validate everything works together",
+    "7.4_third": "Deployment automation needed before writing deployment docs",
+    "7.3_last": "Documentation written last when everything is stable"
+  },
+  
+  "deliverables": [
+    {
+      "id": "7.1",
+      "name": "unit_tests",
+      "files": ["tests/test_*.py"],
+      "description": "Complete unit test coverage for all modules",
+      "estimated_hours": 2,
+      "priority": "critical",
+      
+      "requirements": [
+        "Create unit tests for all modules (one test file per module)",
+        "Achieve minimum coverage targets per deliverable (85-95%)",
+        "Add edge case tests (boundary conditions)",
+        "Implement mock fixtures for external dependencies",
+        "Add parametrized tests (multiple scenarios with one test)",
+        "Implement property-based tests using Hypothesis (optional)",
+        "Add performance tests (ensure responsiveness)",
+        "Implement test utilities (reusable helpers)"
+      ],
+      
+      "test_structure": {
+        "location": "tests/",
+        "naming": "test_<module_name>.py",
+        "fixtures": "conftest.py (shared fixtures)",
+        "mocks": "tests/mocks/ (mock implementations)"
+      },
+      
+      "test_categories": [
+        {
+          "category": "core_tests",
+          "files": [
+            "tests/test_state_manager.py",
+            "tests/test_config.py",
+            "tests/test_models.py",
+            "tests/test_exceptions.py"
+          ],
+          "coverage_target": "95%",
+          "priority": "critical"
+        },
+        {
+          "category": "llm_tests",
+          "files": [
+            "tests/test_local_llm_interface.py",
+            "tests/test_prompt_generator.py",
+            "tests/test_response_validator.py"
+          ],
+          "coverage_target": "90%",
+          "priority": "high"
+        },
+        {
+          "category": "agent_tests",
+          "files": [
+            "tests/test_claude_code_ssh.py",
+            "tests/test_output_monitor.py"
+          ],
+          "coverage_target": "85%",
+          "priority": "high"
+        },
+        {
+          "category": "orchestration_tests",
+          "files": [
+            "tests/test_task_scheduler.py",
+            "tests/test_decision_engine.py",
+            "tests/test_breakpoint_manager.py",
+            "tests/test_quality_controller.py"
+          ],
+          "coverage_target": "90%",
+          "priority": "critical"
+        },
+        {
+          "category": "utility_tests",
+          "files": [
+            "tests/test_token_counter.py",
+            "tests/test_context_manager.py",
+            "tests/test_confidence_scorer.py"
+          ],
+          "coverage_target": "85%",
+          "priority": "medium"
+        },
+        {
+          "category": "monitoring_tests",
+          "files": [
+            "tests/test_file_watcher.py",
+            "tests/test_event_detector.py"
+          ],
+          "coverage_target": "85%",
+          "priority": "medium"
+        }
+      ],
+      
+      "test_fixtures": {
+        "sample_project": "Creates test project with tasks in database",
+        "mock_llm": "MockLLM that returns configurable responses",
+        "mock_agent": "MockAgent for testing orchestration",
+        "mock_terminal_output": "Simulates agent terminal output",
+        "test_database": "In-memory SQLite for test isolation",
+        "temp_directory": "Temporary directory for file operations",
+        "sample_config": "Test configuration object"
+      },
+      
+      "mocking_strategy": {
+        "external_services": "Mock all external services (Ollama, SSH, filesystem)",
+        "database": "Use in-memory SQLite for speed",
+        "time": "Mock time for deterministic tests (freezegun)",
+        "random": "Seed random for reproducibility",
+        "network": "Mock all network calls"
+      },
+      
+      "acceptance_criteria": [
+        "All modules have tests (no untested code)",
+        "Coverage meets targets per module",
+        "Tests pass consistently (no flaky tests)",
+        "Edge cases covered (boundary conditions)",
+        "Mocks used appropriately (no real external calls in unit tests)",
+        "Parametrized tests cover multiple scenarios",
+        "Performance tests catch regressions",
+        "Test execution time <5 minutes"
+      ],
+      
+      "testing_best_practices": [
+        "One test file per module",
+        "Test names describe what they test: test_<method>_<scenario>_<expected>",
+        "Use AAA pattern: Arrange, Act, Assert",
+        "Tests should be independent (no shared state)",
+        "Use fixtures for common setup",
+        "Mock external dependencies",
+        "Test both happy path and error cases",
+        "Use descriptive assertion messages"
+      ],
+      
+      "test_execution": {
+        "command": "pytest tests/",
+        "coverage_command": "pytest tests/ --cov=src --cov-report=html --cov-report=term",
+        "watch_mode": "pytest-watch tests/",
+        "parallel": "pytest tests/ -n auto (using pytest-xdist)"
+      }
+    },
+    
+    {
+      "id": "7.2",
+      "name": "integration_tests",
+      "file": "tests/test_integration.py",
+      "description": "End-to-end integration tests with all components working together",
+      "estimated_hours": 2,
+      "priority": "critical",
+      
+      "requirements": [
+        "Create end-to-end tests (full workflows)",
+        "Test full workflows from init to completion",
+        "Add failure scenario tests (error recovery)",
+        "Test recovery mechanisms (checkpoint restore)",
+        "Add performance tests (measure throughput)",
+        "Test concurrent operations (thread safety)",
+        "Add stress tests (high load)",
+        "Implement smoke tests (basic functionality)"
+      ],
+      
+      "test_scenarios": [
+        {
+          "scenario": "complete_task_execution",
+          "description": "Execute a simple task from start to completion",
+          "steps": [
+            "1. Initialize project with test config",
+            "2. Create simple task (e.g., 'write hello world function')",
+            "3. Start orchestration",
+            "4. Verify prompt generated correctly",
+            "5. Verify agent called with prompt",
+            "6. Verify response validated",
+            "7. Verify quality checked",
+            "8. Verify task marked complete",
+            "9. Verify state persisted"
+          ],
+          "expected_duration": "<5 minutes",
+          "uses_mocks": "Mock agent responses, use real other components"
+        },
+        {
+          "scenario": "breakpoint_triggering_and_resolution",
+          "description": "Trigger various breakpoints and resolve them",
+          "steps": [
+            "1. Setup project with tasks",
+            "2. Configure low confidence threshold",
+            "3. Start orchestration",
+            "4. Verify breakpoint triggers when confidence low",
+            "5. Verify orchestration pauses",
+            "6. Resolve breakpoint programmatically",
+            "7. Verify resumption",
+            "8. Verify task completes"
+          ],
+          "expected_duration": "<3 minutes"
+        },
+        {
+          "scenario": "rate_limit_handling",
+          "description": "Handle rate limit from agent",
+          "steps": [
+            "1. Setup project",
+            "2. Configure mock agent to return rate limit",
+            "3. Start task",
+            "4. Verify rate limit detected",
+            "5. Verify breakpoint triggered",
+            "6. Verify auto-resolution after wait",
+            "7. Verify retry succeeds"
+          ],
+          "expected_duration": "<2 minutes"
+        },
+        {
+          "scenario": "checkpoint_creation_and_restoration",
+          "description": "Create checkpoint and restore from it",
+          "steps": [
+            "1. Complete some tasks",
+            "2. Create checkpoint manually",
+            "3. Continue with more tasks",
+            "4. Restore from checkpoint",
+            "5. Verify state matches checkpoint exactly",
+            "6. Verify task statuses rolled back",
+            "7. Verify file states restored"
+          ],
+          "expected_duration": "<4 minutes"
+        },
+        {
+          "scenario": "agent_connection_failure_recovery",
+          "description": "Test recovery from agent connection loss",
+          "steps": [
+            "1. Start task execution",
+            "2. Simulate agent connection failure mid-task",
+            "3. Verify error caught",
+            "4. Verify automatic reconnection attempted",
+            "5. Verify task retried after reconnection",
+            "6. Verify completion after recovery"
+          ],
+          "expected_duration": "<3 minutes"
+        },
+        {
+          "scenario": "error_recovery",
+          "description": "Test recovery from various error conditions",
+          "steps": [
+            "1. Simulate database error during state save",
+            "2. Verify error caught and logged",
+            "3. Verify transaction rollback",
+            "4. Verify recovery and continuation",
+            "5. Verify no state corruption"
+          ],
+          "expected_duration": "<2 minutes"
+        },
+        {
+          "scenario": "quality_gate_enforcement",
+          "description": "Verify quality gates block poor output",
+          "steps": [
+            "1. Configure strict quality gates",
+            "2. Provide low-quality response",
+            "3. Verify quality validation fails",
+            "4. Verify task not marked complete",
+            "5. Verify retry triggered or breakpoint raised"
+          ],
+          "expected_duration": "<2 minutes"
+        }
+      ],
+      
+      "acceptance_criteria": [
+        "All workflows tested end-to-end",
+        "Integration points validated (components work together)",
+        "Performance acceptable (meets targets)",
+        "No race conditions (thread-safe)",
+        "Failure scenarios handled correctly",
+        "Recovery works (state consistent)",
+        "Stress tests pass (handles high load)"
+      ],
+      
+      "test_environment": {
+        "requires_ollama": "Optional - can mock",
+        "requires_ssh": "Optional - can mock",
+        "requires_wsl2": "Optional - can mock",
+        "database": "Real SQLite database (not in-memory) for integration",
+        "filesystem": "Real filesystem operations in temp directory"
+      },
+      
+      "performance_benchmarks": {
+        "simple_task_completion": "<60s",
+        "complex_task_with_retry": "<180s",
+        "checkpoint_creation": "<5s",
+        "checkpoint_restoration": "<10s",
+        "100_task_scheduling": "<1s"
+      }
+    },
+    
+    {
+      "id": "7.3",
+      "name": "technical_documentation",
+      "files": ["docs/*.md"],
+      "description": "Comprehensive technical documentation for developers and operators",
+      "estimated_hours": 3,
+      "priority": "important",
+      
+      "requirements": [
+        "Create architecture documentation (system design)",
+        "Write API reference (all public methods)",
+        "Create deployment guide (step-by-step)",
+        "Write configuration guide (all options)",
+        "Create troubleshooting guide (common issues)",
+        "Write development guide (contributing)",
+        "Add diagrams (architecture, flow, sequence)",
+        "Create examples (common use cases)"
+      ],
+      
+      "documentation_files": {
+        "architecture_md": {
+          "file": "docs/architecture.md",
+          "sections": [
+            "System Overview - High-level description",
+            "Component Diagram - Visual of all components",
+            "Data Flow - How data moves through system",
+            "Plugin Architecture - How plugins work",
+            "Decision Making - How decisions are made",
+            "State Management - How state is managed",
+            "Technology Stack - Libraries and frameworks"
+          ],
+          "diagrams": ["system_diagram.png", "data_flow.png", "plugin_architecture.png"]
+        },
+        "api_reference_md": {
+          "file": "docs/api_reference.md",
+          "sections": [
+            "StateManager API - All public methods",
+            "AgentPlugin Interface - Plugin contract",
+            "LLMPlugin Interface - Plugin contract",
+            "Orchestrator API - Main entry points",
+            "CLI Commands - All commands and options",
+            "Configuration Schema - All config options"
+          ],
+          "format": "Method signature, parameters, returns, raises, example"
+        },
+        "deployment_md": {
+          "file": "docs/deployment.md",
+          "sections": [
+            "Prerequisites - Hardware, software, accounts",
+            "Installation - Step-by-step setup",
+            "Configuration - How to configure",
+            "First Run - Getting started",
+            "Production Setup - Security, performance",
+            "Docker Deployment - Container-based setup",
+            "Troubleshooting - Common issues"
+          ]
+        },
+        "configuration_md": {
+          "file": "docs/configuration.md",
+          "sections": [
+            "Configuration File Structure - YAML layout",
+            "LLM Configuration - Local and agent settings",
+            "Breakpoint Configuration - Rules and thresholds",
+            "Monitoring Configuration - File watching, logging",
+            "Orchestration Configuration - Loop behavior",
+            "Environment Variables - Override options"
+          ]
+        },
+        "troubleshooting_md": {
+          "file": "docs/troubleshooting.md",
+          "sections": [
+            "Common Issues - FAQ",
+            "Error Codes - What they mean",
+            "Debugging Tips - How to debug",
+            "Log Analysis - Reading logs",
+            "Performance Issues - Diagnosis and fixes",
+            "Connection Problems - SSH, Ollama, etc."
+          ]
+        },
+        "development_md": {
+          "file": "docs/development.md",
+          "sections": [
+            "Development Setup - Setting up dev environment",
+            "Code Style - Standards and conventions",
+            "Testing - Running and writing tests",
+            "Contributing - How to contribute",
+            "Plugin Development - Creating custom plugins",
+            "Release Process - How releases are made"
+          ]
+        }
+      },
+      
+      "diagram_requirements": [
+        "System architecture (layers and components)",
+        "Main orchestration loop (sequence diagram)",
+        "Task state machine",
+        "Database schema (ER diagram)",
+        "Plugin registration flow",
+        "Decision making tree"
+      ],
+      
+      "example_code": {
+        "basic_usage": "Simple example of running a task",
+        "custom_plugin": "How to create a custom agent plugin",
+        "custom_breakpoint": "How to add a custom breakpoint rule",
+        "programmatic_api": "Using orchestrator programmatically (not via CLI)"
+      },
+      
+      "acceptance_criteria": [
+        "All sections complete (no TODO placeholders)",
+        "Examples work (tested and verified)",
+        "Clear and accurate (no contradictions)",
+        "Up to date (matches current code)",
+        "Diagrams present and clear",
+        "Searchable (good headings and structure)",
+        "Peer reviewed"
+      ]
+    },
+    
+    {
+      "id": "7.4",
+      "name": "deployment_automation",
+      "files": ["setup.py", "requirements.txt", "Makefile", "docker-compose.yml", ".env.example"],
+      "description": "Automated deployment with scripts and Docker support",
+      "estimated_hours": 1,
+      "priority": "important",
+      
+      "requirements": [
+        "Create setup.py for package installation",
+        "Define all dependencies with pinned versions",
+        "Create Makefile with common tasks",
+        "Add Docker support (optional for distribution)",
+        "Create environment validation script",
+        "Implement database migrations using Alembic",
+        "Add health checks (verify system ready)"
+      ],
+      
+      "files_to_create": {
+        "setup_py": {
+          "purpose": "Python package definition",
+          "includes": ["name", "version", "dependencies", "entry_points", "classifiers"]
+        },
+        "requirements_txt": {
+          "purpose": "Production dependencies",
+          "format": "pinned versions (package==version)"
+        },
+        "requirements_dev_txt": {
+          "purpose": "Development dependencies",
+          "includes": ["pytest", "black", "mypy", "pylint", "pytest-cov"]
+        },
+        "makefile": {
+          "purpose": "Common development tasks",
+          "targets": ["install", "setup-db", "validate", "test", "lint", "format", "clean"]
+        },
+        "docker_compose_yml": {
+          "purpose": "Optional Docker deployment",
+          "services": ["orchestrator", "ollama"],
+          "optional": true
+        },
+        "env_example": {
+          "purpose": "Example environment variables",
+          "includes": ["OLLAMA_ENDPOINT", "DATABASE_URL", "LOG_LEVEL", "SSH config"]
+        }
+      },
+      
+      "setup_script_tasks": {
+        "install": {
+          "command": "make install",
+          "actions": ["pip install -e .", "pip install -r requirements.txt"]
+        },
+        "setup_db": {
+          "command": "make setup-db",
+          "actions": ["alembic upgrade head", "Seed initial data if needed"]
+        },
+        "setup_config": {
+          "command": "make setup-config",
+          "actions": ["cp .env.example .env", "cp config/default_config.yaml config/config.yaml", "Prompt user to edit"]
+        },
+        "validate": {
+          "command": "make validate",
+          "actions": ["Check Python version", "Check Ollama available", "Check database accessible", "Validate config"]
+        },
+        "test": {
+          "command": "make test",
+          "actions": ["pytest tests/ --cov=src --cov-report=html"]
+        },
+        "smoke_test": {
+          "command": "make smoke-test",
+          "actions": ["Run quick smoke tests", "Verify basic functionality"]
+        }
+      },
+      
+      "validation_checks": [
+        "Python version >= 3.10",
+        "Ollama running and accessible",
+        "Qwen model available",
+        "Database accessible",
+        "Configuration valid",
+        "Required directories exist",
+        "Permissions correct"
+      ],
+      
+      "acceptance_criteria": [
+        "One-command setup works (make install)",
+        "Dependencies resolve (no conflicts)",
+        "Validation catches issues",
+        "Migrations run successfully",
+        "Health checks comprehensive"
+      ]
+    }
+  ],
+  
+  "final_validation": {
+    "description": "Complete system validation before declaring M7 complete",
+    "checklist": [
+      "All phases complete (M0-M6)",
+      "All tests pass (unit and integration)",
+      "Coverage targets met (85% overall)",
+      "Documentation complete and accurate",
+      "Deployment works (one-command setup)",
+      "Performance targets met",
+      "No known critical bugs",
+      "Code reviewed",
+      "README complete with quick start"
+    ]
+  },
+  
+  "success_metrics": {
+    "testing": {
+      "overall_coverage": ">=85%",
+      "critical_coverage": ">=90%",
+      "test_pass_rate": "100%",
+      "test_execution_time": "<10 minutes"
+    },
+    "documentation": {
+      "completeness": "100%",
+      "accuracy": "Peer verified",
+      "example_success_rate": "100%"
+    },
+    "deployment": {
+      "setup_time": "<10 minutes",
+      "validation_success": "Catches all issues",
+      "one_command_works": "Yes"
+    }
+  },
+  
+  "definition_of_done": {
+    "testing": [
+      "85% coverage achieved",
+      "All tests pass consistently",
+      "Integration tests cover key workflows",
+      "Performance tests meet targets"
+    ],
+    "documentation": [
+      "All docs complete",
+      "Examples work",
+      "Diagrams created",
+      "Peer reviewed"
+    ],
+    "deployment": [
+      "One-command setup",
+      "Validation script works",
+      "Docker option available",
+      "Health checks comprehensive"
+    ],
+    "quality": [
+      "Code reviewed",
+      "Linting passes",
+      "Type checking passes",
+      "No known critical bugs"
+    ]
+  },
+  
+  "project_completion": {
+    "ready_for_use": "System is production-ready and shareable",
+    "next_steps": [
+      "Use on real projects",
+      "Gather feedback",
+      "Iterate and improve",
+      "Consider v2.0 features (web UI, multi-project, etc.)"
+    ]
+  }
+}
