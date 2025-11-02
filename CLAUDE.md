@@ -294,6 +294,56 @@ python -m src.cli task execute 1
 python -m src.cli interactive
 ```
 
+### Git Operations
+
+**⚠️ IMPORTANT: This repository uses SSH for git operations**
+
+The repository is configured to use SSH (not HTTPS) for authentication:
+- **Remote URL**: `git@github.com:Omar-Unpossible/claude_code_orchestrator.git`
+- **Authentication**: SSH keys (no passwords/tokens needed)
+- **Benefit**: No GPG passphrase prompts, seamless push/pull
+
+```bash
+# Verify SSH is configured
+git remote -v
+# Should show: git@github.com:Omar-Unpossible/...
+
+# Test SSH authentication
+ssh -T git@github.com
+# Should show: Hi Omar-Unpossible! You've successfully authenticated
+
+# Git operations work seamlessly
+git pull origin main    # No prompts
+git push origin main    # No prompts
+git fetch origin        # Automatic
+```
+
+**If you need to switch from HTTPS to SSH:**
+```bash
+# Check current remote
+git remote -v
+
+# If using HTTPS, switch to SSH
+git remote set-url origin git@github.com:Omar-Unpossible/claude_code_orchestrator.git
+
+# Remove credential helper (not needed for SSH)
+git config --local --unset credential.helper
+```
+
+**SSH Key Setup** (if needed):
+```bash
+# Generate SSH key (if you don't have one)
+ssh-keygen -t ed25519 -C "omar@unpossiblecreations.com"
+
+# Add to SSH agent
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# Copy public key and add to GitHub
+cat ~/.ssh/id_ed25519.pub
+# Add at: https://github.com/settings/keys
+```
+
 ## Data Flow (High-Level)
 
 ```
