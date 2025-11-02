@@ -150,17 +150,17 @@ class DecisionEngine:
         self._lock = RLock()
 
         # Load thresholds from config
-        self._high_confidence = config.get('high_confidence', self.HIGH_CONFIDENCE)
-        self._medium_confidence = config.get('medium_confidence', self.MEDIUM_CONFIDENCE)
-        self._critical_threshold = config.get('critical_threshold', self.CRITICAL_THRESHOLD)
+        self._high_confidence = self.config.get('high_confidence', self.HIGH_CONFIDENCE)
+        self._medium_confidence = self.config.get('medium_confidence', self.MEDIUM_CONFIDENCE)
+        self._critical_threshold = self.config.get('critical_threshold', self.CRITICAL_THRESHOLD)
 
         # Decision weights
         self._weights = {
-            'confidence': config.get('weight_confidence', self.WEIGHT_CONFIDENCE),
-            'validation': config.get('weight_validation', self.WEIGHT_VALIDATION),
-            'quality': config.get('weight_quality', self.WEIGHT_QUALITY),
-            'complexity': config.get('weight_complexity', self.WEIGHT_COMPLEXITY),
-            'history': config.get('weight_history', self.WEIGHT_HISTORY)
+            'confidence': self.config.get('weight_confidence', self.WEIGHT_CONFIDENCE),
+            'validation': self.config.get('weight_validation', self.WEIGHT_VALIDATION),
+            'quality': self.config.get('weight_quality', self.WEIGHT_QUALITY),
+            'complexity': self.config.get('weight_complexity', self.WEIGHT_COMPLEXITY),
+            'history': self.config.get('weight_history', self.WEIGHT_HISTORY)
         }
 
         # Learning: action type -> success rate

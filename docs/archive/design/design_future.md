@@ -1,4 +1,4 @@
-## Future Plans
+
 
 Selling point -- LLM-optimized best practices implemented by our company (optimized prompts and more sophisticated program infrastructure)
 
@@ -132,9 +132,11 @@ VD instructions
 Statusing and Project Management
 	LLM-optimized planning files and status reporting
 	How to digest work for human consumption vs LLM management
+	VD analyze rAI workplan and break into smaller chunks to prevent context overflow
+	VD analyze rAI workplan and break into parallel tasks to optimize speed and efficiency
+	VD analyze rAI workplan and include writing tests as part of the development process for each task
+	VD analyze rAI workplan and include debugging steps as part of the development process for each task
+	VD to include 'review workplan and implement best development practices' as part of 'cleanup' phase for each task (do at task or milestone level, perferably before testing to avoid rework)
 
 
 
-
-
-## Completed

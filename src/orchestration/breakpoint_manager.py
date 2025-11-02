@@ -209,8 +209,17 @@ class BreakpointManager:
                 if not rule.get('enabled', True):
                     continue
 
+                # Merge rule config values into context for evaluation
+                eval_context = context.copy()
+                if 'threshold' in rule:
+                    eval_context['threshold'] = rule['threshold']
+                if 'count_threshold' in rule:
+                    eval_context['count_threshold'] = rule['count_threshold']
+                if 'timeout_seconds' in rule:
+                    eval_context['timeout_seconds'] = rule['timeout_seconds']
+
                 # Evaluate conditions
-                if self._evaluate_conditions(rule.get('conditions', []), context):
+                if self._evaluate_conditions(rule.get('conditions', []), eval_context):
                     triggered_types.append(breakpoint_type)
                     logger.debug(f"Breakpoint condition met: {breakpoint_type}")
 

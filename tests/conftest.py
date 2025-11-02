@@ -4,8 +4,59 @@ import gc
 import time
 import threading
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 from src.plugins.registry import AgentRegistry, LLMRegistry
+from src.core.config import Config
+
+
+@pytest.fixture
+def test_config():
+    """Create test configuration with mock data.
+
+    Returns a Mock object that mimics Config interface for testing.
+    """
+    mock_config = MagicMock(spec=Config)
+    test_data = {
+        'database': {'url': 'sqlite:///:memory:'},
+        'agent': {'type': 'mock', 'config': {}},
+        'llm': {
+            'provider': 'mock',
+            'model': 'test',
+            'base_url': 'http://localhost:11434'
+        },
+        'orchestration': {
+            'breakpoints': {'confidence_threshold': 0.7},
+            'decision': {
+                'high_confidence': 0.85,
+                'medium_confidence': 0.65
+            },
+            'quality': {'min_quality_score': 0.7},
+            'scheduler': {'max_concurrent_tasks': 1}
+        },
+        'utils': {
+            'token_counter': {'default_model': 'gpt-4'},
+            'context_manager': {'max_tokens': 100000},
+            'confidence_scorer': {}
+        },
+        'context': {'max_tokens': 100000}
+    }
+
+    mock_config._config = test_data
+
+    # Implement get method that traverses dotted keys
+    def get_nested(key, default=None):
+        keys = key.split('.')
+        value = test_data
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+
+    mock_config.get = get_nested
+
+    return mock_config
 
 
 @pytest.fixture(autouse=True)

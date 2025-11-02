@@ -139,12 +139,12 @@ class QualityController:
         self._lock = RLock()
 
         # Load configuration
-        self._minimum_score = config.get('minimum_score', self.MINIMUM_SCORE)
+        self._minimum_score = self.config.get('minimum_score', self.MINIMUM_SCORE)
         self._weights = {
-            self.STAGE_SYNTAX: config.get('weight_syntax', self.WEIGHT_SYNTAX),
-            self.STAGE_REQUIREMENTS: config.get('weight_requirements', self.WEIGHT_REQUIREMENTS),
-            self.STAGE_QUALITY: config.get('weight_quality', self.WEIGHT_QUALITY),
-            self.STAGE_TESTING: config.get('weight_testing', self.WEIGHT_TESTING)
+            self.STAGE_SYNTAX: self.config.get('weight_syntax', self.WEIGHT_SYNTAX),
+            self.STAGE_REQUIREMENTS: self.config.get('weight_requirements', self.WEIGHT_REQUIREMENTS),
+            self.STAGE_QUALITY: self.config.get('weight_quality', self.WEIGHT_QUALITY),
+            self.STAGE_TESTING: self.config.get('weight_testing', self.WEIGHT_TESTING)
         }
 
         # Validation history (project_id -> List[QualityResult])
