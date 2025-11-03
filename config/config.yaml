@@ -14,12 +14,19 @@ llm:
 
 # Agent Configuration
 agent:
-  type: mock  # Agent type (mock for testing, claude-code-ssh for production)
+  type: claude-code-local  # Agent type (claude-code-local for headless, claude-code-ssh for remote)
   timeout: 120  # Default timeout for agent operations (seconds)
   max_retries: 3  # Maximum retry attempts on failure
   workspace_path: /home/omarwsl/obra-runtime/workspace  # Agent workspace directory
 
-  # SSH-specific config (for claude-code-ssh agent)
+  # Local headless agent config (recommended - uses subprocess with --print)
+  local:
+    claude_command: claude  # Command to run (default: 'claude')
+    response_timeout: 120  # Timeout for Claude responses (seconds)
+    bypass_permissions: true  # Enable dangerous mode (automatic permission bypass)
+    use_session_persistence: false  # Use fresh session per call (more reliable)
+
+  # SSH-specific config (for claude-code-ssh agent - remote execution)
   ssh:
     host: localhost
     port: 22
