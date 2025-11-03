@@ -23,14 +23,14 @@ from src.core.config import Config
 from src.orchestrator import Orchestrator
 
 # Create logs directory if it doesn't exist
-Path('logs').mkdir(parents=True, exist_ok=True)
+(Path.home() / 'obra-runtime' / 'logs').mkdir(parents=True, exist_ok=True)
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/real_agent_test.log'),
+        logging.FileHandler(str(Path.home() / 'obra-runtime' / 'logs' / 'real_agent_test.log')),
         logging.StreamHandler()
     ]
 )

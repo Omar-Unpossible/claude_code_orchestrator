@@ -283,9 +283,10 @@ SUMMARY: [brief assessment]"""
 
         print(f"  {step}. [{entry['timestamp']:5.1f}s] {actor:20s} → {action}{duration_str}")
 
-    # Save to file
-    log_file = Path(__file__).parent.parent / 'logs' / f'conversation_{int(time.time())}.json'
-    log_file.parent.mkdir(exist_ok=True)
+    # Save to runtime directory (not project folder)
+    log_dir = Path.home() / 'obra-runtime' / 'logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f'conversation_{int(time.time())}.json'
     save_conversation({
         'start_time': start_time,
         'total_duration': total_duration,

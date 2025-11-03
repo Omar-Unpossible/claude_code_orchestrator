@@ -417,10 +417,10 @@ SUMMARY: [brief assessment]"""
                 print(f"  - {rel} ({size} bytes)")
         print()
 
-    # Save log
+    # Save log to runtime directory (not project folder)
     total = time.time() - start_time
-    log_dir = Path('logs')
-    log_dir.mkdir(exist_ok=True)
+    log_dir = Path.home() / 'obra-runtime' / 'logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f'obra_iterative_{int(time.time())}.json'
 
     with open(log_file, 'w') as f:
