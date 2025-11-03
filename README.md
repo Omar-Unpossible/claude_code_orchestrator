@@ -15,41 +15,66 @@ The Claude Code Orchestrator is a supervision system where a local LLM (Qwen 2.5
 
 - 🤖 **Autonomous Task Execution**: Claude Code performs the heavy lifting
 - 🧠 **Local LLM Supervision**: Qwen 2.5 validates and guides execution
+- 🚀 **Headless Mode**: Non-interactive subprocess execution with `--print` and `--dangerously-skip-permissions`
+- 🔄 **Iterative Orchestration**: Multi-turn workflows with automatic improvement (quality-based retry)
 - ✅ **Multi-Stage Validation**: Response format → Quality → Confidence scoring
 - 🎯 **Intelligent Decision Making**: Auto-proceed, clarify, retry, or escalate
 - 📊 **State Management**: Complete history with rollback capability
 - 🔌 **Plugin System**: Extensible for different agents and LLM providers
-- 🖥️ **Multiple Interfaces**: CLI, Interactive REPL, and Programmatic API
+- 🖥️ **Multiple Interfaces**: CLI, Interactive REPL, Simple Scripts, and Programmatic API
 - 🐳 **Easy Deployment**: Docker Compose for one-command setup
 
 ## Quick Start
 
-### Option 1: Automated Setup
+**For detailed setup instructions and user guide, see [QUICK_START.md](QUICK_START.md)**
+
+### Option 1: Simple Runner Scripts (Recommended for Testing)
+
+The easiest way to test Obra with your own prompts:
 
 ```bash
-git clone https://github.com/yourusername/claude_code_orchestrator.git
+# Clone and setup
+git clone https://github.com/Omar-Unpossible/claude_code_orchestrator.git
+cd claude_code_orchestrator
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# One-shot execution - Edit USER_PROMPT in run_obra.py
+python run_obra.py
+
+# Iterative execution (max 3 iterations with quality validation)
+python run_obra_iterative.py
+```
+
+See [QUICK_START.md](QUICK_START.md) for how to customize prompts and configuration.
+
+### Option 2: Automated Setup
+
+```bash
+git clone https://github.com/Omar-Unpossible/claude_code_orchestrator.git
 cd claude_code_orchestrator
 ./setup.sh
 ```
 
-### Option 2: Docker
+### Option 3: Docker
 
 ```bash
-git clone https://github.com/yourusername/claude_code_orchestrator.git
+git clone https://github.com/Omar-Unpossible/claude_code_orchestrator.git
 cd claude_code_orchestrator
 docker-compose up -d
 ```
 
-### Option 3: Manual Setup
+### Option 4: Full CLI
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/claude_code_orchestrator.git
+# Manual setup with full CLI
+git clone https://github.com/Omar-Unpossible/claude_code_orchestrator.git
 cd claude_code_orchestrator
 
 # Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -139,17 +164,65 @@ Orchestrator (Integration Loop)
     └─ StateManager (persists everything)
 ```
 
-### Components (M0-M6)
+### Components (M0-M8) - **All Complete** ✅
 
-- **M0**: Plugin System - Extensible architecture for agents/LLMs
-- **M1**: Core Infrastructure - State management, config, models
-- **M2**: LLM & Agent Interfaces - Communication layers
-- **M3**: File Monitoring - Track all changes for rollback
-- **M4**: Orchestration Engine - Scheduling, decisions, quality control
-- **M5**: Utility Services - Tokens, context, confidence scoring
-- **M6**: Integration & CLI - Main loop and user interfaces
+- **M0**: Plugin System - Extensible architecture for agents/LLMs (95% coverage)
+- **M1**: Core Infrastructure - State management, config, models (84% coverage)
+- **M2**: LLM & Agent Interfaces - Communication layers (90% coverage)
+- **M3**: File Monitoring - Track all changes for rollback (90% coverage)
+- **M4**: Orchestration Engine - Scheduling, decisions, quality control (96-99% coverage)
+- **M5**: Utility Services - Tokens, context, confidence scoring (91% coverage)
+- **M6**: Integration & CLI - Main loop and user interfaces (Complete, 122 tests)
+- **M7**: Testing & Deployment - Comprehensive test suite (88% overall coverage)
+- **M8**: Local Agent Implementation - Headless mode for Claude Code (100% coverage, 33 tests)
+
+**Project Status**: ✅ Production-ready (v1.1) - 433+ tests, 88% coverage
 
 See [Architecture Documentation](docs/architecture/ARCHITECTURE.md) for details.
+
+## How It Works
+
+### Headless Mode (M8)
+
+Obra uses **headless mode** to execute Claude Code non-interactively:
+
+- **`--print` flag**: Returns output directly to STDOUT (no terminal emulation needed)
+- **`--dangerously-skip-permissions`**: Bypasses all permission prompts for autonomous operation
+- **Fresh sessions**: Each call uses a new session (no persistent state, 100% reliable)
+- **Context continuity**: Obra provides context across fresh sessions via prompt enhancement
+
+**Why not PTY?** Claude Code has known issues with PTY/terminal emulation (no bugfix available). Headless mode is simpler and more reliable.
+
+### Iterative Orchestration Workflow
+
+The `run_obra_iterative.py` script demonstrates multi-turn task execution:
+
+```
+1. USER provides task
+   ↓
+2. OBRA (Qwen) enhances prompt → makes it more directive
+   ↓
+3. CLAUDE CODE executes task (headless mode, 300s timeout)
+   ↓
+4. OBRA (Qwen) validates response:
+   - Checks completeness (all files created?)
+   - Scores quality (0.0-1.0)
+   - Identifies specific issues
+   ↓
+5. DECISION:
+   - Quality ≥ threshold (0.75) → ✅ PROCEED
+   - Quality < threshold → 🔄 RETRY (max 3 iterations)
+     - Clean workspace
+     - Build context from previous attempts
+     - Send improved prompt with feedback
+```
+
+**Example**: CSV tool task with 3-iteration limit:
+- Iteration 1: Claude implements core modules (quality: 0.65)
+- Iteration 2: Obra identifies missing tests, Claude adds them (quality: 0.80)
+- Result: Task complete in 2 iterations ✅
+
+See [QUICK_START.md](QUICK_START.md) for how to customize and run iterative workflows.
 
 ## Configuration
 
