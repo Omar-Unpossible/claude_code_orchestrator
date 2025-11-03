@@ -1,0 +1,226 @@
+# Example Configuration for Local Agent Deployment
+# This configuration uses the claude_code_local agent for same-machine deployment
+# Copy to config/config.yaml and adjust paths as needed
+
+# Local LLM Configuration (Ollama)
+# Assumes Ollama running on host machine with GPU access
+llm:
+  type: ollama
+  model: qwen2.5-coder:32b  # Or qwen2.5-coder:7b for faster inference
+  api_url: http://172.29.144.1:11434  # WSL2: Host IP, Linux: localhost:11434
+  temperature: 0.7
+  timeout: 30
+  max_tokens: 4096
+  context_length: 32768
+
+# Agent Configuration - LOCAL AGENT
+agent:
+  type: claude_code_local  # Use local subprocess agent
+  timeout: 120
+  max_retries: 3
+  workspace_path: ./workspace
+
+  # Local agent configuration
+  local:
+    # Claude Code CLI command
+    # Options:
+    #   - "claude" (if in PATH)
+    #   - "/usr/local/bin/claude" (full path)
+    #   - "npx claude-code" (via npm)
+    command: claude
+
+    # Workspace directory for agent operations
+    # Agent will create/modify files in this directory
+    workspace_dir: ./workspace
+
+    # Timeout waiting for agent to be ready (seconds)
+    # Increase if Claude Code takes longer to start
+    timeout_ready: 30
+
+    # Timeout waiting for agent response (seconds)
+    # Increase for complex tasks that take longer
+    timeout_response: 120
+
+# Database Configuration
+database:
+  url: sqlite:///data/orchestrator.db
+  pool_size: 10
+  max_overflow: 20
+  echo: false  # Set true to debug SQL queries
+
+# File Monitoring
+monitoring:
+  file_watcher:
+    enabled: true
+    debounce_ms: 500
+    ignore_patterns:
+      - "**/__pycache__/**"
+      - "**/.git/**"
+      - "**/.venv/**"
+      - "**/*.pyc"
+      - "**/node_modules/**"
+
+  output_monitor:
+    completion_markers:
+      - "Task completed"
+      - "Done"
+      - "Finished"
+      - "✓"
+    error_markers:
+      - "Error:"
+      - "Failed:"
+      - "Exception:"
+      - "✗"
+
+# Orchestration Settings
+orchestration:
+  max_iterations: 50
+  iteration_timeout: 300
+  task_timeout: 3600
+  concurrent_tasks: 1
+  auto_retry: true
+
+# Breakpoint Configuration
+breakpoints:
+  enabled: true
+  auto_resolve_timeout: 300  # 5 minutes, 0 = wait forever
+
+  triggers:
+    low_confidence:
+      enabled: true
+      threshold: 30  # Trigger if confidence < 30%
+    quality_too_low:
+      enabled: true
+      threshold: 50  # Trigger if quality < 50%
+    validation_failed:
+      enabled: true
+      max_retries: 3
+    rate_limit_hit:
+      enabled: true
+    unexpected_error:
+      enabled: true
+
+# Validation Settings
+validation:
+  response:
+    check_completeness: true
+    check_code_blocks_closed: true
+    min_length: 10
+
+  quality:
+    enabled: true
+    threshold: 70  # Minimum quality score to proceed
+    run_tests: true
+    check_syntax: true
+
+# Confidence Scoring
+confidence:
+  threshold: 50  # Minimum confidence to proceed without breakpoint
+  weights:
+    validation: 0.3
+    quality: 0.4
+    agent_health: 0.1
+    retry_count: 0.2
+
+# Context Management
+context:
+  max_tokens: 8000
+  prioritization:
+    - recent_interactions
+    - task_description
+    - relevant_files
+    - project_context
+
+  summarization:
+    enabled: true
+    keep_recent: 5
+
+# Logging
+logging:
+  level: INFO  # DEBUG for development, INFO for production
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: logs/orchestrator.log
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Prompt Templates
+prompts:
+  template_dir: config/prompt_templates
+
+# Performance
+performance:
+  enable_caching: true
+  cache_ttl: 300
+
+# Development/Debug Settings
+debug:
+  enabled: false  # Set true for debugging
+  save_interactions: true
+  verbose_logging: false
+
+# ========================================
+# DEPLOYMENT NOTES
+# ========================================
+
+# 1. Install Claude Code CLI:
+#    npm install -g @anthropics/claude-code
+#    # OR download from https://claude.com/claude-code
+
+# 2. Set up environment:
+#    export OBRA_RUNTIME_DIR=/path/to/runtime  # Optional
+#    export ANTHROPIC_API_KEY=your_key         # For Claude API access
+
+# 3. Install Ollama and pull model:
+#    curl -fsSL https://ollama.com/install.sh | sh
+#    ollama pull qwen2.5-coder:32b
+
+# 4. Initialize Obra:
+#    python -m src.cli init
+
+# 5. Create and run tasks:
+#    python -m src.cli project create "My Project"
+#    python -m src.cli task create "Implement feature" --project 1
+#    python -m src.cli task execute 1
+
+# ========================================
+# COMPARISON: Local vs SSH Agent
+# ========================================
+
+# Local Agent (claude_code_local):
+#   ✓ Pros: Simple setup, low latency (~10-50ms), same filesystem
+#   ✗ Cons: Less isolation, process-level security only
+#   Use for: Development, single-host, rapid iteration
+
+# SSH Agent (claude_code_ssh):
+#   ✓ Pros: Strong isolation, network security, remote execution
+#   ✗ Cons: Higher latency (~100-500ms), SSH setup required
+#   Use for: Production, VM isolation, security-critical tasks
+
+# ========================================
+# TROUBLESHOOTING
+# ========================================
+
+# Claude Code not found:
+#   - Check command in PATH: which claude
+#   - Use full path: /usr/local/bin/claude
+#   - Install globally: npm install -g @anthropics/claude-code
+
+# Connection timeout:
+#   - Increase timeout_ready (e.g., 60)
+#   - Check Claude Code starts: claude --version
+#   - Check logs: tail -f logs/orchestrator.log
+
+# LLM connection failed:
+#   - Check Ollama running: curl http://localhost:11434/api/tags
+#   - WSL2: Use host IP (172.29.144.1) not localhost
+#   - Firewall: Allow port 11434
+
+# Performance issues:
+#   - Reduce model size: qwen2.5-coder:7b
+#   - Increase timeout_response for complex tasks
+#   - Monitor GPU usage: nvidia-smi
+
+# Rate limits:
+#   - Claude Code uses your Anthropic subscription
+#   - Check tier limits: https://console.anthropic.com/
+#   - Breakpoint system will pause on rate limits

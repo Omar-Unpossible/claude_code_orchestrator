@@ -40,6 +40,14 @@ Logic / reporting to determine which tasks should go to rAI vs VD (can VD handle
 		Implement decision algorithms to allocate tasks between VD and rAI
 		Continuously evaluate and adjust task allocation based on performance metrics and feedback)
 
+Create multiple context windows based on independent / parallel tasks
+	Obra to maintain its own context window for project management and high-level oversight
+	Obra to identify independent but large workstreams that can be parallelized (such as documentation, testing ,debugging, etc.)
+		Spin up separate rAI instances for each parallel workstream
+		Maintain separate context windows for each rAI instance
+		Coordinate communication and data sharing between rAI instances and Obra
+		Aggregate results and integrate outputs from parallel workstreams into the main project)
+
 Local Performance Management
 	Read local hardware specs
 	Auto-implement performance optimizations based on hardware

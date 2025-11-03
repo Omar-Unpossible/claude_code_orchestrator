@@ -485,6 +485,71 @@ class StateManager:
                 Task.is_deleted == False
             ).order_by(desc(Task.priority), Task.created_at).all()
 
+    def list_tasks(
+        self,
+        project_id: Optional[int] = None,
+        status: Optional[TaskStatus] = None,
+        limit: Optional[int] = None
+    ) -> List[Task]:
+        """Get all tasks with optional filtering.
+
+        Args:
+            project_id: Filter by project ID (None = all projects)
+            status: Filter by status (None = all statuses)
+            limit: Maximum number of tasks to return (None = no limit)
+
+        Returns:
+            List of tasks matching criteria, ordered by priority and created date
+
+        Example:
+            >>> # Get all tasks
+            >>> all_tasks = state_manager.list_tasks()
+            >>> # Get all pending tasks
+            >>> pending = state_manager.list_tasks(status='pending')
+            >>> # Get tasks for project 1
+            >>> project_tasks = state_manager.list_tasks(project_id=1)
+        """
+        with self._lock:
+            session = self._get_session()
+            query = session.query(Task).filter(Task.is_deleted == False)
+
+            # Apply filters
+            if project_id is not None:
+                query = query.filter(Task.project_id == project_id)
+            if status is not None:
+                query = query.filter(Task.status == status)
+
+            # Order by priority (desc) and created date
+            query = query.order_by(desc(Task.priority), Task.created_at)
+
+            # Apply limit
+            if limit is not None:
+                query = query.limit(limit)
+
+            return query.all()
+
+    def get_project_tasks(
+        self,
+        project_id: int,
+        status: Optional[TaskStatus] = None
+    ) -> List[Task]:
+        """Get all tasks for a specific project.
+
+        Args:
+            project_id: Project ID
+            status: Optional status filter (None = all statuses)
+
+        Returns:
+            List of tasks in the project
+
+        Example:
+            >>> # Get all tasks in project 1
+            >>> tasks = state_manager.get_project_tasks(1)
+            >>> # Get only pending tasks in project 1
+            >>> pending = state_manager.get_project_tasks(1, status='pending')
+        """
+        return self.list_tasks(project_id=project_id, status=status)
+
     # Interaction Management
 
     def record_interaction(

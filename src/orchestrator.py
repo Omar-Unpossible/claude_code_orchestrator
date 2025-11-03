@@ -25,6 +25,7 @@ from src.core.exceptions import OrchestratorException
 
 # Component imports
 from src.plugins.registry import AgentRegistry, LLMRegistry
+import src.agents  # Import to register agent plugins
 from src.llm.local_interface import LocalLLMInterface
 from src.llm.response_validator import ResponseValidator
 from src.llm.prompt_generator import PromptGenerator
@@ -175,15 +176,27 @@ class Orchestrator:
     def _initialize_llm(self) -> None:
         """Initialize LLM interface."""
         llm_config = self.config.get('llm', {})
-        self.llm_interface = LocalLLMInterface(llm_config)
+
+        # Map api_url to endpoint for LocalLLMInterface compatibility
+        if 'api_url' in llm_config and 'endpoint' not in llm_config:
+            llm_config['endpoint'] = llm_config['api_url']
+
+        # Create instance then initialize with config
+        self.llm_interface = LocalLLMInterface()
+        self.llm_interface.initialize(llm_config)
 
         # Set LLM for components that need it
         self.context_manager.llm_interface = self.llm_interface
         self.confidence_scorer.llm_interface = self.llm_interface
 
         # Initialize prompt generator and validator
-        self.prompt_generator = PromptGenerator(self.llm_interface)
-        self.response_validator = ResponseValidator(self.llm_interface)
+        template_dir = self.config.get('prompt.template_dir', 'config')
+        self.prompt_generator = PromptGenerator(
+            template_dir=template_dir,
+            llm_interface=self.llm_interface,
+            state_manager=self.state_manager
+        )
+        self.response_validator = ResponseValidator()
 
         logger.info("LLM components initialized")
 
@@ -219,8 +232,7 @@ class Orchestrator:
             config=self.config.get('orchestration.quality', {})
         )
         self.task_scheduler = TaskScheduler(
-            self.state_manager,
-            config=self.config.get('orchestration.scheduler', {})
+            self.state_manager
         )
         logger.info("Orchestration components initialized")
 
@@ -229,9 +241,11 @@ class Orchestrator:
         if self.current_project:
             self.file_watcher = FileWatcher(
                 self.state_manager,
-                watch_path=self.current_project.working_dir
+                project_id=self.current_project.id,
+                project_root=self.current_project.working_directory,
+                task_id=self.current_task.id if self.current_task else None
             )
-            self.file_watcher.start()
+            self.file_watcher.start_watching()
             logger.info("File monitoring started")
 
     def execute_task(self, task_id: int, max_iterations: int = 10) -> Dict[str, Any]:
@@ -309,8 +323,8 @@ class Orchestrator:
 
                 # 2. Generate prompt
                 prompt = self.prompt_generator.generate_prompt(
-                    self.current_task,
-                    context
+                    'task_execution',
+                    {'task': self.current_task, 'context': context}
                 )
 
                 # 3. Send to agent
@@ -318,16 +332,16 @@ class Orchestrator:
                 response = self.agent.send_prompt(prompt, context={'task_id': self.current_task.id})
 
                 # 4. Validate response
-                validation_result = self.response_validator.validate_response(
+                is_valid = self.response_validator.validate_format(
                     response,
                     expected_format='markdown'
                 )
 
-                if not validation_result['valid']:
-                    logger.warning(f"Invalid response: {validation_result}")
+                if not is_valid:
+                    logger.warning(f"Invalid response format")
                     accumulated_context.append({
                         'type': 'error',
-                        'content': f"Previous response was invalid: {validation_result.get('issues', [])}",
+                        'content': f"Previous response format was invalid (expected markdown)",
                         'timestamp': datetime.now(UTC)
                     })
                     continue
@@ -343,7 +357,7 @@ class Orchestrator:
                 confidence = self.confidence_scorer.score_response(
                     response,
                     self.current_task,
-                    {'validation': validation_result, 'quality': quality_result}
+                    {'validation': is_valid, 'quality': quality_result}
                 )
 
                 # 7. Decision making

@@ -187,6 +187,10 @@ nvidia-smi
    ```powershell
    netstat -an | findstr "11434"
    # Should show: 0.0.0.0:11434
+1. PS C:\Windows\System32> netstat -an | findstr "11434"
+  TCP    127.0.0.1:1481         127.0.0.1:11434        ESTABLISHED
+  TCP    127.0.0.1:11434        0.0.0.0:0              LISTENING
+  TCP    127.0.0.1:11434        127.0.0.1:1481         ESTABLISHED
    ```
 
 ### Step 1.4: Download Qwen 2.5 Coder Model
@@ -402,6 +406,46 @@ chmod 755 ~/obra-workspace
 
 ## Part 3: Network Configuration
 
+
+### Network Topology
+```
+┌─────────────────────────────────────────────────────────┐
+│ HOST MACHINE                                            │
+│                                                         │
+│  Ollama Service: 0.0.0.0:11434                         │
+│  DevSwitch IP: 10.0.75.1                               │
+│                                                         │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ Hyper-V DevSwitch Network
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│ VM WINDOWS                                              │
+│                                                         │
+│  Ethernet 3: 10.0.75.2 (→ Host: 10.0.75.1)            │
+│  WSL Adapter: 172.29.144.1 (→ VM WSL2)                │
+│                                                         │
+│  Port Forward: 172.29.144.1:11434 → 10.0.75.1:11434   │
+│                                                         │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ WSL Network
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│ VM WSL2                                                 │
+│                                                         │
+│  IP: 172.29.147.188                                    │
+│  Gateway: 172.29.144.1                                 │
+│                                                         │
+│  Ollama Access: http://172.29.144.1:11434              │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Connection Path:**
+VM WSL2 (172.29.147.188) → VM Windows (172.29.144.1:11434) → Host (10.0.75.1:11434) → Ollama
+
+
 ### Step 3.1: Get VM IP Address
 
 **In VM WSL2**:
@@ -409,15 +453,25 @@ chmod 755 ~/obra-workspace
 ```bash
 # Get WSL2 IP (inside VM)
 hostname -I
+172.29.147.188
 # Example output: 172.24.128.5
 ```
 
 **Get VM Windows IP** (if needed):
 
+## Host IPs
+Wireless LAN adapter Wi-Fi 2
+192.168.1.21
+
+Ethernet adapter vEthernet (Default Switch)
+172.22.176.1
+
 ```powershell
 # In VM Windows (PowerShell)
 ipconfig | findstr IPv4
 # Look for "Ethernet adapter vEthernet"
+   IPv4 Address. . . . . . . . . . . : 10.0.75.2
+   IPv4 Address. . . . . . . . . . . : 172.29.144.1
 ```
 
 ### Step 3.2: Find Host IP from VM
@@ -427,6 +481,7 @@ ipconfig | findstr IPv4
 ```bash
 # Get Windows host IP (as seen from VM WSL2)
 cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
+10.255.255.254
 # Example output: 172.24.128.1
 ```
 
@@ -437,8 +492,8 @@ This is the IP to use for Ollama connection.
 **Test VM → Host Ollama connection**:
 
 ```bash
-# In VM WSL2
-curl http://<HOST_IP>:11434/api/tags
+# From VM WSL2, use VM Windows as proxy
+curl http://172.29.144.1:11434/api/tags
 
 # Example:
 curl http://172.24.128.1:11434/api/tags
@@ -573,14 +628,14 @@ nano config/config.yaml
 
 ```yaml
 database:
-  url: sqlite:///orchestrator.db
+  url: sqlite:////home/omarwsl/obra-runtime/data/orchestrator.db
 
 agent:
   type: claude_code  # Claude Code CLI agent
   config:
     # For local (same machine) - no SSH needed
     execution_mode: local
-    workspace_dir: /home/obra/obra-workspace
+    workspace_dir: /home/omarwsl/obra-runtime/workspace
     timeout: 300
     max_retries: 3
 
@@ -624,7 +679,7 @@ utils:
 
 logging:
   level: INFO
-  file: logs/obra.log
+  file: /home/omarwsl/obra-runtime/logs/orchestrator.log
   max_size: 100MB
   backup_count: 5
 ```

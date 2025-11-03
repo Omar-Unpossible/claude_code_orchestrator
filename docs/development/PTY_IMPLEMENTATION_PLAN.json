@@ -1,0 +1,630 @@
+{
+  "document_metadata": {
+    "title": "PTY Integration with pexpect - Technical Implementation Plan",
+    "version": "1.0",
+    "date": "2025-11-02",
+    "status": "APPROVED_PENDING",
+    "estimated_completion": "4-5 hours",
+    "llm_optimized": true,
+    "purpose": "Detailed technical specification for implementing PTY-based Claude Code interaction with real-time output streaming"
+  },
+
+  "context": {
+    "current_state": {
+      "bugs_fixed": 10,
+      "hook_system": "Implemented but non-functional due to subprocess.PIPE limitation",
+      "root_issue": "Claude Code requires TTY (pseudoterminal) for persistent interactive sessions. subprocess.PIPE does not provide TTY, causing Claude to run in limited mode with no persistent context.",
+      "discovery": "echo 'Hello Claude' | claude works (gets welcome message) but exits immediately. Interactive persistent session requires PTY."
+    },
+    "core_requirements": [
+      "PTY (pseudoterminal) for Claude Code persistent interactive session",
+      "Real-time output streaming - user sees everything Claude outputs",
+      "Preserve terminal formatting (ANSI codes, colors, emoji, Unicode)",
+      "Hook-based completion detection (Stop hook writes to signal file)",
+      "Output prefixing to distinguish agents ([OBRA], [CLAUDE], [QWEN])",
+      "Color-coded output for different agents",
+      "Verbose logging stays in files, user sees agent output only"
+    ],
+    "deferred_requirements": [
+      "Human intervention system (Phase 3)",
+      "/chat commands targeting specific models (Qwen vs Claude)",
+      "Model isolation (models cannot see chats to other model)",
+      "Pause/resume/abort controls"
+    ]
+  },
+
+  "implementation_phases": {
+    "phase_1_pty_integration": {
+      "priority": "CRITICAL_BLOCKER",
+      "description": "Replace subprocess.Popen with pexpect.spawn() to provide TTY for Claude Code",
+      "why_pexpect": [
+        "High-level abstraction for interactive programs",
+        "Built-in spawn(), sendline(), expect() methods",
+        "Handles TTY nuances (size, echo, buffering, ANSI codes)",
+        "Pattern matching for completion detection",
+        "Battle-tested with CLI tools (expect, ssh, etc.)",
+        "Better than raw pty module (too low-level)"
+      ],
+      "files_to_modify": [
+        "requirements.txt - Add pexpect>=4.9.0",
+        "src/agents/claude_code_local.py - Complete rewrite of process management"
+      ],
+      "estimated_time": "2-3 hours"
+    },
+
+    "phase_2_output_streaming": {
+      "priority": "HIGH",
+      "description": "Real-time output display with agent prefixing and color coding",
+      "requirements": [
+        "Stream Claude output as it arrives (character-by-character or line-by-line)",
+        "Preserve ALL formatting (ANSI codes, colors, emoji, Unicode, special chars)",
+        "Prefix output to identify source",
+        "Color code by agent type",
+        "User sees everything agents print - no filtering or simplification",
+        "Verbose logs stay in files only (not displayed to user)"
+      ],
+      "output_format": {
+        "prefixes": {
+          "obra_action": "[OBRA]",
+          "obra_to_claude": "[OBRA→CLAUDE]",
+          "claude_output": "[CLAUDE]",
+          "qwen_validation": "[QWEN]",
+          "hook_event": "[HOOK]",
+          "error": "[ERROR]"
+        },
+        "colors": {
+          "obra": "blue",
+          "claude": "green",
+          "qwen": "yellow",
+          "hook": "cyan",
+          "error": "red"
+        },
+        "color_implementation": "Use ANSI escape codes directly, colorama library, or rich library"
+      },
+      "estimated_time": "1 hour"
+    }
+  },
+
+  "technical_specifications": {
+    "pexpect_integration": {
+      "spawn_configuration": {
+        "command": "claude",
+        "arguments": [],
+        "cwd": "workspace_path (e.g., /tmp/claude-workspace)",
+        "dimensions": [40, 120],
+        "dimensions_note": "rows=40, cols=120 - simulates terminal size",
+        "echo": false,
+        "echo_note": "Disable input echo to avoid duplication",
+        "encoding": "utf-8",
+        "codec_errors": "replace",
+        "codec_errors_note": "Handle invalid UTF-8 gracefully"
+      },
+
+      "process_lifecycle": {
+        "initialization": [
+          "1. Create completion signal file (/tmp/obra_claude_completion_{pid})",
+          "2. Write hook configuration to workspace/.claude/settings.json BEFORE spawn",
+          "3. Spawn Claude Code with pexpect.spawn()",
+          "4. Wait for process stability (2s, check alive via process.isalive())",
+          "5. Ready to accept prompts"
+        ],
+        "sending_prompts": [
+          "1. Use process.sendline(prompt) to send prompt + newline",
+          "2. Immediately start streaming output",
+          "3. Monitor completion signal file for hook trigger",
+          "4. When hook fires, drain remaining output and return"
+        ],
+        "reading_responses": [
+          "1. Poll both process.read_nonblocking() AND completion signal file",
+          "2. Stream output to stdout with [CLAUDE] prefix as it arrives",
+          "3. Check signal file every 0.1s for new COMPLETE marker",
+          "4. When marker count increases: completion detected",
+          "5. Drain any remaining buffered output",
+          "6. Return full response text"
+        ],
+        "cleanup": [
+          "1. Send Ctrl+C (process.sendintr() or process.sendcontrol('c'))",
+          "2. Wait up to 5s for graceful exit (process.expect(pexpect.EOF, timeout=5))",
+          "3. Terminate if not exited (process.terminate())",
+          "4. Kill if still alive (process.kill(signal.SIGKILL))",
+          "5. Delete completion signal file"
+        ]
+      },
+
+      "output_handling": {
+        "reading_method": "process.read_nonblocking(size=1024, timeout=0.1)",
+        "reading_strategy": "Non-blocking reads in loop, checking both output and signal file",
+        "ansi_handling": "PRESERVE all ANSI codes - do not strip or parse",
+        "unicode_handling": "UTF-8 decode with 'replace' error handling",
+        "buffering": "Accumulate in list, join at end for return value",
+        "display": "Print each chunk immediately to stdout with [CLAUDE] prefix"
+      },
+
+      "completion_detection": {
+        "primary_method": "Hook-based - Stop hook writes 'COMPLETE' to signal file",
+        "signal_file_location": "/tmp/obra_claude_completion_{pid}",
+        "detection_logic": [
+          "1. Before sending prompt: record current marker count",
+          "2. While reading: check file every 0.1s",
+          "3. Count occurrences of 'COMPLETE' in file",
+          "4. If count > starting_count: completion detected",
+          "5. Drain remaining output and return"
+        ],
+        "fallback_timeout": "300s (5 minutes) - timeout if hook never fires",
+        "timeout_behavior": "Raise AgentException with partial response"
+      },
+
+      "error_handling": {
+        "process_death": "Check process.isalive() every iteration, raise AgentException if False",
+        "timeout": "After 300s without completion, raise timeout exception",
+        "rate_limits": "Detect error markers in output, raise specific exception",
+        "invalid_utf8": "Use codec_errors='replace' to handle gracefully",
+        "expect_timeout": "Normal during non-blocking reads, continue loop"
+      }
+    },
+
+    "output_streaming_system": {
+      "display_architecture": {
+        "principle": "Print everything Claude outputs to stdout with [CLAUDE] prefix",
+        "preservation": "Keep ALL formatting - ANSI codes, colors, emoji, Unicode, box drawing",
+        "filtering": "NONE - user sees exactly what Claude outputs",
+        "logging": "Duplicate to log files for debugging (verbose logs stay file-only)"
+      },
+
+      "prefixing_strategy": {
+        "implementation": "Prefix each line of output with colored agent tag",
+        "line_detection": "Split on newlines, prefix each line separately",
+        "partial_lines": "Buffer incomplete lines, prefix when complete",
+        "empty_lines": "Preserve but may omit prefix to maintain formatting"
+      },
+
+      "color_coding": {
+        "library": "Use Python's built-in ANSI escape codes or colorama",
+        "colorama_advantage": "Cross-platform (works on Windows without special setup)",
+        "color_map": {
+          "OBRA": "\\033[34m (blue)",
+          "CLAUDE": "\\033[32m (green)",
+          "QWEN": "\\033[33m (yellow)",
+          "HOOK": "\\033[36m (cyan)",
+          "ERROR": "\\033[31m (red)",
+          "RESET": "\\033[0m"
+        },
+        "format_template": "{color}[{agent}]{reset} {content}"
+      },
+
+      "output_examples": [
+        "\\033[34m[OBRA]\\033[0m Starting iteration 1/5",
+        "\\033[34m[OBRA]\\033[0m Built context: 26 tokens",
+        "\\033[34m[OBRA→CLAUDE]\\033[0m Create a hello world Python script",
+        "",
+        "\\033[32m[CLAUDE]\\033[0m I'll help create a Hello World Python script.",
+        "\\033[32m[CLAUDE]\\033[0m Let me use the Write tool...",
+        "\\033[32m[CLAUDE]\\033[0m ✓ Created hello.py",
+        "",
+        "\\033[36m[HOOK]\\033[0m Stop event detected - Claude finished",
+        "\\033[34m[OBRA]\\033[0m Response received (127 chars)",
+        "",
+        "\\033[33m[QWEN]\\033[0m Validating response...",
+        "\\033[33m[QWEN]\\033[0m   Format: ✓ Valid (markdown)",
+        "\\033[33m[QWEN]\\033[0m   Quality: 0.85 (PASS)",
+        "",
+        "\\033[34m[OBRA]\\033[0m Decision: PROCEED"
+      ]
+    }
+  },
+
+  "detailed_implementation_steps": {
+    "step_1_add_dependency": {
+      "file": "requirements.txt",
+      "action": "Add line: pexpect>=4.9.0",
+      "verification": "pip install -r requirements.txt should succeed"
+    },
+
+    "step_2_import_pexpect": {
+      "file": "src/agents/claude_code_local.py",
+      "location": "Top of file with other imports",
+      "add_imports": [
+        "import pexpect",
+        "import signal"
+      ],
+      "remove_imports": [
+        "from queue import Queue, Empty - No longer needed",
+        "import threading - No longer needed for output reading threads"
+      ]
+    },
+
+    "step_3_update_init": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "__init__()",
+      "changes": {
+        "remove_attributes": [
+          "_stdout_queue",
+          "_stderr_queue",
+          "_stdout_thread",
+          "_stderr_thread",
+          "_stop_reading"
+        ],
+        "keep_attributes": [
+          "process (but will be pexpect.spawn, not subprocess.Popen)",
+          "state",
+          "_lock",
+          "_completion_signal_file",
+          "_completion_marker_count"
+        ],
+        "add_attributes": [
+          "process_dimensions: tuple = (40, 120) - Terminal size"
+        ]
+      }
+    },
+
+    "step_4_rewrite_start_process": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "initialize()",
+      "changes": {
+        "before_spawn": [
+          "Call _prepare_completion_hook() - already implemented, keep as-is",
+          "Ensure workspace exists - already done, keep as-is"
+        ],
+        "spawn_process": {
+          "old_code": "subprocess.Popen([self.claude_command], stdin=PIPE, stdout=PIPE, stderr=PIPE, ...)",
+          "new_code": "pexpect.spawn(self.claude_command, cwd=str(self.workspace_path), dimensions=self.process_dimensions, echo=False, encoding='utf-8', codec_errors='replace')"
+        },
+        "remove_code": [
+          "All threading setup (_stdout_thread, _stderr_thread)",
+          "All queue initialization",
+          "_read_output() method - no longer needed"
+        ],
+        "after_spawn": "Call _wait_for_ready() - needs update for pexpect"
+      }
+    },
+
+    "step_5_update_wait_for_ready": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "_wait_for_ready()",
+      "changes": {
+        "check_alive": "Replace self.process.poll() with self.process.isalive()",
+        "process_death": "If not process.isalive(): exit_code = process.exitstatus",
+        "keep_logic": "2-second stability wait with 0.2s checks - works as-is"
+      }
+    },
+
+    "step_6_rewrite_send_prompt": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "send_prompt()",
+      "changes": {
+        "send_mechanism": {
+          "old": "self.process.stdin.write(prompt + '\\n'); self.process.stdin.flush()",
+          "new": "self.process.sendline(prompt)"
+        },
+        "keep_logic": [
+          "State checks (READY, process alive)",
+          "State transitions (BUSY → READY)",
+          "Logging",
+          "Error handling"
+        ]
+      }
+    },
+
+    "step_7_rewrite_read_response": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "_read_response()",
+      "description": "This is the most complex change - complete rewrite",
+      "new_implementation": {
+        "initialization": [
+          "response_lines = []",
+          "starting_marker_count = self._completion_marker_count",
+          "start_time = time.time()",
+          "incomplete_line = '' - buffer for partial lines"
+        ],
+        "main_loop": {
+          "condition": "while time.time() - start_time < self.response_timeout",
+          "steps": [
+            "1. Check completion signal file for new COMPLETE marker",
+            "2. If marker count increased: break (completion detected)",
+            "3. Try non-blocking read: chunk = process.read_nonblocking(1024, timeout=0.1)",
+            "4. If got chunk:",
+            "   a. Add to response_lines",
+            "   b. Split into lines, handle incomplete last line",
+            "   c. For each complete line: print with [CLAUDE] prefix and color",
+            "   d. Store incomplete line in buffer",
+            "5. If pexpect.TIMEOUT exception: normal, continue loop",
+            "6. If pexpect.EOF exception: process died, raise AgentException",
+            "7. Check process.isalive(), raise if dead"
+          ]
+        },
+        "completion": [
+          "Drain remaining output (try read_nonblocking until EOF or timeout)",
+          "Print any buffered incomplete line",
+          "Return joined response text"
+        ],
+        "timeout_handling": "Raise AgentException with partial response and marker count"
+      }
+    },
+
+    "step_8_update_cleanup": {
+      "file": "src/agents/claude_code_local.py",
+      "method": "cleanup()",
+      "changes": {
+        "graceful_shutdown": {
+          "old": "self.process.send_signal(subprocess.signal.SIGINT); self.process.wait(timeout=5)",
+          "new": "self.process.sendintr(); self.process.expect(pexpect.EOF, timeout=5)"
+        },
+        "terminate": {
+          "old": "self.process.terminate(); self.process.wait(timeout=3)",
+          "new": "self.process.terminate(); self.process.expect(pexpect.EOF, timeout=3)"
+        },
+        "kill": {
+          "old": "self.process.kill(); self.process.wait()",
+          "new": "self.process.kill(signal.SIGKILL); self.process.wait()"
+        },
+        "remove_code": [
+          "Stop reading threads (_stop_reading.set())",
+          "Join threads (_stdout_thread.join(), _stderr_thread.join())"
+        ],
+        "keep_code": "Cleanup completion signal file - already implemented"
+      }
+    },
+
+    "step_9_add_output_utilities": {
+      "file": "src/agents/claude_code_local.py",
+      "new_methods": [
+        {
+          "name": "_print_claude_output(line: str)",
+          "purpose": "Print line with [CLAUDE] prefix and color",
+          "implementation": "print(f'\\033[32m[CLAUDE]\\033[0m {line}')"
+        },
+        {
+          "name": "_print_obra_action(message: str)",
+          "purpose": "Print Obra action with color",
+          "implementation": "print(f'\\033[34m[OBRA]\\033[0m {message}')",
+          "usage": "Call when sending prompts, processing responses"
+        }
+      ]
+    },
+
+    "step_10_orchestrator_output": {
+      "file": "src/orchestrator.py",
+      "changes": {
+        "add_output_helper": {
+          "name": "_print_obra(message: str, prefix: str = '[OBRA]')",
+          "implementation": "print(f'\\033[34m{prefix}\\033[0m {message}')"
+        },
+        "add_print_statements": [
+          "After prompt generation: self._print_obra('Sending prompt to agent...', '[OBRA→CLAUDE]')",
+          "After response received: self._print_obra(f'Response received ({len(response)} chars)')",
+          "After validation: self._print_obra(f'Validation: {'✓' if is_valid else '✗'}')",
+          "Before quality check: (separate function for Qwen output)",
+          "After decision: self._print_obra(f'Decision: {decision_result.action.name}')"
+        ]
+      }
+    },
+
+    "step_11_qwen_output": {
+      "file": "src/orchestrator.py",
+      "changes": {
+        "add_helper": {
+          "name": "_print_qwen(message: str)",
+          "implementation": "print(f'\\033[33m[QWEN]\\033[0m {message}')"
+        },
+        "add_calls": [
+          "Before quality validation: self._print_qwen('Validating response...')",
+          "After quality score: self._print_qwen(f'  Quality: {quality_result.score:.2f} ({quality_result.gate.name})')",
+          "After confidence: self._print_qwen(f'  Confidence: {confidence:.2f}')"
+        ]
+      }
+    },
+
+    "step_12_hook_output": {
+      "file": "src/agents/claude_code_local.py",
+      "changes": {
+        "add_helper": {
+          "name": "_print_hook(message: str)",
+          "implementation": "print(f'\\033[36m[HOOK]\\033[0m {message}')"
+        },
+        "add_call": "In _read_response() when marker detected: self._print_hook('Stop event detected - Claude finished')"
+      }
+    }
+  },
+
+  "testing_strategy": {
+    "unit_tests": {
+      "skip_reason": "PTY interaction difficult to mock, focus on integration testing"
+    },
+    "integration_test": {
+      "test_file": "scripts/test_real_orchestration.py",
+      "test_sequence": [
+        "1. Run simple task (Hello World)",
+        "2. Verify Claude starts (process.isalive() = True)",
+        "3. Verify prompt sent successfully",
+        "4. Verify output streams to console in real-time",
+        "5. Verify [CLAUDE] prefix appears",
+        "6. Verify colors display correctly",
+        "7. Verify Stop hook fires (marker count increases)",
+        "8. Verify response captured fully",
+        "9. Verify Qwen validation runs",
+        "10. Verify decision printed",
+        "11. Verify cleanup works (process exits cleanly)"
+      ]
+    },
+    "manual_testing": {
+      "visual_inspection": [
+        "Output should look natural with Claude's formatting preserved",
+        "Colors should be visible and distinct",
+        "No garbled text or encoding errors",
+        "No missing output",
+        "Real-time streaming (not all at once at end)"
+      ]
+    }
+  },
+
+  "edge_cases_to_handle": {
+    "unicode_and_emoji": {
+      "test_input": "Create a file with emoji: 🎉 ✨ 🚀",
+      "expected": "Emoji displayed correctly in output",
+      "solution": "pexpect encoding='utf-8', codec_errors='replace'"
+    },
+    "ansi_codes": {
+      "test": "Claude outputs colored text, bold, underline",
+      "expected": "Formatting preserved in terminal",
+      "solution": "Do not strip ANSI codes - pass through as-is"
+    },
+    "large_output": {
+      "test": "Claude generates 10KB+ response",
+      "expected": "All output captured and displayed",
+      "solution": "read_nonblocking() in loop until completion"
+    },
+    "fast_output": {
+      "test": "Claude outputs many lines quickly",
+      "expected": "All lines captured, no drops",
+      "solution": "Buffer size 1024, loop as fast as possible"
+    },
+    "slow_output": {
+      "test": "Claude pauses mid-response (thinking)",
+      "expected": "Wait patiently, don't timeout prematurely",
+      "solution": "Hook-based completion (no inactivity timeout)"
+    },
+    "hook_failure": {
+      "test": "Stop hook doesn't fire (bug, misconfiguration)",
+      "expected": "Timeout after 300s with error message",
+      "solution": "Fallback timeout with clear error"
+    },
+    "process_crash": {
+      "test": "Claude crashes mid-response",
+      "expected": "Detect immediately, raise clear exception",
+      "solution": "Check process.isalive() every iteration"
+    }
+  },
+
+  "potential_issues_and_solutions": {
+    "issue_1_echo": {
+      "problem": "Input echoed back in output (see prompt twice)",
+      "solution": "Set echo=False in pexpect.spawn()",
+      "verification": "Prompt should appear once (when Obra sends it), not again in Claude's output"
+    },
+    "issue_2_buffering": {
+      "problem": "Output appears in large chunks instead of real-time",
+      "solution": "Use read_nonblocking() with small timeout (0.1s), flush stdout",
+      "verification": "Output should appear character-by-character or line-by-line as Claude generates"
+    },
+    "issue_3_terminal_size": {
+      "problem": "Claude's output wraps incorrectly or truncates",
+      "solution": "Set reasonable dimensions (40 rows, 120 cols) in spawn()",
+      "verification": "Output should look natural, no weird wrapping"
+    },
+    "issue_4_partial_lines": {
+      "problem": "Lines split mid-character, garbled output",
+      "solution": "Buffer incomplete lines until newline received",
+      "verification": "No partial lines printed, no garbled text"
+    },
+    "issue_5_hook_race": {
+      "problem": "Hook fires before all output drained",
+      "solution": "After hook detected, continue draining output for 0.5s or until EOF",
+      "verification": "All output captured, nothing missing at end"
+    }
+  },
+
+  "success_criteria": {
+    "phase_1_complete": [
+      "pexpect installed",
+      "Claude Code spawns with PTY",
+      "process.isalive() = True after startup",
+      "Prompt sent with sendline()",
+      "Response received (non-empty)",
+      "Stop hook fires (marker count increases)",
+      "Process cleans up gracefully"
+    ],
+    "phase_2_complete": [
+      "Claude output displayed in real-time",
+      "[CLAUDE] prefix on every line",
+      "Green color for Claude output",
+      "Blue color for Obra output",
+      "Yellow color for Qwen output",
+      "Cyan color for Hook events",
+      "All formatting preserved (ANSI, emoji, Unicode)",
+      "No garbled text",
+      "Output looks natural and readable"
+    ],
+    "full_integration_success": [
+      "Simple task (Hello World) completes end-to-end",
+      "Obra → Claude communication works",
+      "Claude generates code file",
+      "Qwen validates response",
+      "Decision engine proceeds",
+      "Task marked complete",
+      "All output visible to user",
+      "Cleanup succeeds, no zombie processes"
+    ]
+  },
+
+  "rollback_plan": {
+    "if_pexpect_fails": [
+      "1. Keep hook implementation (it's good)",
+      "2. Revert to subprocess.Popen",
+      "3. Use 60s inactivity timeout instead of hook (hybrid approach)",
+      "4. Document limitation: context not persistent across prompts"
+    ],
+    "if_output_streaming_breaks": [
+      "1. Keep PTY integration",
+      "2. Simplify output: just log to files, show minimal progress to user",
+      "3. Fix streaming later as polish"
+    ]
+  },
+
+  "future_enhancements_phase_3": {
+    "human_intervention": {
+      "pause_mechanism": "Ctrl+C handler that sets orchestrator.paused = True without killing Claude",
+      "interactive_commands": {
+        "/continue": "Resume orchestration",
+        "/retry": "Retry current iteration",
+        "/edit": "Edit prompt before retry",
+        "/chat claude MESSAGE": "Send message directly to Claude Code",
+        "/chat qwen MESSAGE": "Send query to Qwen (via local LLM interface)",
+        "/context": "Show current context window",
+        "/status": "Show task state and history",
+        "/abort": "Stop orchestration and cleanup",
+        "/help": "Show command help"
+      },
+      "model_isolation": "Chat to Claude never seen by Qwen, and vice versa. Use separate message history per model.",
+      "implementation_location": "src/orchestrator.py - add _handle_user_input() method",
+      "estimated_effort": "2-3 hours"
+    }
+  },
+
+  "notes_for_llm": {
+    "critical_warnings": [
+      "DO NOT strip ANSI codes from Claude output - preserve ALL formatting",
+      "DO NOT simplify output - user wants to see everything",
+      "DO NOT use blocking reads - always use read_nonblocking() to avoid hangs",
+      "DO NOT forget to drain output after hook fires - continue reading for 0.5s",
+      "DO NOT use subprocess.Popen - MUST use pexpect.spawn()"
+    ],
+    "key_principles": [
+      "PTY is required for Claude Code persistent session",
+      "Hook-based completion is definitive - don't rely on timeouts",
+      "Real-time streaming is user requirement - show output as it arrives",
+      "Preserve formatting - Claude's output should look natural",
+      "User sees everything agents output - no filtering"
+    ],
+    "implementation_order": [
+      "1. Add pexpect to requirements.txt",
+      "2. Update imports in claude_code_local.py",
+      "3. Rewrite __init__ (remove threading)",
+      "4. Rewrite initialize() (spawn with PTY)",
+      "5. Update _wait_for_ready() (use isalive)",
+      "6. Rewrite send_prompt() (use sendline)",
+      "7. Completely rewrite _read_response() (PTY + streaming + hook)",
+      "8. Update cleanup() (use sendintr/expect)",
+      "9. Add output helper methods (_print_claude_output, etc.)",
+      "10. Add output calls in orchestrator.py",
+      "11. Test integration thoroughly"
+    ],
+    "testing_notes": [
+      "Test after Phase 1 + Phase 2 both complete",
+      "Visual inspection critical - must look right",
+      "Test with simple task first (Hello World)",
+      "Test with complex task (multiple iterations)",
+      "Test cleanup (no zombie processes)",
+      "Test error cases (timeout, crash)"
+    ]
+  }
+}

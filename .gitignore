@@ -20,6 +20,11 @@ test_output_live.log
 m2_*.log
 *.db
 
+# Runtime directories (use ~/obra-runtime/ instead)
+data/
+logs/
+workspace/
+
 # IDE
 .vscode/
 .idea/

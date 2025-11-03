@@ -42,7 +42,7 @@ def cli(ctx, config: Optional[str], verbose: bool):
     if config:
         config_mgr = Config.load(config)
     else:
-        config_mgr = Config()
+        config_mgr = Config.load()  # FIX: Use Config.load() not Config()
 
     ctx.ensure_object(dict)
     ctx.obj['config'] = config_mgr
@@ -160,13 +160,12 @@ def project_create(ctx, name: str, description: str, working_dir: Optional[str])
         if not working_dir:
             working_dir = str(Path.cwd())
 
-        project_data = {
-            'name': name,
-            'description': description,
-            'working_dir': working_dir
-        }
-
-        project = state_manager.create_project(project_data)
+        # FIX: create_project takes positional args, not a dict
+        project = state_manager.create_project(
+            name=name,
+            description=description,
+            working_dir=working_dir
+        )
 
         click.echo(f"✓ Created project #{project.id}: {name}")
         click.echo(f"  Working directory: {working_dir}")
@@ -194,9 +193,9 @@ def project_list(ctx):
         click.echo("\nProjects:")
         click.echo("-" * 80)
         for p in projects:
-            click.echo(f"  #{p.id}: {p.name}")
+            click.echo(f"  #{p.id}: {p.project_name}")
             click.echo(f"       {p.description}")
-            click.echo(f"       Working dir: {p.working_dir}")
+            click.echo(f"       Working dir: {p.working_directory}")
             click.echo(f"       Status: {p.status}")
             click.echo()
 
@@ -221,10 +220,10 @@ def project_show(ctx, project_id: int):
             click.echo(f"✗ Project #{project_id} not found", err=True)
             sys.exit(1)
 
-        click.echo(f"\nProject #{project.id}: {project.name}")
+        click.echo(f"\nProject #{project.id}: {project.project_name}")
         click.echo("=" * 80)
         click.echo(f"Description: {project.description}")
-        click.echo(f"Working directory: {project.working_dir}")
+        click.echo(f"Working directory: {project.working_directory}")
         click.echo(f"Status: {project.status}")
         click.echo(f"Created: {project.created_at}")
         click.echo(f"Updated: {project.updated_at}")

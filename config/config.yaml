@@ -6,7 +6,7 @@
 llm:
   type: ollama  # LLM provider type (matches LLMRegistry)
   model: qwen2.5-coder:32b  # Model to use
-  api_url: http://localhost:11434  # Ollama API endpoint
+  api_url: http://172.29.144.1:11434  # Ollama API endpoint
   temperature: 0.7  # Generation temperature (0.0-2.0)
   timeout: 30  # Timeout for generation (seconds)
   max_tokens: 4096  # Maximum tokens to generate
@@ -14,24 +14,12 @@ llm:
 
 # Agent Configuration
 agent:
-  # Agent type: mock (testing), claude_code_local (same machine), claude_code_ssh (remote)
-  type: mock
+  type: mock  # Agent type (mock for testing, claude-code-ssh for production)
   timeout: 120  # Default timeout for agent operations (seconds)
   max_retries: 3  # Maximum retry attempts on failure
-  workspace_path: ./workspace  # Agent workspace directory
+  workspace_path: /home/omarwsl/obra-runtime/workspace  # Agent workspace directory
 
-  # Local agent config (for claude_code_local agent)
-  # Runs Claude Code CLI as subprocess on same machine
-  # Use for: development, single-host deployment, low latency
-  local:
-    command: claude  # Claude Code CLI command (or full path)
-    workspace_dir: ./workspace  # Workspace directory for agent
-    timeout_ready: 30  # Seconds to wait for agent ready signal
-    timeout_response: 120  # Seconds to wait for response
-
-  # SSH-specific config (for claude_code_ssh agent)
-  # Runs Claude Code CLI on remote machine via SSH
-  # Use for: production, isolated VM, strong isolation
+  # SSH-specific config (for claude-code-ssh agent)
   ssh:
     host: localhost
     port: 22
@@ -39,7 +27,7 @@ agent:
     key_path: ~/.ssh/id_rsa
     # Note: Set via ORCHESTRATOR_AGENT_SSH_KEY_PATH env var for security
 
-  # Docker-specific config (for claude_code_docker agent)
+  # Docker-specific config (for claude-code-docker agent)
   docker:
     image: claude-code:latest
     container_name: claude-agent
@@ -47,7 +35,7 @@ agent:
 
 # Database Configuration
 database:
-  url: sqlite:///data/orchestrator.db  # SQLite for simplicity
+  url: sqlite:////home/omarwsl/obra-runtime/data/orchestrator.db  # SQLite for simplicity
   # For PostgreSQL: postgresql://user:password@localhost/orchestrator
   pool_size: 10  # Connection pool size
   max_overflow: 20  # Max overflow connections
@@ -143,7 +131,7 @@ context:
 logging:
   level: INFO  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: logs/orchestrator.log  # Log file path
+  file: /home/omarwsl/obra-runtime/logs/orchestrator.log  # Log file path
   max_bytes: 10485760  # Max log file size (10MB)
   backup_count: 5  # Number of backup files to keep
 

@@ -76,14 +76,47 @@ class ClaudeCodeAgent(AgentPlugin):
 - `LocalLLMInterface`: Ollama/llama.cpp integration for Qwen
 - `PromptGenerator`: Creates optimized prompts with context
 - `ResponseValidator`: Validates response completeness
-- `ClaudeCodeSSHAgent`: Executes tasks via SSH to isolated VM
+- **Agent Implementations**:
+  - `ClaudeCodeLocalAgent`: Claude Code CLI as local subprocess (recommended)
+  - `ClaudeCodeSSHAgent`: Claude Code via SSH to remote VM
 - `OutputMonitor`: Streams and parses agent output
 
+**Agent Architecture**:
+
+Two agent types support different deployment scenarios:
+
+1. **Local Agent** (`claude-code-local`) - **Recommended for same-machine deployment**
+   - Spawns Claude Code CLI as subprocess
+   - Direct stdin/stdout communication
+   - Lower latency, simpler setup
+   - Use when: Obra and Claude Code run in same environment (e.g., WSL2)
+
+2. **SSH Agent** (`claude-code-ssh`) - For remote deployment
+   - Connects to Claude Code on remote VM via SSH
+   - Network-based communication
+   - Use when: Claude Code runs on different machine
+
+**Key Separation**: Both agents communicate with **Ollama on host machine** via HTTP API for validation/quality scoring. The agent type only determines how Obra communicates with Claude Code CLI.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HOST MACHINE                                                 │
+│  Ollama + Qwen (GPU) ← HTTP API ← Both agent types          │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ WSL2                                                  │  │
+│  │   Obra ─┬─→ subprocess → Claude Code (Local Agent)   │  │
+│  │         └─→ SSH → Remote Claude Code (SSH Agent)     │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
 **Key Features**:
-- SSH connection pooling with reconnection logic
+- Pluggable agent system via `@register_agent` decorator
+- Connection pooling and reconnection logic
 - Streaming output parsing
 - Completion detection heuristics
 - Response format validation
+- Process health monitoring and automatic recovery
 
 ### M3: File Monitoring
 

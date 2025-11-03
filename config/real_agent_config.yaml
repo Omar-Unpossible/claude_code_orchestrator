@@ -1,0 +1,48 @@
+llm:
+  type: ollama
+  model: qwen2.5-coder:32b
+  api_url: http://172.29.144.1:11434
+  temperature: 0.7
+  timeout: 30
+  max_tokens: 4096
+
+agent:
+  type: claude-code-local
+  timeout: 120
+  max_retries: 3
+
+  config:
+    command: claude
+    workspace_dir: /tmp/obra_real_test/workspace
+    timeout_ready: 30
+    timeout_response: 120
+
+database:
+  url: sqlite:///data/orchestrator_real_test.db
+  echo: false
+
+orchestration:
+  max_iterations: 10
+  iteration_timeout: 300
+
+breakpoints:
+  enabled: true
+  triggers:
+    low_confidence:
+      enabled: true
+      threshold: 30
+    quality_too_low:
+      enabled: true
+      threshold: 50
+
+validation:
+  quality:
+    enabled: true
+    threshold: 70
+
+confidence:
+  threshold: 50
+
+logging:
+  level: INFO
+  file: logs/real_agent_test.log

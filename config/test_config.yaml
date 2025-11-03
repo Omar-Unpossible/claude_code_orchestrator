@@ -1,0 +1,56 @@
+# Test Configuration for Real-World Runthrough
+llm:
+  type: ollama
+  model: qwen2.5-coder:32b
+  api_url: http://localhost:11434
+  temperature: 0.7
+  timeout: 30
+  max_tokens: 4096
+
+agent:
+  type: mock  # Use mock for testing (change to claude_code_local for real test)
+  timeout: 120
+  max_retries: 3
+
+  local:
+    command: claude
+    workspace_dir: /tmp/obra_test_run/workspace
+    timeout_ready: 30
+    timeout_response: 120
+
+database:
+  url: sqlite:///data/orchestrator_test.db
+  pool_size: 5
+  echo: false
+
+monitoring:
+  file_watcher:
+    enabled: true
+    debounce_ms: 500
+
+orchestration:
+  max_iterations: 10
+  iteration_timeout: 300
+  task_timeout: 1800
+
+breakpoints:
+  enabled: true
+  triggers:
+    low_confidence:
+      enabled: true
+      threshold: 30
+    quality_too_low:
+      enabled: true
+      threshold: 50
+
+validation:
+  quality:
+    enabled: true
+    threshold: 70
+
+confidence:
+  threshold: 50
+
+logging:
+  level: DEBUG
+  file: logs/test_runthrough.log

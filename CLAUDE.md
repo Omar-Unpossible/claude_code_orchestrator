@@ -15,7 +15,7 @@ This enables semi-autonomous software development with Claude Code doing the hea
 
 ## Project Status
 
-**Current Phase**: ✅ **PRODUCTION-READY (v1.0)** - All milestones complete!
+**Current Phase**: ✅ **PRODUCTION-READY (v1.1)** - All milestones complete including M8!
 
 **Implementation complete**:
 - ✅ **M0**: Architecture Foundation (plugin system) - 95% coverage
@@ -26,15 +26,23 @@ This enables semi-autonomous software development with Claude Code doing the hea
 - ✅ **M5**: Utility Services - 91% coverage
 - ✅ **M6**: Integration & CLI - Complete with 122 tests
 - ✅ **M7**: Testing & Deployment - 88% overall coverage
+- ✅ **M8**: Local Agent Implementation - 100% coverage (33 tests)
 
 **Key Metrics**:
 - **Overall Coverage**: 88% (exceeds 85% target)
-- **Total Tests**: 400+
-- **Total Code**: ~15,000 lines (8,500 production + 4,500 tests + 2,000 docs)
+- **Total Tests**: 433+ (400+ from M0-M7, 33 from M8)
+- **Total Code**: ~15,600 lines (8,900 production + 4,700 tests + 2,000 docs)
 
-**Next Phase**: Setup and real-world testing on Windows 11 + Hyper-V + WSL2
+**Current Status**:
+- ✅ Setup complete on WSL2
+- ✅ 6 critical bugs fixed (Config loading, StateManager API, CLI bugs)
+- ✅ 14 integration tests added
+- ✅ **M8 - Local Agent** - Complete with 33 tests, 100% coverage
+- ⏳ **Real-world validation** with Claude Code CLI (next step)
 
-See `docs/development/milestones/M7_COMPLETION_SUMMARY.md` for detailed status.
+See `docs/development/milestones/M7_COMPLETION_SUMMARY.md` for detailed M0-M7 status.
+See `docs/development/milestones/M8_COMPLETION_SUMMARY.md` for M8 local agent implementation.
+See `docs/development/CLAUDE_CODE_LOCAL_AGENT_PLAN.md` for M8 implementation plan (historical).
 
 ## Documentation Structure
 
@@ -55,9 +63,15 @@ docs/
 │   ├── 001_why_plugins.md
 │   ├── 002_deployment_models.md
 │   ├── 003_state_management.md
-│   └── ADR-003-file-watcher-thread-cleanup.md
+│   ├── ADR-003-file-watcher-thread-cleanup.md
+│   └── ADR-004-local-agent-architecture.md  # Local agent design
+├── design/                                         # Design docs and diagrams
+│   └── design_future.md                            # Planned backlog features
+│   └── obra-technical-design.md                    # Technical backlog
+│   └── obra-technical-design-enhanced.md           # Technical backlog (enhanced)
 ├── development/                      # Development docs
 │   ├── IMPLEMENTATION_PLAN.md        # M0-M7 roadmap
+│   ├── CLAUDE_CODE_LOCAL_AGENT_PLAN.md  # M8 local agent plan ⚠️
 │   ├── TEST_GUIDELINES.md            # Testing best practices ⚠️
 │   ├── STATUS_REPORT.md
 │   ├── WSL2_TEST_CRASH_POSTMORTEM.md
@@ -67,7 +81,8 @@ docs/
 │       ├── M4_COMPLETION_SUMMARY.md
 │       ├── M5_COMPLETION_SUMMARY.md
 │       ├── M6_COMPLETION_SUMMARY.md
-│       └── M7_COMPLETION_SUMMARY.md
+│       ├── M7_COMPLETION_SUMMARY.md
+│       └── M8_COMPLETION_SUMMARY.md  # Local agent implementation
 └── archive/                          # Historical documents
 ```
 
@@ -76,10 +91,11 @@ docs/
 When starting a new session, read these documents in order:
 
 1. **[README.md](README.md)** - Project overview (371 lines)
-2. **[docs/development/milestones/M7_COMPLETION_SUMMARY.md](docs/development/milestones/M7_COMPLETION_SUMMARY.md)** - Latest status
-3. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - System design (591 lines)
-4. **[docs/development/IMPLEMENTATION_PLAN.md](docs/development/IMPLEMENTATION_PLAN.md)** - Complete roadmap
-5. **[docs/development/TEST_GUIDELINES.md](docs/development/TEST_GUIDELINES.md)** - ⚠️ Critical for testing!
+2. **[docs/development/milestones/M8_COMPLETION_SUMMARY.md](docs/development/milestones/M8_COMPLETION_SUMMARY.md)** - Latest status (M8 local agent)
+3. **[docs/development/milestones/M7_COMPLETION_SUMMARY.md](docs/development/milestones/M7_COMPLETION_SUMMARY.md)** - M0-M7 status
+4. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - System design (591 lines)
+5. **[docs/development/IMPLEMENTATION_PLAN.md](docs/development/IMPLEMENTATION_PLAN.md)** - Complete roadmap
+6. **[docs/development/TEST_GUIDELINES.md](docs/development/TEST_GUIDELINES.md)** - ⚠️ Critical for testing!
 
 ## Architecture Principles
 
@@ -113,6 +129,36 @@ When starting a new session, read these documents in order:
 - Checkpoint before risky operations
 - Auto-save state frequently
 
+### 6. Agent Architecture - Dual Communication Paths (M8)
+- **Two separate systems**: Agent (Claude Code) and LLM (Ollama)
+- **Agent (Task Execution)**:
+  - **Local Agent** (recommended): subprocess in same environment
+  - **SSH Agent**: network connection to remote VM
+  - Handles code generation and task execution
+- **LLM (Validation)**: Always on host machine via HTTP API
+  - Handles validation, quality scoring, confidence calculation
+  - Requires GPU (Qwen 2.5 Coder on RTX 5090)
+  - Accessed at http://172.29.144.1:11434
+
+**Architecture Diagram**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HOST MACHINE (Windows 11 Pro)                               │
+│  Ollama + Qwen (RTX 5090, GPU) ← HTTP API                  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Hyper-V VM → WSL2                                     │  │
+│  │   Obra ─┬─→ subprocess → Claude Code (Local)         │  │
+│  │         └─→ SSH → Remote Claude Code (Optional)      │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Points**:
+- Agent type controls WHERE Claude Code runs (local vs remote)
+- LLM location is INDEPENDENT (always on host for GPU access)
+- Choose local agent for same-machine deployment (simpler, faster)
+- Choose SSH agent only if Claude Code must run remotely
+
 ## Project Structure
 
 ```
@@ -121,7 +167,10 @@ obra/  (claude_code_orchestrator/)
 │   ├── plugins/         # M0: AgentPlugin/LLMPlugin interfaces
 │   ├── core/            # M1: State, config, models, exceptions
 │   ├── llm/             # M2: Local LLM interface, validation, prompts
-│   ├── agents/          # M2: Claude Code agent, output monitor
+│   ├── agents/          # M2/M8: Agent implementations
+│   │   ├── claude_code_ssh.py      # SSH agent (remote)
+│   │   ├── claude_code_local.py    # Local agent (M8 - planned)
+│   │   └── output_monitor.py       # Output parsing
 │   ├── monitoring/      # M3: File watching
 │   ├── orchestration/   # M4: Scheduling, decisions, breakpoints, quality
 │   ├── utils/           # M5: Token counting, context, confidence
@@ -383,6 +432,10 @@ See `docs/architecture/data_flow.md` for detailed flow diagrams.
 5. ❌ **Don't forget thread safety**: StateManager and Registry must be thread-safe
 6. ❌ **Don't implement cost tracking**: This is subscription-based
 7. ❌ **Don't exceed test resource limits**: Read TEST_GUIDELINES.md!
+8. ❌ **Don't use Config() directly**: Always use `Config.load()` to load configuration
+9. ❌ **Don't assume StateManager API**: Check method signatures - use named args
+10. ❌ **Don't use wrong model attributes**: Use `project_name` not `name`, `working_directory` not `working_dir`
+11. ❌ **Don't run setup.sh without OBRA_RUNTIME_DIR**: Set environment variable to avoid runtime files in repo
 
 ## Hardware & Environment
 
@@ -466,27 +519,30 @@ All M0-M7 milestones have been completed with the following criteria met:
 
 ## Next Steps
 
-### Immediate (Setup & Testing)
+### Immediate (Real-World Validation)
 
-1. **Setup Obra on actual hardware**:
-   - Follow `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md`
-   - Windows 11 Pro + Hyper-V + VM + WSL2
-   - Ollama + Qwen 2.5 Coder on host
-   - Obra + Claude Code CLI in VM WSL2
+**Status**: ✅ M8 Complete, ⏳ Ready for real-world testing
 
-2. **Real-world validation**:
-   - Execute actual development tasks
+1. **Real-world validation with Claude Code CLI**:
+   - Execute actual development tasks with local agent
    - Monitor confidence scores and quality metrics
    - Tune thresholds based on real usage
    - Validate breakpoint system with human intervention
+   - Performance benchmarking (local vs SSH agent)
 
-3. **Performance testing**:
-   - Measure LLM response times (target <10s p95)
-   - Verify state operation times (target <100ms p95)
-   - Test concurrent task execution
-   - Monitor resource usage (memory, CPU, GPU)
+2. **Configuration and deployment**:
+   - Create example configurations for local agent
+   - Test end-to-end orchestration workflow
+   - Document best practices and common patterns
+   - Production deployment guide
 
-### v1.1 (Enhancements)
+3. **Documentation updates**:
+   - Update README.md with M8 completion
+   - Add local agent usage examples
+   - Update architecture diagrams
+   - Create troubleshooting guide
+
+### v1.2 (Enhancements)
 
 - [ ] Web UI dashboard (real-time monitoring)
 - [ ] WebSocket updates for live status
@@ -505,9 +561,9 @@ All M0-M7 milestones have been completed with the following criteria met:
 
 ---
 
-**Project Status**: ✅ Production-ready (v1.0) - Ready for setup and real-world testing!
+**Project Status**: ✅ Production-ready (v1.1) - M8 complete, ready for real-world testing!
 
-**Last Updated**: 2025-11-01
-**Total Implementation Time**: ~50 hours
-**Total Code**: ~15,000 lines
-**Test Coverage**: 88%
+**Last Updated**: 2025-11-02
+**Total Implementation Time**: ~58 hours (50h M0-M7 + 8h M8)
+**Total Code**: ~15,600 lines (8,900 production + 4,700 tests + 2,000 docs)
+**Test Coverage**: 88% overall (433+ tests, including 33 M8 local agent tests at 100% coverage)
