@@ -168,7 +168,7 @@ def main():
     agent.initialize({
         'workspace_path': WORKSPACE,
         'bypass_permissions': True,
-        'response_timeout': 300,  # Increased timeout for complex multi-file tasks
+        'response_timeout': 360,  # 6 minutes for complex multi-file tasks with comprehensive tests
         'use_session_persistence': False
     })
     print("✓ Claude Code ready\n")
@@ -466,7 +466,10 @@ SUMMARY: [brief assessment]"""
         print("✅ OBRA ITERATIVE ORCHESTRATION COMPLETE - TASK FINISHED!")
     else:
         print("⚠️ OBRA ITERATIVE ORCHESTRATION COMPLETE - TASK INCOMPLETE")
-        print(f"   (Reached {len(iteration_history)} iterations, quality: {iteration_history[-1]['validation']['quality']:.2f})")
+        if iteration_history and 'validation' in iteration_history[-1]:
+            print(f"   (Reached {len(iteration_history)} iterations, quality: {iteration_history[-1]['validation']['quality']:.2f})")
+        else:
+            print(f"   (Task did not complete - possible timeout or error)")
     print("=" * 100)
     print()
 
