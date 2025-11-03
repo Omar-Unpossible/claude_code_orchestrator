@@ -39,15 +39,16 @@ This enables semi-autonomous software development with Claude Code doing the hea
 - ✅ 14 integration tests added
 - ✅ **M8 - Local Agent** - Complete with 33 tests, 100% coverage
 - ✅ **Hook system implemented** - Stop hook for completion detection
-- 🔧 **PTY requirement discovered** - Claude Code needs TTY for persistent sessions
-- 📋 **PTY implementation plan ready** - Phase 1+2 awaiting approval
+- ✅ **Headless mode implemented** - Uses `--print` flag for non-interactive operation
+- ✅ **Dangerous mode implemented** - `--dangerously-skip-permissions` for autonomous operation
+- ⚠️ **PTY attempted but abandoned** - Claude Code has known issues with PTY (no bugfix available)
 
-**Immediate Next Step**: Implement PTY integration with pexpect (Phase 1 + Phase 2)
+**Immediate Next Step**: Tune iterative orchestration and run real-world validation tests
 
 See `docs/development/milestones/M7_COMPLETION_SUMMARY.md` for detailed M0-M7 status.
 See `docs/development/milestones/M8_COMPLETION_SUMMARY.md` for M8 local agent implementation.
-See `docs/development/PTY_IMPLEMENTATION_PLAN.json` for PTY integration technical spec.
-See `docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md` for debugging session details.
+See `docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md` for debugging session details (10 bugs fixed).
+See `QUICK_START.md` for user-facing guide to running Obra with custom prompts.
 
 ## Documentation Structure
 
@@ -96,7 +97,7 @@ docs/
 When starting a new session, read these documents in order:
 
 1. **[README.md](README.md)** - Project overview (371 lines)
-2. **[docs/development/PTY_IMPLEMENTATION_PLAN.json](docs/development/PTY_IMPLEMENTATION_PLAN.json)** - ⚠️ **CURRENT TASK** - PTY integration technical spec
+2. **[QUICK_START.md](QUICK_START.md)** - User guide for running Obra with custom prompts
 3. **[docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md](docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md)** - Debugging session details (10 bugs fixed)
 4. **[docs/development/milestones/M8_COMPLETION_SUMMARY.md](docs/development/milestones/M8_COMPLETION_SUMMARY.md)** - M8 local agent status
 5. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - System design (591 lines)
@@ -164,6 +165,18 @@ When starting a new session, read these documents in order:
 - Choose local agent for same-machine deployment (simpler, faster)
 - Choose SSH agent only if Claude Code must run remotely
 
+### 7. Headless Mode for Automation (M8)
+- **Headless Mode**: Uses `claude --print` flag for non-interactive subprocess execution
+- **Dangerous Mode**: Uses `--dangerously-skip-permissions` to bypass all permission prompts
+- **Fresh Sessions**: Each call uses a new session (no persistent state) for 100% reliability
+- **PTY Not Used**: Claude Code has known issues with PTY/terminal emulation (no bugfix)
+- **Why This Works**:
+  - `subprocess.run()` with `--print` returns output directly
+  - No terminal emulation needed (STDIN/STDOUT only)
+  - Obra provides context continuity across fresh sessions
+  - Dangerous mode enables fully autonomous operation
+- **Trade-off**: No persistent Claude session, but gains reliability and simplicity
+
 ## Project Structure
 
 ```
@@ -174,7 +187,7 @@ obra/  (claude_code_orchestrator/)
 │   ├── llm/             # M2: Local LLM interface, validation, prompts
 │   ├── agents/          # M2/M8: Agent implementations
 │   │   ├── claude_code_ssh.py      # SSH agent (remote)
-│   │   ├── claude_code_local.py    # Local agent (M8 - planned)
+│   │   ├── claude_code_local.py    # Local agent (M8 - headless mode)
 │   │   └── output_monitor.py       # Output parsing
 │   ├── monitoring/      # M3: File watching
 │   ├── orchestration/   # M4: Scheduling, decisions, breakpoints, quality
