@@ -35,14 +35,19 @@ This enables semi-autonomous software development with Claude Code doing the hea
 
 **Current Status**:
 - ✅ Setup complete on WSL2
-- ✅ 6 critical bugs fixed (Config loading, StateManager API, CLI bugs)
+- ✅ **10 critical bugs fixed** during real orchestration testing (Nov 2, 2025)
 - ✅ 14 integration tests added
 - ✅ **M8 - Local Agent** - Complete with 33 tests, 100% coverage
-- ⏳ **Real-world validation** with Claude Code CLI (next step)
+- ✅ **Hook system implemented** - Stop hook for completion detection
+- 🔧 **PTY requirement discovered** - Claude Code needs TTY for persistent sessions
+- 📋 **PTY implementation plan ready** - Phase 1+2 awaiting approval
+
+**Immediate Next Step**: Implement PTY integration with pexpect (Phase 1 + Phase 2)
 
 See `docs/development/milestones/M7_COMPLETION_SUMMARY.md` for detailed M0-M7 status.
 See `docs/development/milestones/M8_COMPLETION_SUMMARY.md` for M8 local agent implementation.
-See `docs/development/CLAUDE_CODE_LOCAL_AGENT_PLAN.md` for M8 implementation plan (historical).
+See `docs/development/PTY_IMPLEMENTATION_PLAN.json` for PTY integration technical spec.
+See `docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md` for debugging session details.
 
 ## Documentation Structure
 
@@ -91,10 +96,10 @@ docs/
 When starting a new session, read these documents in order:
 
 1. **[README.md](README.md)** - Project overview (371 lines)
-2. **[docs/development/milestones/M8_COMPLETION_SUMMARY.md](docs/development/milestones/M8_COMPLETION_SUMMARY.md)** - Latest status (M8 local agent)
-3. **[docs/development/milestones/M7_COMPLETION_SUMMARY.md](docs/development/milestones/M7_COMPLETION_SUMMARY.md)** - M0-M7 status
-4. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - System design (591 lines)
-5. **[docs/development/IMPLEMENTATION_PLAN.md](docs/development/IMPLEMENTATION_PLAN.md)** - Complete roadmap
+2. **[docs/development/PTY_IMPLEMENTATION_PLAN.json](docs/development/PTY_IMPLEMENTATION_PLAN.json)** - ⚠️ **CURRENT TASK** - PTY integration technical spec
+3. **[docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md](docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md)** - Debugging session details (10 bugs fixed)
+4. **[docs/development/milestones/M8_COMPLETION_SUMMARY.md](docs/development/milestones/M8_COMPLETION_SUMMARY.md)** - M8 local agent status
+5. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - System design (591 lines)
 6. **[docs/development/TEST_GUIDELINES.md](docs/development/TEST_GUIDELINES.md)** - ⚠️ Critical for testing!
 
 ## Architecture Principles
