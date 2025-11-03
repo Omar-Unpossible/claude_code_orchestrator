@@ -14,6 +14,7 @@ Edit the USER_PROMPT variable below to send your own complex task to Obra.
 import sys
 import json
 import time
+import shutil
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -29,32 +30,38 @@ from src.llm.local_interface import LocalLLMInterface
 # ============================================================================
 
 USER_PROMPT = """
-Build a command-line tool called 'csvtool' that processes CSV files. Requirements:
+Build a command-line tool called 'csvtool' that processes CSV files.
+
+IMPORTANT: Implement the full solution immediately. Do not ask questions or suggest alternatives.
+
+Requirements:
 
 1. Core functionality:
    - Read CSV files
-   - Filter rows based on column conditions
-   - Sort by specified columns
+   - Filter rows based on column conditions (simple string/numeric comparisons)
+   - Sort by specified columns (ascending by default)
    - Output results to new CSV or stdout
 
-2. Architecture:
-   - Main script: csvtool.py
-   - Parser module: csv_parser.py
-   - Filter module: csv_filter.py
-   - Sorter module: csv_sorter.py
+2. Architecture - Create these files:
+   - csvtool.py (main script with argparse CLI)
+   - csv_parser.py (read CSV, return list of dicts)
+   - csv_filter.py (filter rows by simple conditions like "age>25")
+   - csv_sorter.py (sort rows by column name)
 
 3. Command syntax:
    csvtool --file input.csv --filter "age>25" --sort name --output result.csv
 
 4. Quality requirements:
-   - Comprehensive error handling (file not found, invalid format, etc.)
-   - Unit tests for each module (use pytest)
+   - Error handling for: file not found, invalid format, bad filter syntax
+   - Unit tests for each module using pytest (at least 3 tests per module)
    - Integration test for end-to-end workflow
-   - Proper docstrings and type hints
-   - Handle edge cases (empty files, malformed CSV, etc.)
+   - Docstrings for all functions
+   - Type hints for all function signatures
 
 5. Test data:
-   Create sample_data.csv with test data for demonstration
+   Create sample_data.csv with 5-10 rows containing: name,age,city columns
+
+IMPLEMENT THE COMPLETE SOLUTION NOW. Write all code, tests, and data files.
 """
 
 WORKSPACE = '/tmp/obra-iterative-run'
@@ -161,7 +168,7 @@ def main():
     agent.initialize({
         'workspace_path': WORKSPACE,
         'bypass_permissions': True,
-        'response_timeout': 180,  # Longer timeout for complex tasks
+        'response_timeout': 300,  # Increased timeout for complex multi-file tasks
         'use_session_persistence': False
     })
     print("✓ Claude Code ready\n")
@@ -198,6 +205,15 @@ def main():
 
         iteration_start = time.time()
 
+        # Clean workspace between iterations (except first)
+        if iteration > 1:
+            workspace_path = Path(WORKSPACE)
+            if workspace_path.exists():
+                print(f"[{iteration}/5] Cleaning workspace from previous iteration...")
+                shutil.rmtree(workspace_path)
+                workspace_path.mkdir(parents=True, exist_ok=True)
+                print(f"✓ Workspace cleaned\n")
+
         # Build context from previous iterations
         if iteration_history:
             context = build_iteration_context(iteration_history)
@@ -214,7 +230,13 @@ def main():
 
 "{current_prompt}"
 
-This is iteration {iteration} of {MAX_ITERATIONS}. Validate this is reasonable and add any clarifications needed.
+This is iteration {iteration} of {MAX_ITERATIONS}. Enhance this prompt to ensure Claude Code implements immediately without asking questions.
+
+Add these directives:
+- "Do not ask for clarification - use reasonable defaults"
+- "Implement all files and tests now"
+- Be specific about file names and structure
+
 Respond with just the enhanced prompt (no preamble)."""
 
             start = time.time()
