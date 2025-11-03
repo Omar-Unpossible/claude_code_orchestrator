@@ -11,7 +11,12 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
-        # Will be populated as we implement more milestones
+        "sqlalchemy>=2.0.0",
+        "jinja2>=3.1.0",
+        "requests>=2.31.0",
+        "click>=8.1.0",
+        "watchdog>=3.0.0",
+        "pyyaml>=6.0",
     ],
     extras_require={
         "dev": [

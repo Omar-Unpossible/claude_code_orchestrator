@@ -1,19 +1,17 @@
-"""Local subprocess-based Claude Code agent implementation.
+"""Local subprocess-based Claude Code agent implementation (headless mode).
 
 This module provides ClaudeCodeLocalAgent, which manages Claude Code CLI
-as a local subprocess for same-machine deployment scenarios.
+using headless --print mode for reliable, stateless operation.
 """
 
-import json
+import hashlib
 import logging
 import os
 import subprocess
-import threading
 import time
-from enum import Enum
+import uuid
 from pathlib import Path
-from queue import Queue, Empty
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.plugins.base import AgentPlugin
 from src.plugins.exceptions import AgentException
@@ -22,467 +20,339 @@ from src.plugins.registry import register_agent
 logger = logging.getLogger(__name__)
 
 
-class ProcessState(Enum):
-    """States for the Claude Code subprocess lifecycle."""
-    STOPPED = "stopped"
-    STARTING = "starting"
-    READY = "ready"
-    BUSY = "busy"
-    ERROR = "error"
-    STOPPING = "stopping"
-
-
 @register_agent('claude-code-local')
 class ClaudeCodeLocalAgent(AgentPlugin):
-    """Claude Code agent running as local subprocess.
+    """Claude Code agent running in headless --print mode.
 
-    Spawns Claude Code CLI as a child process and communicates via
-    stdin/stdout pipes. Designed for same-machine deployment where
-    Obra and Claude Code run in the same environment (e.g., WSL2).
+    Uses subprocess.run() to execute Claude Code CLI with --print flag for
+    non-interactive, stateless operation. Session persistence is maintained
+    via --session-id flag.
 
     Key Features:
-    - Direct subprocess communication (no SSH overhead)
-    - Non-blocking I/O with thread-based output reading
-    - Process health monitoring and automatic recovery
-    - Graceful shutdown with fallback termination
+    - Stateless subprocess calls (no persistent process)
+    - Reliable completion detection (subprocess return)
+    - Session persistence via --session-id (optional)
+    - Dangerous mode for automated orchestration (bypasses permissions)
+    - Retry logic with exponential backoff
+    - Simple error handling (exit codes)
+    - Minimal resource usage
 
     Attributes:
         claude_command: Command to launch Claude Code CLI
         workspace_path: Path to workspace directory
-        startup_timeout: Seconds to wait for process startup
-        process: Subprocess.Popen instance
-        state: Current process state
+        session_id: UUID for session persistence across calls
+        response_timeout: Timeout in seconds for Claude responses
+        environment_vars: Environment variables for Claude subprocess
+        bypass_permissions: Enable dangerous mode (default: True for automation)
+        use_session_persistence: Reuse session ID (default: False, fresh per call)
     """
 
-    # Prompt indicator in Claude Code interactive mode
-    PROMPT_INDICATOR = "⏵⏵"
-
-    # Alternative prompt patterns
-    PROMPT_PATTERNS = [
-        "⏵⏵",
-        "> ",
-        "──────",  # Line separators that often appear before prompt
-    ]
-
-    # Error markers in Claude Code output
-    ERROR_MARKERS = [
-        "✗",
-        "Error:",
-        "Failed:",
-        "Exception:",
-    ]
-
-    # Rate limit markers
-    RATE_LIMIT_MARKERS = [
-        "rate limit",
-        "too many requests",
-        "try again later",
-    ]
-
     def __init__(self):
-        """Initialize the local Claude Code agent."""
-        self.claude_command: str = "claude"
+        """Initialize the local Claude Code agent (headless mode)."""
+        # Configuration attributes (set in initialize)
+        self.claude_command: str = 'claude'
         self.workspace_path: Optional[Path] = None
-        self.startup_timeout: int = 30
-        self.response_timeout: int = 300
+        self.session_id: Optional[str] = None
+        self.response_timeout: int = 60
+        self.environment_vars: Dict[str, str] = {}
 
-        self.process: Optional[subprocess.Popen] = None
-        self.state: ProcessState = ProcessState.STOPPED
-        self._lock = threading.RLock()
+        # Session management
+        self.use_session_persistence: bool = False  # Disabled by default (locks cause issues)
 
-        # Output reading threads and queues
-        self._stdout_queue: Queue = Queue()
-        self._stderr_queue: Queue = Queue()
-        self._stdout_thread: Optional[threading.Thread] = None
-        self._stderr_thread: Optional[threading.Thread] = None
-        self._stop_reading = threading.Event()
+        # Retry configuration for session-in-use errors
+        self.max_retries: int = 5  # More retries
+        self.retry_initial_delay: float = 2.0  # Start with 2s
+        self.retry_backoff: float = 1.5  # Exponential backoff multiplier
 
-        # Hook-based completion detection
-        self._completion_signal_file: Optional[Path] = None
-        self._completion_marker_count: int = 0
+        # Dangerous mode (bypass permissions for automated orchestration)
+        self.bypass_permissions: bool = True  # Enabled by default for Obra
 
-        logger.info("ClaudeCodeLocalAgent initialized")
+        logger.info('ClaudeCodeLocalAgent initialized (headless mode)')
 
     def initialize(self, config: Dict[str, Any]) -> None:
-        """Start Claude Code CLI subprocess.
+        """Initialize agent with configuration.
 
         Args:
             config: Configuration dict containing:
-                - workspace_path: Path to workspace directory (required)
-                - claude_command: Command to run (default: 'claude')
-                - startup_timeout: Seconds to wait for startup (default: 30)
-                - response_timeout: Seconds to wait for responses (default: 300)
+                - workspace_path or workspace_dir: Path to workspace directory (required)
+                - claude_command or command: Command to run (default: 'claude')
+                - response_timeout or timeout_response: Seconds to wait (default: 60)
+                - use_session_persistence: Reuse session ID (default: False)
+                - bypass_permissions: Enable dangerous mode (default: True)
+                Can also accept nested 'local' dict with these keys.
 
         Raises:
-            AgentException: If subprocess fails to start
+            AgentException: If configuration is invalid
         """
-        with self._lock:
-            if self.state != ProcessState.STOPPED:
-                logger.warning(f"Cannot initialize: agent already in state {self.state}")
-                return
+        # Handle nested config structure (agent.local.*)
+        if 'local' in config and isinstance(config['local'], dict):
+            config = config['local']
 
-            # Extract configuration
-            self.workspace_path = Path(config.get('workspace_path', '/tmp/claude-workspace'))
-            self.claude_command = config.get('claude_command', 'claude')
-            self.startup_timeout = config.get('startup_timeout', 30)
-            self.response_timeout = config.get('response_timeout', 300)
+        # Extract workspace path (support both workspace_path and workspace_dir)
+        workspace = config.get('workspace_path') or config.get('workspace_dir')
+        if not workspace:
+            raise AgentException(
+                'Missing required config: workspace_path or workspace_dir',
+                context={'config': config},
+                recovery='Provide workspace_path or workspace_dir in agent configuration'
+            )
 
-            # Ensure workspace exists
-            self.workspace_path.mkdir(parents=True, exist_ok=True)
+        self.workspace_path = Path(workspace)
 
-            # Set up hook configuration BEFORE starting Claude Code
-            # (Claude reads settings at startup)
-            self._prepare_completion_hook()
+        # Extract command (support both claude_command and command)
+        self.claude_command = config.get('claude_command') or config.get('command', 'claude')
 
-            logger.info(f"Starting Claude Code CLI: {self.claude_command}")
-            logger.info(f"Workspace: {self.workspace_path}")
+        # Extract timeout (support both response_timeout and timeout_response)
+        self.response_timeout = (
+            config.get('response_timeout') or
+            config.get('timeout_response', 60)
+        )
 
-            try:
-                self.state = ProcessState.STARTING
+        # Extract session persistence preference
+        self.use_session_persistence = config.get('use_session_persistence', False)
 
-                # Start subprocess with pipes
-                self.process = subprocess.Popen(
-                    [self.claude_command],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,  # Line buffered
-                    cwd=str(self.workspace_path),
-                )
+        # Extract bypass permissions preference (default: True for Obra)
+        self.bypass_permissions = config.get('bypass_permissions', True)
 
-                # Start output reading threads
-                self._stop_reading.clear()
-                self._stdout_thread = threading.Thread(
-                    target=self._read_output,
-                    args=(self.process.stdout, self._stdout_queue),
-                    daemon=True,
-                    name="claude-stdout-reader"
-                )
-                self._stderr_thread = threading.Thread(
-                    target=self._read_output,
-                    args=(self.process.stderr, self._stderr_queue),
-                    daemon=True,
-                    name="claude-stderr-reader"
-                )
+        # Generate unique session ID for context persistence (if enabled)
+        if self.use_session_persistence:
+            self.session_id = str(uuid.uuid4())
+            logger.info(f'Session persistence enabled: {self.session_id}')
+        else:
+            self.session_id = None  # Will generate per-call
+            logger.info('Session persistence disabled (fresh session per call)')
 
-                self._stdout_thread.start()
-                self._stderr_thread.start()
+        if self.bypass_permissions:
+            logger.info('Dangerous mode enabled - permissions bypassed for automation')
 
-                # Wait for startup (look for ready indicators)
-                if self._wait_for_ready():
-                    self.state = ProcessState.READY
-                    logger.info("Claude Code CLI started successfully")
-                else:
-                    self.state = ProcessState.ERROR
-                    raise AgentException(
-                        "Claude Code CLI failed to become ready",
-                        context={
-                            'command': self.claude_command,
-                            'timeout': self.startup_timeout,
-                        },
-                        recovery="Check that Claude Code CLI is installed and ANTHROPIC_API_KEY is set"
-                    )
+        # Create workspace directory if needed
+        self.workspace_path.mkdir(parents=True, exist_ok=True)
 
-            except FileNotFoundError:
-                self.state = ProcessState.ERROR
-                raise AgentException(
-                    f"Claude Code CLI not found: {self.claude_command}",
-                    context={'command': self.claude_command},
-                    recovery="Install Claude Code CLI or specify correct path in config"
-                )
-            except Exception as e:
-                self.state = ProcessState.ERROR
-                raise AgentException(
-                    f"Failed to start Claude Code CLI: {e}",
-                    context={'command': self.claude_command, 'error': str(e)},
-                    recovery="Check logs and ensure Claude Code CLI is properly configured"
-                )
-
-    def _read_output(self, stream, queue: Queue) -> None:
-        """Read lines from output stream and put in queue.
-
-        Runs in separate thread to avoid blocking on I/O.
-
-        Args:
-            stream: stdout or stderr stream from subprocess
-            queue: Queue to put lines into
-        """
-        try:
-            for line in iter(stream.readline, ''):
-                if self._stop_reading.is_set():
-                    break
-                queue.put(line.rstrip('\n'))
-        except Exception as e:
-            logger.error(f"Error reading output stream: {e}")
-        finally:
-            logger.debug("Output reading thread exiting")
-
-    def _wait_for_ready(self) -> bool:
-        """Wait for Claude Code to become ready after startup.
-
-        Claude Code in interactive mode doesn't output a traditional "ready" signal.
-        Instead, we verify the process started successfully and is stable.
-
-        Returns:
-            True if ready, False if timeout or crash
-        """
-        logger.info("Waiting for Claude Code process stability...")
-
-        # Wait for process to stabilize (2 seconds)
-        stability_wait = 2.0
-        check_interval = 0.2
-        checks = int(stability_wait / check_interval)
-
-        for i in range(checks):
-            # Check if process died
-            if self.process.poll() is not None:
-                exit_code = self.process.poll()
-                logger.error(f"Claude Code process exited during startup with code {exit_code}")
-
-                # Capture any error output
-                try:
-                    stderr_output = []
-                    while not self._stderr_queue.empty():
-                        stderr_output.append(self._stderr_queue.get_nowait())
-                    if stderr_output:
-                        logger.error(f"Error output: {' '.join(stderr_output)}")
-                except Empty:
-                    pass
-
-                return False
-
-            time.sleep(check_interval)
-
-            # Log progress every second
-            if (i + 1) % 5 == 0:
-                logger.debug(f"Process stability check {(i+1)//5}/{checks//5}")
-
-        # Process is alive and stable
-        logger.info("Claude Code process started and stable - ready for input")
-        return True
-
-    def _prepare_completion_hook(self) -> None:
-        """Prepare Claude Code Stop hook configuration BEFORE process starts.
-
-        Creates a completion signal file and writes hook configuration to
-        workspace settings.json. Claude Code will load this at startup and
-        write to the signal file when finishing each response.
-
-        Must be called before starting Claude Code process.
-        """
-        # Create unique completion signal file
-        pid = os.getpid()
-        self._completion_signal_file = Path(f"/tmp/obra_claude_completion_{pid}")
-        self._completion_signal_file.write_text("")  # Initialize empty
-        self._completion_marker_count = 0
-
-        logger.info(f"Created completion signal file: {self._completion_signal_file}")
-
-        # Create .claude directory in workspace
-        claude_dir = self.workspace_path / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-
-        # Configure Stop hook in settings.json
-        settings_file = claude_dir / "settings.json"
-
-        hook_config = {
-            "hooks": {
-                "Stop": [{
-                    "matcher": "*",
-                    "hooks": [{
-                        "type": "command",
-                        "command": f"echo 'COMPLETE' >> {self._completion_signal_file}"
-                    }]
-                }]
-            }
+        # Prepare environment variables
+        self.environment_vars = {
+            'DISABLE_AUTOUPDATER': '1',
+            'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': 'true',
+            'TERM': os.environ.get('TERM', 'xterm-256color'),
+            'PATH': os.environ.get('PATH', '')
         }
 
-        settings_file.write_text(json.dumps(hook_config, indent=2))
-        logger.info(f"Configured Stop hook in {settings_file}")
+        logger.info(
+            f'Initialized headless agent: workspace={self.workspace_path}, '
+            f'session={self.session_id}'
+        )
+
+    def _run_claude(self, args: List[str]) -> subprocess.CompletedProcess:
+        """Run claude command with timeout and error handling.
+
+        Args:
+            args: Arguments to pass to claude command
+
+        Returns:
+            CompletedProcess object with stdout, stderr, returncode
+
+        Raises:
+            AgentException: If command fails or times out
+        """
+        # Build full command
+        command = [self.claude_command] + args
+
+        # Prepare environment
+        env = os.environ.copy()
+        env.update(self.environment_vars)
+
+        try:
+            logger.debug(f'Running command: {" ".join(command)}')
+
+            # Run subprocess
+            result = subprocess.run(
+                command,
+                cwd=str(self.workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=self.response_timeout,
+                env=env,
+                check=False  # Don't raise on non-zero exit
+            )
+
+            return result
+
+        except subprocess.TimeoutExpired as e:
+            raise AgentException(
+                f'Timeout after {self.response_timeout}s',
+                context={
+                    'timeout': self.response_timeout,
+                    'command': command
+                },
+                recovery='Increase response_timeout in config'
+            )
+
+        except FileNotFoundError:
+            raise AgentException(
+                f'Claude command not found: {self.claude_command}',
+                context={'command': self.claude_command},
+                recovery='Install Claude Code CLI or specify correct path'
+            )
+
+        except Exception as e:
+            raise AgentException(
+                f'Failed to run claude: {e}',
+                context={'command': command, 'error': str(e)}
+            )
 
     def send_prompt(self, prompt: str, context: Optional[Dict] = None) -> str:
-        """Send prompt to Claude Code stdin and read response.
+        """Send prompt to Claude Code and return response.
+
+        Uses --print mode with --session-id for stateless operation with
+        optional context persistence. Implements retry logic for session-in-use errors.
 
         Args:
             prompt: The prompt text to send
-            context: Optional context dict (not used by subprocess agent)
+            context: Optional context dict (unused in headless mode)
 
         Returns:
             Complete response from Claude Code
 
         Raises:
-            AgentException: If agent is not ready or communication fails
+            AgentException: If Claude fails or returns error
         """
-        with self._lock:
-            if self.state != ProcessState.READY:
-                raise AgentException(
-                    f"Cannot send prompt: agent in state {self.state}",
-                    context={'state': self.state.value},
-                    recovery="Ensure agent is initialized and healthy"
-                )
-
-            if not self.process or self.process.poll() is not None:
-                raise AgentException(
-                    "Claude Code process is not running",
-                    recovery="Reinitialize agent to restart process"
-                )
-
-            try:
-                self.state = ProcessState.BUSY
-
-                logger.info(f"Sending prompt to Claude Code ({len(prompt)} chars)")
-                logger.debug(f"Prompt: {prompt[:100]}...")
-
-                # Write prompt to stdin
-                self.process.stdin.write(prompt + "\n")
-                self.process.stdin.flush()
-
-                # Read response until completion
-                response = self._read_response()
-
-                self.state = ProcessState.READY
-                logger.info(f"Received response ({len(response)} chars)")
-
-                return response
-
-            except Exception as e:
-                self.state = ProcessState.ERROR
-                raise AgentException(
-                    f"Failed to send prompt: {e}",
-                    context={'error': str(e)},
-                    recovery="Check process health and reinitialize if needed"
-                )
-
-    def _read_response(self) -> str:
-        """Read response from stdout until Stop hook signals completion.
-
-        Uses Claude Code's Stop hook which writes to a completion signal file
-        when Claude finishes responding. This provides definitive completion
-        detection without arbitrary timeouts.
-
-        Returns:
-            Complete response text
-
-        Raises:
-            AgentException: If process dies or rate limit detected
-        """
-        response_lines = []
-        start_time = time.time()
-
-        # Track starting marker count
-        starting_marker_count = self._completion_marker_count
-
-        logger.debug(f"Waiting for Stop hook signal (starting markers: {starting_marker_count})")
-
-        # Read output until hook signals completion
-        while time.time() - start_time < self.response_timeout:
-            # Check for new completion marker from hook
-            if self._completion_signal_file and self._completion_signal_file.exists():
-                content = self._completion_signal_file.read_text()
-                current_markers = content.count("COMPLETE")
-
-                if current_markers > starting_marker_count:
-                    # New completion marker detected!
-                    self._completion_marker_count = current_markers
-                    logger.info(f"Stop hook signaled completion (markers: {current_markers})")
-                    break
-
-            # Read any available output (non-blocking)
-            try:
-                line = self._stdout_queue.get(timeout=0.1)
-                response_lines.append(line)
-                logger.debug(f"Response line: {line}")
-
-                # Check for error markers
-                if any(marker in line for marker in self.ERROR_MARKERS):
-                    logger.warning(f"Error marker detected: {line}")
-                    # Continue reading to get full error message
-
-                # Check for rate limit
-                if any(marker in line.lower() for marker in self.RATE_LIMIT_MARKERS):
-                    raise AgentException(
-                        "Rate limit detected",
-                        context={'last_line': line},
-                        recovery="Wait before retrying"
-                    )
-
-            except Empty:
-                # No output right now, check process health
-                if self.process.poll() is not None:
-                    raise AgentException(
-                        "Claude Code process terminated during response",
-                        context={'exit_code': self.process.returncode},
-                        recovery="Check logs and reinitialize agent"
-                    )
-                continue
-
-        # Check for timeout
-        if time.time() - start_time >= self.response_timeout:
+        if self.workspace_path is None:
             raise AgentException(
-                f"Timeout waiting for Stop hook signal ({self.response_timeout}s)",
-                context={
-                    'partial_response': '\n'.join(response_lines),
-                    'markers_detected': self._completion_marker_count - starting_marker_count
-                },
-                recovery="Increase response_timeout or check if Stop hook is configured correctly"
+                'Agent not initialized',
+                recovery='Call initialize() before sending prompts'
             )
 
-        # Drain any remaining output in queue
-        try:
-            while True:
-                line = self._stdout_queue.get_nowait()
-                response_lines.append(line)
-        except Empty:
-            pass
+        # Generate session ID (fresh or persistent)
+        if self.use_session_persistence and self.session_id:
+            session_id = self.session_id  # Reuse session
+        else:
+            session_id = str(uuid.uuid4())  # Fresh session per call
+            logger.debug(f'Using fresh session: {session_id}')
 
-        return '\n'.join(response_lines)
+        # Build arguments for --print mode with session
+        args = ['--print', '--session-id', session_id]
+
+        # Add dangerous mode flag if enabled
+        if self.bypass_permissions:
+            args.append('--dangerously-skip-permissions')
+
+        # Add prompt as final argument
+        args.append(prompt)
+
+        logger.info(
+            f'Sending prompt ({len(prompt)} chars) with session {session_id[:8]}...'
+        )
+        logger.debug(f'Prompt: {prompt[:100]}...')
+
+        # Retry logic for session-in-use errors
+        retry_delay = self.retry_initial_delay
+
+        for attempt in range(self.max_retries):
+            # Execute command
+            result = self._run_claude(args)
+
+            # Check result
+            if result.returncode == 0:
+                # Success!
+                response = result.stdout.strip()
+
+                if attempt > 0:
+                    logger.info(
+                        f'Received response ({len(response)} chars) '
+                        f'after {attempt + 1} attempts'
+                    )
+                else:
+                    logger.info(f'Received response ({len(response)} chars)')
+
+                logger.debug(f'Response: {response[:100]}...')
+                return response
+
+            # Check if it's a session-in-use error
+            if 'already in use' in result.stderr.lower():
+                if attempt < self.max_retries - 1:
+                    logger.warning(
+                        f'Session {self.session_id} in use, '
+                        f'retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{self.max_retries})'
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= self.retry_backoff  # Exponential backoff
+                    continue
+                else:
+                    raise AgentException(
+                        f'Session still in use after {self.max_retries} retries',
+                        context={
+                            'session_id': self.session_id,
+                            'stderr': result.stderr,
+                            'total_wait_time': sum(
+                                self.retry_initial_delay * (self.retry_backoff ** i)
+                                for i in range(self.max_retries - 1)
+                            )
+                        },
+                        recovery='Wait longer between calls or use fresh sessions'
+                    )
+
+            # Other error - fail immediately
+            raise AgentException(
+                f'Claude failed with exit code {result.returncode}',
+                context={
+                    'exit_code': result.returncode,
+                    'stderr': result.stderr,
+                    'stdout': result.stdout[:500] if result.stdout else None
+                },
+                recovery='Check Claude Code logs and ensure API key is set'
+            )
+
+        # Should never reach here, but just in case
+        raise AgentException('Unexpected error in send_prompt retry loop')
 
     def is_healthy(self) -> bool:
-        """Check if Claude Code process is running and responsive.
+        """Check if Claude Code is available and responsive.
+
+        Tests Claude availability by running a simple command.
 
         Returns:
-            True if healthy, False otherwise
+            True if Claude is available, False otherwise
         """
-        with self._lock:
-            # Check state
-            if self.state in [ProcessState.STOPPED, ProcessState.ERROR]:
-                return False
+        if not self.workspace_path:
+            return False
 
-            # Check process is alive
-            if not self.process or self.process.poll() is not None:
-                logger.warning("Claude Code process is not running")
-                self.state = ProcessState.ERROR
-                return False
+        try:
+            # Try to get version (quick test)
+            result = subprocess.run(
+                [self.claude_command, '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False
+            )
 
-            # Check threads are alive
-            if self._stdout_thread and not self._stdout_thread.is_alive():
-                logger.warning("stdout reader thread died")
-                return False
+            return result.returncode == 0
 
-            if self._stderr_thread and not self._stderr_thread.is_alive():
-                logger.warning("stderr reader thread died")
-                return False
-
-            return True
+        except Exception as e:
+            logger.debug(f'Health check failed: {e}')
+            return False
 
     def get_status(self) -> Dict[str, Any]:
         """Get current agent status.
 
         Returns:
-            Dict with status information
+            Dict with status information including:
+                - agent_type: 'claude-code-local'
+                - mode: 'headless'
+                - session_id: Current session UUID
+                - workspace: Workspace path
+                - command: Claude command
+                - healthy: Health check result
         """
-        with self._lock:
-            return {
-                'agent_type': 'claude-code-local',
-                'state': self.state.value,
-                'healthy': self.is_healthy(),
-                'pid': self.process.pid if self.process else None,
-                'workspace': str(self.workspace_path) if self.workspace_path else None,
-                'command': self.claude_command,
-            }
+        return {
+            'agent_type': 'claude-code-local',
+            'mode': 'headless',
+            'session_id': self.session_id,
+            'workspace': str(self.workspace_path) if self.workspace_path else None,
+            'command': self.claude_command,
+            'healthy': self.is_healthy()
+        }
 
-    def get_workspace_files(self) -> list:
+    def get_workspace_files(self) -> List[Path]:
         """Get list of all files in agent's workspace.
 
         Returns:
@@ -500,15 +370,19 @@ class ClaudeCodeLocalAgent(AgentPlugin):
                 if item.is_file():
                     # Skip common ignore patterns
                     parts = item.parts
-                    if any(p in parts for p in ['.git', '__pycache__', 'node_modules', '.venv', 'venv']):
+                    if any(
+                        p in parts
+                        for p in ['.git', '__pycache__', 'node_modules', '.venv', 'venv']
+                    ):
                         continue
                     files.append(item)
             return files
+
         except Exception as e:
             raise AgentException(
-                f"Failed to list workspace files: {e}",
+                f'Failed to list workspace files: {e}',
                 context={'workspace': str(self.workspace_path)},
-                recovery="Check workspace path and permissions"
+                recovery='Check workspace path and permissions'
             )
 
     def read_file(self, path: Path) -> str:
@@ -526,6 +400,11 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         """
         # Make path absolute if relative
         if not path.is_absolute():
+            if not self.workspace_path:
+                raise AgentException(
+                    'Agent not initialized',
+                    recovery='Call initialize() before reading files'
+                )
             path = self.workspace_path / path
 
         try:
@@ -534,9 +413,9 @@ class ClaudeCodeLocalAgent(AgentPlugin):
             raise
         except Exception as e:
             raise AgentException(
-                f"Failed to read file: {e}",
+                f'Failed to read file: {e}',
                 context={'path': str(path)},
-                recovery="Check file path and permissions"
+                recovery='Check file path and permissions'
             )
 
     def write_file(self, path: Path, content: str) -> None:
@@ -551,6 +430,11 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         """
         # Make path absolute if relative
         if not path.is_absolute():
+            if not self.workspace_path:
+                raise AgentException(
+                    'Agent not initialized',
+                    recovery='Call initialize() before writing files'
+                )
             path = self.workspace_path / path
 
         try:
@@ -559,28 +443,25 @@ class ClaudeCodeLocalAgent(AgentPlugin):
             path.write_text(content)
         except Exception as e:
             raise AgentException(
-                f"Failed to write file: {e}",
+                f'Failed to write file: {e}',
                 context={'path': str(path)},
-                recovery="Check file path and permissions"
+                recovery='Check file path and permissions'
             )
 
-    def get_file_changes(self, since: Optional[float] = None) -> list:
+    def get_file_changes(self, since: Optional[float] = None) -> List[Dict]:
         """Get files modified since timestamp.
 
         Args:
-            since: Unix timestamp, or None for all changes since last check
+            since: Unix timestamp, or None for all files
 
         Returns:
             List of dictionaries with keys:
-                - 'path': Path object for changed file
-                - 'change_type': 'created', 'modified', or 'deleted'
-                - 'timestamp': Unix timestamp of change
-                - 'hash': File content hash (for change detection)
+                - 'path': Path object for file
+                - 'change_type': 'modified' (simplified detection)
+                - 'timestamp': Unix timestamp of modification
+                - 'hash': SHA256 hash of file contents
                 - 'size': File size in bytes
         """
-        # For local agent, we track file changes by modification time
-        import hashlib
-
         changes = []
 
         if not self.workspace_path or not self.workspace_path.exists():
@@ -604,73 +485,21 @@ class ClaudeCodeLocalAgent(AgentPlugin):
 
                 changes.append({
                     'path': file_path,
-                    'change_type': 'modified',  # Simplified - assumes modified
+                    'change_type': 'modified',
                     'timestamp': mtime,
                     'hash': file_hash,
                     'size': stat.st_size
                 })
 
             return changes
+
         except Exception as e:
-            logger.error(f"Error getting file changes: {e}")
+            logger.error(f'Error getting file changes: {e}')
             return []
 
     def cleanup(self) -> None:
-        """Gracefully shutdown Claude Code process.
+        """Clean up agent resources.
 
-        Attempts graceful shutdown (SIGINT), then SIGTERM, then SIGKILL.
+        Headless mode has no persistent process, so cleanup is a no-op.
         """
-        with self._lock:
-            if self.state == ProcessState.STOPPED:
-                return
-
-            logger.info("Cleaning up Claude Code agent")
-            self.state = ProcessState.STOPPING
-
-            # Stop reading threads
-            self._stop_reading.set()
-
-            if self.process:
-                try:
-                    # Try graceful shutdown first (Ctrl+C)
-                    logger.info("Sending SIGINT to Claude Code process")
-                    self.process.send_signal(subprocess.signal.SIGINT)
-
-                    # Wait up to 5s for graceful exit
-                    try:
-                        self.process.wait(timeout=5)
-                        logger.info("Claude Code exited gracefully")
-                    except subprocess.TimeoutExpired:
-                        # Force terminate
-                        logger.warning("Graceful shutdown timeout, terminating")
-                        self.process.terminate()
-
-                        try:
-                            self.process.wait(timeout=3)
-                        except subprocess.TimeoutExpired:
-                            # Last resort: kill
-                            logger.error("Terminate timeout, killing process")
-                            self.process.kill()
-                            self.process.wait()
-
-                except Exception as e:
-                    logger.error(f"Error during cleanup: {e}")
-                finally:
-                    self.process = None
-
-            # Wait for threads to finish
-            if self._stdout_thread:
-                self._stdout_thread.join(timeout=2.0)
-            if self._stderr_thread:
-                self._stderr_thread.join(timeout=2.0)
-
-            # Clean up completion signal file
-            if self._completion_signal_file and self._completion_signal_file.exists():
-                try:
-                    self._completion_signal_file.unlink()
-                    logger.debug(f"Removed completion signal file: {self._completion_signal_file}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove signal file: {e}")
-
-            self.state = ProcessState.STOPPED
-            logger.info("Claude Code agent cleanup complete")
+        logger.info('Cleanup complete - headless mode requires no process management')

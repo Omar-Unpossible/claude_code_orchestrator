@@ -117,6 +117,25 @@ class Orchestrator:
 
         logger.info("Orchestrator created")
 
+    def _print_obra(self, message: str, prefix: str = "[OBRA]") -> None:
+        """Print Obra action/status with colored prefix.
+
+        Args:
+            message: Message to display
+            prefix: Prefix to use (default: [OBRA], can be [OBRA→CLAUDE])
+        """
+        # Blue color for Obra output
+        print(f"\033[34m{prefix}\033[0m {message}")
+
+    def _print_qwen(self, message: str) -> None:
+        """Print Qwen validation output with colored [QWEN] prefix.
+
+        Args:
+            message: Message to display
+        """
+        # Yellow color for Qwen output
+        print(f"\033[33m[QWEN]\033[0m {message}")
+
     def initialize(self) -> None:
         """Initialize all components.
 
@@ -203,7 +222,13 @@ class Orchestrator:
     def _initialize_agent(self) -> None:
         """Initialize agent from registry."""
         agent_type = self.config.get('agent.type', 'mock')
-        agent_config = self.config.get('agent.config', {})
+
+        # Get agent config - try agent.config first (nested), then entire agent dict
+        agent_config = self.config.get('agent.config')
+        if agent_config is None:
+            # Fall back to entire agent section (excluding 'type')
+            agent_config = self.config.get('agent', {}).copy()
+            agent_config.pop('type', None)  # Remove type field
 
         try:
             agent_class = AgentRegistry.get(agent_type)
@@ -316,10 +341,12 @@ class Orchestrator:
             self._iteration_count += 1
 
             logger.info(f"Iteration {iteration}/{max_iterations}")
+            self._print_obra(f"Starting iteration {iteration}/{max_iterations}")
 
             try:
                 # 1. Build context
                 context = self._build_context(accumulated_context)
+                self._print_obra(f"Built context ({len(context)} chars)")
 
                 # 2. Generate prompt
                 prompt = self.prompt_generator.generate_prompt(
@@ -329,13 +356,16 @@ class Orchestrator:
 
                 # 3. Send to agent
                 logger.info("Sending prompt to agent...")
+                self._print_obra(f"Sending prompt to Claude Code...", "[OBRA→CLAUDE]")
                 response = self.agent.send_prompt(prompt, context={'task_id': self.current_task.id})
+                self._print_obra(f"Response received ({len(response)} chars)")
 
                 # 4. Validate response
                 is_valid = self.response_validator.validate_format(
                     response,
                     expected_format='markdown'
                 )
+                self._print_obra(f"Validation: {'✓' if is_valid else '✗'}")
 
                 if not is_valid:
                     logger.warning(f"Invalid response format")
@@ -347,11 +377,13 @@ class Orchestrator:
                     continue
 
                 # 5. Quality control
+                self._print_qwen("Validating response...")
                 quality_result = self.quality_controller.validate_output(
                     response,
                     self.current_task,
                     {'language': 'python'}
                 )
+                self._print_qwen(f"  Quality: {quality_result.overall_score:.2f} ({quality_result.gate.name})")
 
                 # 6. Confidence scoring
                 confidence = self.confidence_scorer.score_response(
@@ -359,6 +391,7 @@ class Orchestrator:
                     self.current_task,
                     {'validation': is_valid, 'quality': quality_result}
                 )
+                self._print_qwen(f"  Confidence: {confidence:.2f}")
 
                 # 7. Decision making
                 decision_context = {
@@ -372,6 +405,7 @@ class Orchestrator:
                 action = self.decision_engine.decide_next_action(decision_context)
 
                 logger.info(f"Decision: {action.type} (confidence: {action.confidence:.2f})")
+                self._print_obra(f"Decision: {action.type}")
 
                 # 8. Handle decision
                 if action.type == DecisionEngine.ACTION_PROCEED:

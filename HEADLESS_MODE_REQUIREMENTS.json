@@ -1,0 +1,376 @@
+{
+  "document_type": "llm_optimized_requirements",
+  "version": "1.0.0",
+  "target_file": "src/agents/claude_code_local.py",
+  "implementation_mode": "rewrite",
+
+  "interface_contract": {
+    "class_name": "ClaudeCodeLocalAgent",
+    "inherits": "AgentPlugin",
+    "decorator": "@register_agent('claude-code-local')",
+    "required_methods": {
+      "initialize": {
+        "signature": "def initialize(self, config: Dict[str, Any]) -> None",
+        "params": {"config": "Configuration dictionary"},
+        "returns": "None",
+        "raises": ["AgentException"],
+        "must_extract_from_config": ["workspace_path", "claude_command?", "response_timeout?"],
+        "must_perform": [
+          "Extract workspace_path from config (required)",
+          "Extract claude_command from config (default: 'claude')",
+          "Extract response_timeout from config (default: 60)",
+          "Generate session_id as UUID v4 string",
+          "Create workspace directory if not exists",
+          "Prepare environment variables dict with DISABLE_AUTOUPDATER=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=true"
+        ]
+      },
+      "send_prompt": {
+        "signature": "def send_prompt(self, prompt: str, context: Optional[Dict] = None) -> str",
+        "params": {"prompt": "Prompt text to send", "context": "Optional context dict (unused)"},
+        "returns": "Response text from Claude",
+        "raises": ["AgentException"],
+        "must_perform": [
+          "Build command: [self.claude_command, '--print', '--session-id', self.session_id, prompt]",
+          "Call self._run_claude() helper with command",
+          "Check result.returncode == 0",
+          "Return result.stdout.strip() if success",
+          "Raise AgentException with stderr if failure"
+        ]
+      },
+      "is_healthy": {
+        "signature": "def is_healthy(self) -> bool",
+        "params": {},
+        "returns": "True if Claude available and responsive, False otherwise",
+        "must_perform": [
+          "Try to call _run_claude(['--version']) or similar",
+          "Return True if succeeds",
+          "Return False if any exception"
+        ],
+        "must_not_raise": "Catch all exceptions and return False"
+      },
+      "get_status": {
+        "signature": "def get_status(self) -> Dict[str, Any]",
+        "params": {},
+        "returns": "Status dictionary",
+        "must_return_keys": ["agent_type", "mode", "session_id", "workspace", "command", "healthy"]
+      },
+      "get_workspace_files": {
+        "signature": "def get_workspace_files(self) -> List[Path]",
+        "params": {},
+        "returns": "List of Path objects for all workspace files",
+        "raises": ["AgentException"],
+        "must_perform": [
+          "Use pathlib to recursively find all files in workspace_path",
+          "Filter out: .git, __pycache__, node_modules, .venv, venv directories",
+          "Return list of Path objects"
+        ]
+      },
+      "read_file": {
+        "signature": "def read_file(self, path: Path) -> str",
+        "params": {"path": "Path to file (relative to workspace or absolute)"},
+        "returns": "File contents as string",
+        "raises": ["FileNotFoundError", "AgentException"],
+        "must_perform": [
+          "If path is relative, resolve against workspace_path",
+          "Read file with path.read_text()",
+          "Return contents"
+        ]
+      },
+      "write_file": {
+        "signature": "def write_file(self, path: Path, content: str) -> None",
+        "params": {"path": "Path to file", "content": "Content to write"},
+        "returns": "None",
+        "raises": ["AgentException"],
+        "must_perform": [
+          "If path is relative, resolve against workspace_path",
+          "Create parent directories if needed (path.parent.mkdir(parents=True, exist_ok=True))",
+          "Write content with path.write_text(content)"
+        ]
+      },
+      "get_file_changes": {
+        "signature": "def get_file_changes(self, since: Optional[float] = None) -> List[Dict]",
+        "params": {"since": "Unix timestamp or None for all"},
+        "returns": "List of change dictionaries",
+        "must_return_dict_keys": ["path", "change_type", "timestamp", "hash", "size"],
+        "must_perform": [
+          "Get all workspace files",
+          "For each file, get stat info",
+          "If since provided, filter by mtime >= since",
+          "Calculate SHA256 hash of file contents",
+          "Return list of dicts with path, change_type, timestamp, hash, size"
+        ]
+      },
+      "cleanup": {
+        "signature": "def cleanup(self) -> None",
+        "params": {},
+        "returns": "None",
+        "must_perform": [
+          "Log cleanup message",
+          "No process to kill (headless mode is stateless)"
+        ]
+      }
+    },
+    "helper_methods": {
+      "_run_claude": {
+        "signature": "def _run_claude(self, args: List[str]) -> subprocess.CompletedProcess",
+        "visibility": "private",
+        "params": {"args": "Arguments to pass to claude command"},
+        "returns": "CompletedProcess object",
+        "raises": ["AgentException"],
+        "must_perform": [
+          "Build full command: [self.claude_command] + args",
+          "Prepare environment: os.environ.copy() updated with self.environment_vars",
+          "Call subprocess.run(command, cwd=self.workspace_path, capture_output=True, text=True, timeout=self.response_timeout, env=env, check=False)",
+          "Return CompletedProcess object"
+        ],
+        "error_handling": {
+          "TimeoutExpired": "Raise AgentException('Timeout after Xs', context={'timeout': X}, recovery='Increase response_timeout')",
+          "FileNotFoundError": "Raise AgentException('claude command not found', context={'command': self.claude_command}, recovery='Install Claude Code CLI')",
+          "Any other": "Raise AgentException with original error message and traceback"
+        }
+      }
+    }
+  },
+
+  "class_attributes": {
+    "required": {
+      "claude_command": {"type": "str", "init_value": "None", "set_in": "initialize()"},
+      "workspace_path": {"type": "Path | None", "init_value": "None", "set_in": "initialize()"},
+      "session_id": {"type": "str", "init_value": "None", "set_in": "initialize()", "generation": "str(uuid.uuid4())"},
+      "response_timeout": {"type": "int", "init_value": "60", "set_in": "initialize()"},
+      "environment_vars": {"type": "Dict[str, str]", "init_value": "{}", "set_in": "initialize()"}
+    },
+    "removed_from_pty_version": [
+      "process",
+      "process_dimensions",
+      "state",
+      "_lock",
+      "_completion_signal_file",
+      "_completion_marker_count",
+      "startup_timeout"
+    ]
+  },
+
+  "imports_required": {
+    "standard_library": [
+      "import logging",
+      "import os",
+      "import subprocess",
+      "import uuid",
+      "from pathlib import Path",
+      "from typing import Any, Dict, List, Optional",
+      "import hashlib",
+      "import time"
+    ],
+    "project_imports": [
+      "from src.plugins.base import AgentPlugin",
+      "from src.plugins.exceptions import AgentException",
+      "from src.plugins.registry import register_agent"
+    ],
+    "removed_imports": [
+      "import pexpect",
+      "import signal",
+      "import threading",
+      "from enum import Enum",
+      "from queue import Queue, Empty"
+    ]
+  },
+
+  "implementation_details": {
+    "__init__": {
+      "code_structure": [
+        "def __init__(self):",
+        "    # Initialize attributes to None/defaults",
+        "    self.claude_command: str = 'claude'",
+        "    self.workspace_path: Optional[Path] = None",
+        "    self.session_id: Optional[str] = None",
+        "    self.response_timeout: int = 60",
+        "    self.environment_vars: Dict[str, str] = {}",
+        "    ",
+        "    logger.info('ClaudeCodeLocalAgent initialized (headless mode)')"
+      ]
+    },
+    "initialize": {
+      "code_structure": [
+        "def initialize(self, config: Dict[str, Any]) -> None:",
+        "    # Extract configuration",
+        "    self.workspace_path = Path(config.get('workspace_path', '/tmp/claude-workspace'))",
+        "    self.claude_command = config.get('claude_command', 'claude')",
+        "    self.response_timeout = config.get('response_timeout', 60)",
+        "    ",
+        "    # Generate session ID",
+        "    self.session_id = str(uuid.uuid4())",
+        "    ",
+        "    # Create workspace",
+        "    self.workspace_path.mkdir(parents=True, exist_ok=True)",
+        "    ",
+        "    # Prepare environment variables",
+        "    self.environment_vars = {",
+        "        'DISABLE_AUTOUPDATER': '1',",
+        "        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': 'true',",
+        "        'TERM': os.environ.get('TERM', 'xterm-256color'),",
+        "        'PATH': os.environ.get('PATH', '')",
+        "    }",
+        "    ",
+        "    logger.info(f'Initialized headless agent: workspace={self.workspace_path}, session={self.session_id}')"
+      ]
+    },
+    "_run_claude": {
+      "code_structure": [
+        "def _run_claude(self, args: List[str]) -> subprocess.CompletedProcess:",
+        "    # Build command",
+        "    command = [self.claude_command] + args",
+        "    ",
+        "    # Prepare environment",
+        "    env = os.environ.copy()",
+        "    env.update(self.environment_vars)",
+        "    ",
+        "    try:",
+        "        # Run subprocess",
+        "        result = subprocess.run(",
+        "            command,",
+        "            cwd=str(self.workspace_path),",
+        "            capture_output=True,",
+        "            text=True,",
+        "            timeout=self.response_timeout,",
+        "            env=env,",
+        "            check=False  # Don't raise on non-zero exit",
+        "        )",
+        "        return result",
+        "        ",
+        "    except subprocess.TimeoutExpired as e:",
+        "        raise AgentException(",
+        "            f'Timeout after {self.response_timeout}s',",
+        "            context={'timeout': self.response_timeout, 'command': command},",
+        "            recovery='Increase response_timeout in config'",
+        "        )",
+        "    except FileNotFoundError:",
+        "        raise AgentException(",
+        "            f'Claude command not found: {self.claude_command}',",
+        "            context={'command': self.claude_command},",
+        "            recovery='Install Claude Code CLI or specify correct path'",
+        "        )",
+        "    except Exception as e:",
+        "        raise AgentException(",
+        "            f'Failed to run claude: {e}',",
+        "            context={'command': command, 'error': str(e)}",
+        "        )"
+      ]
+    },
+    "send_prompt": {
+      "code_structure": [
+        "def send_prompt(self, prompt: str, context: Optional[Dict] = None) -> str:",
+        "    # Build arguments",
+        "    args = ['--print', '--session-id', self.session_id, prompt]",
+        "    ",
+        "    logger.info(f'Sending prompt ({len(prompt)} chars) with session {self.session_id}')",
+        "    ",
+        "    # Execute",
+        "    result = self._run_claude(args)",
+        "    ",
+        "    # Check result",
+        "    if result.returncode != 0:",
+        "        raise AgentException(",
+        "            f'Claude failed with exit code {result.returncode}',",
+        "            context={'exit_code': result.returncode, 'stderr': result.stderr},",
+        "            recovery='Check Claude Code logs and ensure API key is set'",
+        "        )",
+        "    ",
+        "    response = result.stdout.strip()",
+        "    logger.info(f'Received response ({len(response)} chars)')",
+        "    return response"
+      ]
+    }
+  },
+
+  "testing_requirements": {
+    "unit_tests": [
+      {
+        "test_name": "test_initialize",
+        "verify": ["workspace_path set", "session_id generated (UUID format)", "environment_vars populated"]
+      },
+      {
+        "test_name": "test_send_prompt_success",
+        "setup": "Mock subprocess.run to return success",
+        "verify": ["Returns stdout", "Called with correct args", "session_id in command"]
+      },
+      {
+        "test_name": "test_send_prompt_timeout",
+        "setup": "Mock subprocess.run to raise TimeoutExpired",
+        "verify": ["Raises AgentException", "Exception contains timeout info"]
+      },
+      {
+        "test_name": "test_send_prompt_error",
+        "setup": "Mock subprocess.run to return non-zero exit code",
+        "verify": ["Raises AgentException", "Exception contains stderr"]
+      },
+      {
+        "test_name": "test_is_healthy",
+        "verify": ["Returns True when Claude available", "Returns False when Claude unavailable"]
+      },
+      {
+        "test_name": "test_file_operations",
+        "verify": ["get_workspace_files lists files", "read_file reads content", "write_file writes content"]
+      }
+    ],
+    "integration_tests": [
+      {
+        "test_name": "test_real_claude_interaction",
+        "requires": "Claude Code installed",
+        "steps": [
+          "Initialize agent with real workspace",
+          "Send simple prompt: 'Say hello'",
+          "Verify response received",
+          "Verify response contains expected content"
+        ]
+      }
+    ]
+  },
+
+  "code_quality_requirements": {
+    "must_have": [
+      "Type hints on all method signatures",
+      "Google-style docstrings on all public methods",
+      "Logging at INFO level for major operations",
+      "Logging at DEBUG level for detailed info",
+      "All exceptions wrapped in AgentException with context",
+      "No bare except clauses (catch specific exceptions)"
+    ],
+    "code_style": {
+      "max_line_length": 100,
+      "max_method_length": 50,
+      "naming": "snake_case for methods, UPPER_CASE for constants"
+    }
+  },
+
+  "backwards_compatibility": {
+    "interface_changes": "None - all AgentPlugin methods preserved",
+    "config_changes": "None - same config keys accepted",
+    "breaking_changes": "None - drop-in replacement"
+  },
+
+  "performance_targets": {
+    "send_prompt_latency": "< 5s for simple prompts",
+    "memory_usage": "minimal (no persistent process)",
+    "cpu_usage": "low (subprocess overhead only)"
+  },
+
+  "implementation_checklist": [
+    "✓ Remove pexpect and threading imports",
+    "✓ Add subprocess and uuid imports",
+    "✓ Rewrite __init__ to initialize headless attributes",
+    "✓ Rewrite initialize to generate session_id and setup environment",
+    "✓ Implement _run_claude helper with subprocess.run()",
+    "✓ Rewrite send_prompt to use --print --session-id",
+    "✓ Simplify is_healthy to test Claude availability",
+    "✓ Update get_status to return headless mode info",
+    "✓ Keep file operation methods unchanged",
+    "✓ Simplify cleanup to no-op",
+    "✓ Add docstrings to all methods",
+    "✓ Add type hints to all methods",
+    "✓ Add logging statements",
+    "✓ Write unit tests",
+    "✓ Run integration tests",
+    "✓ Update documentation"
+  ]
+}

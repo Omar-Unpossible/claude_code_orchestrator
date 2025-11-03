@@ -1,0 +1,471 @@
+{
+  "plan_id": "headless_mode_implementation",
+  "date": "2025-11-02",
+  "status": "planning",
+  "objective": "Replace PTY-based ClaudeCodeLocalAgent with headless --print mode implementation",
+
+  "context": {
+    "problem": "PTY interactive mode hangs in automated contexts due to Claude Code Issue #1072 and Ink UI raw mode requirements",
+    "tests_performed": [
+      "pexpect PTY - FAILED (hangs on 'Checking for updates')",
+      "script wrapper - FAILED (same hang)",
+      "Environment variables (DISABLE_AUTOUPDATER, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) - FAILED (removed update message but still hangs on 'Thinking')",
+      "Low-level pty.openpty() + tty.setraw() - FAILED (proper raw mode but still hangs)",
+      "claude --print mode - SUCCESS (instant response <3s)"
+    ],
+    "decision": "Use --print mode with --session-id for context persistence",
+    "current_code_status": {
+      "file": "src/agents/claude_code_local.py",
+      "lines": 677,
+      "approach": "PTY with pexpect, threading, hooks",
+      "status": "non-functional (blocked by Claude Code bug)"
+    }
+  },
+
+  "requirements": {
+    "functional": {
+      "must_have": [
+        "Send prompt to Claude Code and receive complete response",
+        "Execute in isolated workspace directory",
+        "Maintain conversation context across multiple calls",
+        "Detect task completion reliably",
+        "Handle errors and timeouts gracefully",
+        "Support all AgentPlugin interface methods",
+        "Read and write workspace files",
+        "List workspace files with filtering",
+        "Track file changes since timestamp",
+        "Health checking",
+        "Graceful cleanup"
+      ],
+      "should_have": [
+        "Configurable timeouts per operation",
+        "Environment variable support for Claude configuration",
+        "Exit code validation",
+        "stderr capture for error detection"
+      ],
+      "nice_to_have": [
+        "Progress indication during long operations",
+        "Partial response handling if timeout occurs"
+      ]
+    },
+    "non_functional": {
+      "performance": {
+        "response_time": "< 5 seconds for simple prompts",
+        "timeout_default": "60 seconds",
+        "startup_overhead": "minimal (subprocess spawn only)"
+      },
+      "reliability": {
+        "error_handling": "All subprocess errors caught and wrapped in AgentException",
+        "cleanup": "Guaranteed process cleanup on exit/error",
+        "idempotency": "Multiple calls with same session-id safe"
+      },
+      "maintainability": {
+        "code_lines": "< 250 lines",
+        "complexity": "low (no threading, no async I/O)",
+        "dependencies": "stdlib only (subprocess, pathlib, uuid)"
+      }
+    }
+  },
+
+  "architecture": {
+    "approach": "subprocess.run() with claude --print --session-id",
+    "key_components": {
+      "ClaudeCodeLocalAgent": {
+        "type": "class",
+        "inherits": "AgentPlugin",
+        "registration": "@register_agent('claude-code-local')",
+        "attributes": {
+          "claude_command": {"type": "str", "default": "claude", "description": "Command to execute Claude CLI"},
+          "workspace_path": {"type": "Path", "required": true, "description": "Workspace directory path"},
+          "session_id": {"type": "str", "generated": "uuid.uuid4()", "description": "UUID for session persistence"},
+          "response_timeout": {"type": "int", "default": 60, "description": "Timeout in seconds for Claude responses"},
+          "environment_vars": {"type": "Dict[str, str]", "description": "Environment variables for Claude process"}
+        },
+        "methods": {
+          "initialize": {
+            "params": ["config: Dict[str, Any]"],
+            "returns": "None",
+            "description": "Extract config, create workspace, generate session_id, set environment vars"
+          },
+          "send_prompt": {
+            "params": ["prompt: str", "context: Optional[Dict] = None"],
+            "returns": "str",
+            "description": "Execute claude --print --session-id <uuid> <prompt> and return stdout"
+          },
+          "_run_claude": {
+            "params": ["args: List[str]"],
+            "returns": "subprocess.CompletedProcess",
+            "description": "Internal: Run claude command with timeout and error handling"
+          },
+          "is_healthy": {
+            "params": [],
+            "returns": "bool",
+            "description": "Test Claude availability with simple --print call"
+          },
+          "get_status": {
+            "params": [],
+            "returns": "Dict[str, Any]",
+            "description": "Return agent type, workspace, session_id, health status"
+          },
+          "get_workspace_files": {
+            "params": [],
+            "returns": "List[Path]",
+            "description": "Recursively list all files in workspace (skip .git, __pycache__, etc)"
+          },
+          "read_file": {
+            "params": ["path: Path"],
+            "returns": "str",
+            "description": "Read file from workspace (resolve relative paths)"
+          },
+          "write_file": {
+            "params": ["path: Path", "content: str"],
+            "returns": "None",
+            "description": "Write file to workspace (create dirs if needed)"
+          },
+          "get_file_changes": {
+            "params": ["since: Optional[float] = None"],
+            "returns": "List[Dict]",
+            "description": "Get files modified after timestamp with hash/size info"
+          },
+          "cleanup": {
+            "params": [],
+            "returns": "None",
+            "description": "No-op for headless mode (no persistent process)"
+          }
+        }
+      }
+    },
+    "data_flow": {
+      "prompt_execution": [
+        "User calls send_prompt(prompt, context)",
+        "Build command: ['claude', '--print', '--session-id', session_id, prompt]",
+        "Execute subprocess.run() with cwd=workspace_path, timeout=response_timeout",
+        "Capture stdout (response) and stderr (errors)",
+        "Check exit code (0 = success, non-zero = error)",
+        "Return stdout if success, raise AgentException if error",
+        "StateManager logs interaction"
+      ],
+      "error_handling": [
+        "subprocess.TimeoutExpired → AgentException with timeout context",
+        "subprocess.CalledProcessError → AgentException with exit code + stderr",
+        "FileNotFoundError (claude not found) → AgentException with installation hint",
+        "Any other exception → AgentException with traceback"
+      ]
+    }
+  },
+
+  "implementation_phases": {
+    "phase_1_rollback": {
+      "description": "Remove PTY implementation and dependencies",
+      "tasks": [
+        {
+          "task": "Create backup of current claude_code_local.py",
+          "file": "src/agents/claude_code_local.py.pty_backup",
+          "action": "copy"
+        },
+        {
+          "task": "Remove pexpect from setup.py dependencies",
+          "file": "setup.py",
+          "action": "edit",
+          "details": "Remove 'pexpect>=4.9.0' from install_requires list"
+        },
+        {
+          "task": "Remove hook configuration code",
+          "rationale": "Headless mode doesn't support hooks - completion detected by subprocess return"
+        },
+        {
+          "task": "Remove threading and Queue imports",
+          "rationale": "No longer needed for headless mode"
+        }
+      ]
+    },
+    "phase_2_implementation": {
+      "description": "Implement headless mode agent",
+      "tasks": [
+        {
+          "task": "Rewrite __init__ method",
+          "changes": [
+            "Remove: process, process_dimensions, _lock, _completion_signal_file, _completion_marker_count",
+            "Add: session_id (uuid), environment_vars (dict)"
+          ]
+        },
+        {
+          "task": "Rewrite initialize method",
+          "changes": [
+            "Extract config values: workspace_path, claude_command, response_timeout",
+            "Generate session_id = str(uuid.uuid4())",
+            "Create workspace directory if not exists",
+            "Set environment variables: DISABLE_AUTOUPDATER=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=true, PATH, TERM",
+            "No process spawning (happens per call)"
+          ]
+        },
+        {
+          "task": "Implement _run_claude helper",
+          "signature": "def _run_claude(self, args: List[str]) -> subprocess.CompletedProcess",
+          "logic": [
+            "Build full command: [self.claude_command] + args",
+            "Prepare environment: os.environ.copy() + self.environment_vars",
+            "Call subprocess.run with: cwd=workspace_path, capture_output=True, text=True, timeout=response_timeout, env=env",
+            "Return CompletedProcess object"
+          ],
+          "error_handling": [
+            "Catch subprocess.TimeoutExpired → raise AgentException('Timeout after Xs', recovery='Increase timeout')",
+            "Catch FileNotFoundError → raise AgentException('claude not found', recovery='Install Claude Code CLI')",
+            "Catch subprocess.CalledProcessError → raise AgentException('Exit code X: stderr', recovery='Check Claude logs')"
+          ]
+        },
+        {
+          "task": "Rewrite send_prompt method",
+          "logic": [
+            "Build args: ['--print', '--session-id', self.session_id, prompt]",
+            "Call self._run_claude(args)",
+            "Check result.returncode == 0",
+            "If success: return result.stdout.strip()",
+            "If error: raise AgentException with exit code and stderr"
+          ]
+        },
+        {
+          "task": "Implement is_healthy method",
+          "logic": [
+            "Try: send_prompt('Hello') with short timeout (5s)",
+            "Return True if succeeds, False if fails"
+          ]
+        },
+        {
+          "task": "Update get_status method",
+          "return": {
+            "agent_type": "claude-code-local",
+            "mode": "headless",
+            "session_id": "self.session_id",
+            "workspace": "str(self.workspace_path)",
+            "command": "self.claude_command",
+            "healthy": "self.is_healthy()"
+          }
+        },
+        {
+          "task": "Simplify cleanup method",
+          "logic": "No-op (just log 'Cleanup complete - headless mode requires no process management')"
+        },
+        {
+          "task": "Keep file operation methods unchanged",
+          "methods": ["get_workspace_files", "read_file", "write_file", "get_file_changes"],
+          "note": "These use pathlib and don't interact with Claude subprocess"
+        }
+      ]
+    },
+    "phase_3_testing": {
+      "description": "Test headless implementation",
+      "tests": [
+        {
+          "test": "test_simple_prompt",
+          "steps": [
+            "Initialize agent with test workspace",
+            "Send prompt: 'Create file hello.py with print hello world'",
+            "Verify: Response received (non-empty string)",
+            "Verify: Exit code 0",
+            "Verify: File hello.py created in workspace"
+          ]
+        },
+        {
+          "test": "test_session_persistence",
+          "steps": [
+            "Initialize agent",
+            "Send prompt 1: 'My name is Omar. Remember this.'",
+            "Send prompt 2: 'What is my name?'",
+            "Verify: Response 2 mentions 'Omar'",
+            "Note: If fails, session persistence doesn't work (acceptable - context manager handles it)"
+          ]
+        },
+        {
+          "test": "test_timeout_handling",
+          "steps": [
+            "Set response_timeout to 2 seconds",
+            "Send complex prompt that takes >2s",
+            "Verify: AgentException raised with 'Timeout' message",
+            "Verify: No zombie processes left"
+          ]
+        },
+        {
+          "test": "test_error_handling",
+          "steps": [
+            "Send invalid prompt that causes error",
+            "Verify: AgentException raised with stderr content",
+            "Verify: Error message contains useful debugging info"
+          ]
+        },
+        {
+          "test": "test_file_operations",
+          "steps": [
+            "Create test files in workspace",
+            "Call get_workspace_files()",
+            "Verify: Files listed correctly",
+            "Call read_file(), write_file()",
+            "Verify: Operations work correctly"
+          ]
+        },
+        {
+          "test": "test_health_check",
+          "steps": [
+            "Call is_healthy()",
+            "Verify: Returns True when Claude available",
+            "Break Claude installation (rename binary)",
+            "Verify: Returns False when Claude unavailable"
+          ]
+        }
+      ]
+    },
+    "phase_4_integration": {
+      "description": "Integration with Orchestrator",
+      "tasks": [
+        {
+          "task": "Update test_real_orchestration.py",
+          "changes": [
+            "Ensure config uses 'claude-code-local' agent type",
+            "Run with simple task",
+            "Verify end-to-end flow works"
+          ]
+        },
+        {
+          "task": "Test with actual Claude Code",
+          "steps": [
+            "Run: python scripts/test_real_orchestration.py --task-type simple",
+            "Verify: Task completes successfully",
+            "Verify: Files created in workspace",
+            "Verify: StateManager logged interactions",
+            "Verify: Validation pipeline worked"
+          ]
+        }
+      ]
+    },
+    "phase_5_documentation": {
+      "description": "Update documentation to reflect headless mode",
+      "files_to_update": [
+        {
+          "file": "docs/development/milestones/M8_COMPLETION_SUMMARY.md",
+          "changes": "Add headless mode implementation note, mark PTY as blocked"
+        },
+        {
+          "file": "CLAUDE.md",
+          "changes": "Update agent architecture section to mention headless mode as default"
+        },
+        {
+          "file": "README.md",
+          "changes": "Update if needed (likely no changes - headless is implementation detail)"
+        }
+      ]
+    }
+  },
+
+  "code_changes": {
+    "files_modified": [
+      {
+        "file": "src/agents/claude_code_local.py",
+        "before_lines": 677,
+        "after_lines": "~200-250",
+        "before_approach": "PTY with pexpect, threading, hooks",
+        "after_approach": "subprocess.run() with --print --session-id",
+        "breaking_changes": false,
+        "interface_compatible": true
+      },
+      {
+        "file": "setup.py",
+        "change": "Remove pexpect dependency",
+        "impact": "Simpler dependency tree"
+      }
+    ],
+    "files_created": [
+      {
+        "file": "src/agents/claude_code_local.py.pty_backup",
+        "purpose": "Backup of PTY implementation for reference"
+      }
+    ],
+    "files_deleted": []
+  },
+
+  "environment_variables": {
+    "required": [],
+    "recommended": [
+      {
+        "name": "DISABLE_AUTOUPDATER",
+        "value": "1",
+        "purpose": "Disable Claude auto-update checks in headless mode"
+      },
+      {
+        "name": "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        "value": "true",
+        "purpose": "Disable all non-essential network calls (updates, telemetry, bug reports)"
+      }
+    ],
+    "optional": [
+      {
+        "name": "TERM",
+        "value": "xterm-256color",
+        "purpose": "Set terminal type for better compatibility"
+      }
+    ]
+  },
+
+  "validation_criteria": {
+    "must_pass": [
+      "All AgentPlugin interface methods implemented",
+      "Simple prompt returns response < 5s",
+      "File operations work correctly",
+      "Error handling raises AgentException with context",
+      "Health check works",
+      "Integration test passes",
+      "No zombie processes after cleanup"
+    ],
+    "should_pass": [
+      "Session persistence via --session-id (if supported by Claude)",
+      "Timeout handling works correctly",
+      "Environment variables applied"
+    ]
+  },
+
+  "rollback_plan": {
+    "if_headless_fails": [
+      "Restore from src/agents/claude_code_local.py.pty_backup",
+      "Re-add pexpect to setup.py",
+      "Document as blocked pending Anthropic fix",
+      "Consider alternative: manual Claude with Obra guidance"
+    ]
+  },
+
+  "timeline": {
+    "phase_1_rollback": "15 minutes",
+    "phase_2_implementation": "60 minutes",
+    "phase_3_testing": "30 minutes",
+    "phase_4_integration": "15 minutes",
+    "phase_5_documentation": "15 minutes",
+    "total_estimated": "2 hours 15 minutes"
+  },
+
+  "success_metrics": {
+    "code_quality": {
+      "lines_of_code": "< 250 (vs 677 currently)",
+      "cyclomatic_complexity": "< 10 per method",
+      "test_coverage": "> 90%"
+    },
+    "performance": {
+      "response_time_simple": "< 5s",
+      "response_time_complex": "< 30s",
+      "memory_usage": "minimal (subprocess only)"
+    },
+    "reliability": {
+      "error_rate": "0% on valid prompts",
+      "timeout_handling": "100% caught and wrapped",
+      "cleanup_success": "100%"
+    }
+  },
+
+  "next_steps": [
+    "Review and approve this plan",
+    "Create LLM-optimized requirements JSON",
+    "Execute Phase 1 (rollback)",
+    "Execute Phase 2 (implementation)",
+    "Execute Phase 3 (testing)",
+    "Execute Phase 4 (integration)",
+    "Execute Phase 5 (documentation)",
+    "Ship and celebrate!"
+  ]
+}
