@@ -13,7 +13,7 @@ import os
 import yaml
 import logging
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 from threading import RLock
 from copy import deepcopy
 
@@ -34,7 +34,8 @@ class Config:
     2. Environment variables (ORCHESTRATOR_* prefix)
     3. User config file (~/.orchestrator/config.yaml)
     4. Project config file (./config/config.yaml)
-    5. Default config (./config/default_config.yaml) (lowest)
+    5. Profile config (./config/profiles/{profile}.yaml)  [M9]
+    6. Default config (./config/default_config.yaml) (lowest)
 
     Thread-safe singleton implementation.
 
@@ -42,6 +43,9 @@ class Config:
         >>> config = Config.load()
         >>> agent_type = config.get('agent.type')
         >>> config.set('agent.timeout', 60)
+
+        >>> # M9: Load with profile
+        >>> config = Config.load(profile='python_project')
     """
 
     _instance: Optional['Config'] = None
@@ -63,7 +67,8 @@ class Config:
     def load(
         cls,
         config_path: Optional[str] = None,
-        defaults_only: bool = False
+        defaults_only: bool = False,
+        profile: Optional[str] = None
     ) -> 'Config':
         """Load configuration from file(s).
 
@@ -72,37 +77,41 @@ class Config:
         Args:
             config_path: Optional path to config file
             defaults_only: If True, only load default config
+            profile: Optional profile name to load (M9)
 
         Returns:
             Config instance
 
         Raises:
-            ConfigNotFoundException: If config file not found
+            ConfigNotFoundException: If config file or profile not found
             ConfigValidationException: If config invalid
 
         Example:
             >>> config = Config.load('config/config.yaml')
             >>> config = Config.load()  # Use default paths
+            >>> config = Config.load(profile='python_project')  # M9: Load profile
         """
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
 
             # Load configuration
-            cls._instance._load_configuration(config_path, defaults_only)
+            cls._instance._load_configuration(config_path, defaults_only, profile)
 
             return cls._instance
 
     def _load_configuration(
         self,
         config_path: Optional[str] = None,
-        defaults_only: bool = False
+        defaults_only: bool = False,
+        profile: Optional[str] = None
     ) -> None:
         """Load configuration from multiple sources with precedence.
 
         Args:
             config_path: Optional explicit config path
             defaults_only: Only load defaults
+            profile: Optional profile name (M9)
         """
         self._config = {}
 
@@ -119,7 +128,18 @@ class Config:
             self._loaded = True
             return
 
-        # 2. Load project config
+        # 2. Load profile config (M9)
+        if profile:
+            profile_path = Path(f'config/profiles/{profile}.yaml')
+            if not profile_path.exists():
+                raise ConfigNotFoundException(
+                    f"Profile '{profile}' not found at {profile_path}"
+                )
+            logger.info(f"Loading profile config from {profile_path}")
+            profile_config = self._load_yaml(profile_path)
+            self._config = self._deep_merge(self._config, profile_config)
+
+        # 3. Load project config
         project_path = Path('config/config.yaml')
         if project_path.exists():
             logger.debug(f"Loading project config from {project_path}")
@@ -127,14 +147,14 @@ class Config:
             self._config = self._deep_merge(self._config, project_config)
             self._config_path = project_path
 
-        # 3. Load user config
+        # 4. Load user config
         user_config_path = Path.home() / '.orchestrator' / 'config.yaml'
         if user_config_path.exists():
             logger.debug(f"Loading user config from {user_config_path}")
             user_config = self._load_yaml(user_config_path)
             self._config = self._deep_merge(self._config, user_config)
 
-        # 4. Load explicit config path
+        # 5. Load explicit config path
         if config_path:
             path = Path(config_path)
             if not path.exists():
@@ -145,7 +165,7 @@ class Config:
             self._config = self._deep_merge(self._config, explicit_config)
             self._config_path = path
 
-        # 5. Apply environment variable overrides (highest priority)
+        # 6. Apply environment variable overrides (highest priority)
         self._apply_env_overrides()
 
         # Validate configuration
@@ -422,6 +442,27 @@ class Config:
             'sqlite:///data/orchestrator.db'
         """
         return self.get('database.url', 'sqlite:///data/orchestrator.db')
+
+    @staticmethod
+    def list_profiles() -> List[str]:
+        """List available configuration profiles (M9).
+
+        Returns:
+            List of profile names (without .yaml extension)
+
+        Example:
+            >>> Config.list_profiles()
+            ['python_project', 'web_app', 'ml_project', 'microservice', 'minimal', 'production']
+        """
+        profiles_dir = Path('config/profiles')
+        if not profiles_dir.exists():
+            return []
+
+        profiles = []
+        for profile_file in profiles_dir.glob('*.yaml'):
+            profiles.append(profile_file.stem)
+
+        return sorted(profiles)
 
     @classmethod
     def reset(cls) -> None:

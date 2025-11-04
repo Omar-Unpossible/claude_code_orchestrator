@@ -1,0 +1,27 @@
+# Minimal prompt templates for testing
+# These are used by PromptGenerator in unstructured mode
+
+task_execution: |
+  Task: {{ task_title }}
+  Description: {{ task_description }}
+
+  Please complete this task.
+
+validation: |
+  Please validate the following code:
+  {{ code }}
+
+error_analysis: |
+  Error occurred: {{ error_message }}
+
+  Please analyze and suggest a fix.
+
+decision: |
+  Current state: {{ current_state }}
+
+  Please make a decision on the next action.
+
+planning: |
+  Task: {{ task_description }}
+
+  Please create an execution plan.

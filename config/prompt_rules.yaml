@@ -1,0 +1,1898 @@
+# Prompt Engineering Rules Configuration
+#
+# This file defines comprehensive prompt engineering rules across 7 domains
+# for optimizing LLM-to-LLM communication in the Obra orchestration system.
+#
+# Each rule must have:
+# - id: Unique identifier (e.g., "CODE_001")
+# - name: Short descriptive name
+# - description: Detailed explanation of the rule
+# - validation_type: How to validate the rule
+# - severity: "critical", "high", "medium", "low"
+# - examples: Positive and negative examples
+#
+# Validation Types:
+# - ast_check: Python AST analysis for code structure
+# - regex: Regular expression pattern matching
+# - manual_review: Human inspection required
+# - llm_check: LLM-based validation
+# - coverage_check: Code coverage analysis
+# - format_check: File format validation
+# - schema_check: JSON/YAML schema validation
+
+version: "1.0"
+last_updated: "2025-11-03"
+
+rules:
+
+  # ========================================================================
+  # DOMAIN 1: CODE_GENERATION
+  # Rules for writing production-ready, scalable, well-documented code
+  # ========================================================================
+
+  code_generation:
+
+    - id: "CODE_001"
+      name: "NO_STUBS"
+      description: |
+        Never generate stub functions or placeholder code. All functions must be
+        fully implemented with complete logic. Functions containing only 'pass',
+        'TODO', 'NotImplemented', or similar placeholders are strictly prohibited.
+      validation_type: "ast_check"
+      severity: "critical"
+      validation_code: "check_for_pass_statements_in_functions"
+      examples:
+        positive: |
+          def calculate_total(items: List[Item]) -> float:
+              """Calculate total price of items."""
+              return sum(item.price * item.quantity for item in items)
+        negative: |
+          def calculate_total(items: List[Item]) -> float:
+              """Calculate total price of items."""
+              pass  # TODO: implement later
+      enforcement: "Reject code with stub implementations. Request complete implementation."
+
+    - id: "CODE_002"
+      name: "NO_HARDCODED_VALUES"
+      description: |
+        No magic numbers, hardcoded paths, URLs, or configuration values in code.
+        All configuration must be in constants, config files, or environment variables.
+        Use descriptive constant names at module level or config.get() patterns.
+      validation_type: "regex"
+      severity: "high"
+      validation_pattern: "(?<!DEFAULT_|MAX_|MIN_)\\b\\d{4,}\\b|(?<!['\"])/(usr|home|etc)/|https?://[a-z]+"
+      examples:
+        positive: |
+          DEFAULT_PORT = 8080
+          DEFAULT_HOST = "localhost"
+
+          def start_server():
+              port = config.get('server.port', DEFAULT_PORT)
+              host = config.get('server.host', DEFAULT_HOST)
+              app.run(host=host, port=port)
+        negative: |
+          def start_server():
+              app.run(host="localhost", port=8080)  # Hardcoded values
+              db.connect("postgresql://localhost/mydb")  # Hardcoded URL
+      enforcement: "Extract all hardcoded values to constants or config."
+
+    - id: "CODE_003"
+      name: "COMPREHENSIVE_DOCUMENTATION"
+      description: |
+        All public functions and classes must have comprehensive docstrings following
+        Google style format. Include: brief description, Args, Returns, Raises sections.
+        All function signatures must have complete type hints. Inline comments only
+        for complex logic, not obvious operations.
+      validation_type: "ast_check"
+      severity: "high"
+      validation_code: "check_docstrings_and_type_hints"
+      examples:
+        positive: |
+          def process_payment(
+              amount: Decimal,
+              payment_method: PaymentMethod,
+              user_id: int
+          ) -> PaymentResult:
+              """Process a payment transaction.
+
+              Args:
+                  amount: Payment amount in USD
+                  payment_method: Payment method (card, paypal, etc.)
+                  user_id: ID of the user making payment
+
+              Returns:
+                  PaymentResult containing status and transaction ID
+
+              Raises:
+                  PaymentException: If payment processing fails
+                  ValidationException: If amount is invalid
+              """
+              # Complex validation logic
+              if amount <= 0:
+                  raise ValidationException("Amount must be positive")
+              return payment_processor.charge(amount, payment_method, user_id)
+        negative: |
+          def process_payment(amount, payment_method, user_id):
+              # Process payment
+              return payment_processor.charge(amount, payment_method, user_id)
+      enforcement: "Require docstrings and type hints for all public interfaces."
+
+    - id: "CODE_004"
+      name: "PRODUCTION_SCALABILITY"
+      description: |
+        Code must be production-ready and handle real-world loads. Requirements:
+        1) Proper error handling for all I/O operations (files, network, database)
+        2) Resource cleanup with context managers or try-finally
+        3) Structured logging (no print statements)
+        4) Connection pooling for databases
+        5) Rate limiting for APIs
+        6) Graceful degradation on failures
+        7) Timeout handling for external calls
+      validation_type: "llm_check"
+      severity: "critical"
+      validation_prompt: "Analyze code for production readiness: error handling, resource cleanup, logging, scalability"
+      examples:
+        positive: |
+          class DatabaseManager:
+              def __init__(self, config: Dict):
+                  self.pool = create_engine(
+                      config['db_url'],
+                      pool_size=10,
+                      max_overflow=20,
+                      pool_timeout=30
+                  )
+                  self.logger = logging.getLogger(__name__)
+
+              def execute_query(self, query: str) -> List[Dict]:
+                  """Execute query with proper error handling."""
+                  try:
+                      with self.pool.connect() as conn:
+                          result = conn.execute(text(query))
+                          return [dict(row) for row in result]
+                  except OperationalError as e:
+                      self.logger.error("Database query failed", extra={
+                          'query': query,
+                          'error': str(e)
+                      })
+                      raise DatabaseException("Query execution failed") from e
+                  except TimeoutError:
+                      self.logger.warning("Database query timeout", extra={'query': query})
+                      return []  # Graceful degradation
+        negative: |
+          def execute_query(query):
+              conn = psycopg2.connect("postgresql://localhost/db")
+              result = conn.execute(query)
+              print(f"Query executed: {query}")
+              return result
+      enforcement: "Require proper error handling, logging, and resource management."
+
+    - id: "CODE_005"
+      name: "TEST_DRIVEN_DEVELOPMENT"
+      description: |
+        Tests must be written as code is developed, not after. Requirements:
+        1) Unit tests for all public functions (≥80% coverage target)
+        2) Integration tests for workflows
+        3) Edge case testing (empty inputs, large inputs, invalid inputs, null values)
+        4) Mock external dependencies (databases, APIs, file systems)
+        5) Tests must pass before moving to next task
+        6) Test names follow convention: test_<function>_<scenario>_<expected>
+      validation_type: "coverage_check"
+      severity: "critical"
+      validation_code: "check_test_coverage_and_quality"
+      examples:
+        positive: |
+          # Implementation
+          def authenticate_user(username: str, password: str) -> Optional[User]:
+              """Authenticate user with username and password."""
+              user = User.query.filter_by(username=username).first()
+              if user and bcrypt.check_password_hash(user.password_hash, password):
+                  return user
+              return None
+
+          # Tests (in tests/test_auth.py)
+          class TestAuthentication:
+              def test_authenticate_valid_credentials_returns_user(self):
+                  user = authenticate_user("john", "secret123")
+                  assert user is not None
+                  assert user.username == "john"
+
+              def test_authenticate_invalid_password_returns_none(self):
+                  user = authenticate_user("john", "wrong")
+                  assert user is None
+
+              def test_authenticate_nonexistent_user_returns_none(self):
+                  user = authenticate_user("invalid", "password")
+                  assert user is None
+
+              def test_authenticate_empty_username_returns_none(self):
+                  user = authenticate_user("", "password")
+                  assert user is None
+        negative: |
+          # Implementation without tests
+          def authenticate_user(username, password):
+              user = User.query.filter_by(username=username).first()
+              if user and bcrypt.check_password_hash(user.password_hash, password):
+                  return user
+              return None
+      enforcement: "Require tests with ≥80% coverage before task completion."
+
+    - id: "CODE_006"
+      name: "CODE_STYLE_CONSISTENCY"
+      description: |
+        Follow project style guide consistently. For Python:
+        1) PEP 8 compliance (line length ≤100 characters)
+        2) snake_case for functions/variables, PascalCase for classes
+        3) UPPER_CASE for constants
+        4) No unused imports or variables
+        5) Black formatting for consistent style
+        6) Pylint score ≥9.0/10
+        7) Docstrings in Google style
+      validation_type: "ast_check"
+      severity: "medium"
+      validation_code: "check_pep8_compliance"
+      examples:
+        positive: |
+          """User authentication module."""
+          import logging
+          from typing import Optional
+
+          DEFAULT_TIMEOUT = 30
+          MAX_ATTEMPTS = 5
+
+          class AuthenticationManager:
+              """Manages user authentication."""
+
+              def __init__(self, config: dict):
+                  """Initialize authentication manager."""
+                  self.config = config
+                  self.logger = logging.getLogger(__name__)
+
+              def authenticate_user(
+                  self,
+                  username: str,
+                  password: str
+              ) -> Optional[User]:
+                  """Authenticate user with credentials."""
+                  # Implementation
+        negative: |
+          import logging, sys, os
+          from typing import *
+          unused_import = None
+
+          class authenticationManager:  # Wrong case
+              def AuthenticateUser(UserName, Password):  # Wrong case, no types
+                  x = 1  # Unused variable
+                  return None
+      enforcement: "Run black, pylint, and mypy before accepting code."
+
+    - id: "CODE_007"
+      name: "SECURITY_FIRST"
+      description: |
+        Security must be built-in from the start. Requirements:
+        1) Input validation for all user inputs (type, length, format, range)
+        2) SQL injection prevention (parameterized queries, ORM)
+        3) XSS prevention (output escaping, CSP headers)
+        4) Secrets in environment variables, never in code
+        5) Authentication/authorization checks on all protected endpoints
+        6) HTTPS for all external communications
+        7) Rate limiting on sensitive operations
+        8) Proper error messages (don't leak system info)
+      validation_type: "llm_check"
+      severity: "critical"
+      validation_prompt: "Analyze code for security vulnerabilities: SQL injection, XSS, secrets exposure, missing auth"
+      examples:
+        positive: |
+          from flask import request, abort
+          from flask_limiter import Limiter
+          from sqlalchemy import text
+          import os
+
+          limiter = Limiter(app, default_limits=["100 per hour"])
+          API_KEY = os.environ.get('API_KEY')
+
+          @app.route('/api/users/<int:user_id>')
+          @limiter.limit("10 per minute")
+          @require_auth
+          def get_user(user_id: int):
+              """Get user by ID with auth and rate limiting."""
+              # Input validation
+              if user_id <= 0:
+                  abort(400, "Invalid user ID")
+
+              # Parameterized query (SQL injection prevention)
+              query = text("SELECT * FROM users WHERE id = :user_id")
+              result = db.execute(query, {'user_id': user_id})
+
+              if not result:
+                  abort(404, "User not found")  # Don't leak system info
+
+              return jsonify(result.to_dict())
+        negative: |
+          @app.route('/api/users/<user_id>')
+          def get_user(user_id):
+              # No input validation, SQL injection vulnerable
+              query = f"SELECT * FROM users WHERE id = {user_id}"
+              result = db.execute(query)
+
+              if not result:
+                  return "Database error: " + str(e)  # Leaks system info
+
+              return result
+      enforcement: "Require security review for all code handling user input or sensitive data."
+
+  # ========================================================================
+  # DOMAIN 2: DOCUMENTATION
+  # Rules for LLM-optimized vs human-readable documentation
+  # ========================================================================
+
+  documentation:
+
+    - id: "DOC_001"
+      name: "LLM_OPTIMIZED_FORMAT"
+      description: |
+        Project management documentation (task tracking, work breakdown, progress)
+        must be in LLM-optimized formats: JSON, YAML, or structured markdown with
+        YAML frontmatter. These documents are for machine processing, not humans.
+        Use consistent schemas and avoid prose explanations.
+      validation_type: "format_check"
+      severity: "high"
+      validation_pattern: "\\.(json|yaml|yml)$|^---\\n.*?\\n---"
+      examples:
+        positive: |
+          # task_tracking.yaml
+          tasks:
+            - id: "TASK_001"
+              status: "in_progress"
+              dependencies: ["TASK_000"]
+              progress: 0.45
+              subtasks:
+                - id: "TASK_001.1"
+                  status: "completed"
+                  duration_ms: 45000
+                - id: "TASK_001.2"
+                  status: "in_progress"
+                  estimated_remaining_ms: 120000
+              metrics:
+                files_modified: 3
+                tests_added: 7
+                lines_changed:
+                  added: 234
+                  removed: 67
+        negative: |
+          # task_tracking.txt
+          Task 001 is currently in progress. It depends on Task 000 which is
+          already completed. We've made good progress so far, completing about
+          45% of the work. The first subtask is done and took about 45 seconds.
+          The second subtask is ongoing and should take another 2 minutes.
+      enforcement: "Reject prose-based project management docs. Require JSON/YAML."
+
+    - id: "DOC_002"
+      name: "HUMAN_DOCS_AT_MILESTONES"
+      description: |
+        Human-readable documentation (markdown with formatting, release notes,
+        architecture docs, user guides) should only be generated at major milestones
+        or on explicit request. Triggers: milestone completion, version release,
+        architecture changes, external API changes, critical bug fixes.
+      validation_type: "manual_review"
+      severity: "medium"
+      validation_code: "check_doc_generation_trigger"
+      examples:
+        positive: |
+          # Generated at M7 milestone completion
+          # docs/milestones/M7_COMPLETION_SUMMARY.md
+
+          # M7 Milestone - Testing & Deployment
+
+          ## Overview
+          Completed comprehensive testing infrastructure and deployment automation...
+
+          ## Key Achievements
+          - 433+ tests with 88% coverage
+          - Docker deployment ready
+          - ...
+        negative: |
+          # Generated for every minor task
+          # docs/tasks/task_123_completed.md
+
+          # Task 123 Completed
+
+          Today I implemented the login endpoint...
+      enforcement: "Generate human docs only at milestones, not per-task."
+
+    - id: "DOC_003"
+      name: "CODE_DOCS_DUAL_PURPOSE"
+      description: |
+        Code documentation (docstrings, inline comments) must serve both LLMs and
+        humans. Requirements: 1) Type hints for machine parsing, 2) Structured
+        docstrings (Google style) for both audiences, 3) Clear explanations for
+        complex logic, 4) Examples for non-obvious usage, 5) Keep synchronized
+        with code changes.
+      validation_type: "ast_check"
+      severity: "high"
+      validation_code: "check_docstring_quality"
+      examples:
+        positive: |
+          def calculate_confidence_score(
+              validation_result: ValidationResult,
+              quality_score: float,
+              historical_success_rate: float
+          ) -> ConfidenceScore:
+              """Calculate confidence score using ensemble method.
+
+              Combines validation completeness, quality assessment, and historical
+              success rates to produce a weighted confidence score. Uses exponential
+              decay for older historical data.
+
+              Args:
+                  validation_result: Result from ResponseValidator (completeness check)
+                  quality_score: Quality assessment from QualityController (0.0-1.0)
+                  historical_success_rate: Past success rate for similar tasks (0.0-1.0)
+
+              Returns:
+                  ConfidenceScore with overall score (0.0-1.0) and breakdown by factor
+
+              Raises:
+                  ValueError: If quality_score or historical_success_rate out of range
+
+              Example:
+                  >>> result = ValidationResult(is_valid=True, completeness=0.95)
+                  >>> score = calculate_confidence_score(result, 0.85, 0.90)
+                  >>> print(f"Confidence: {score.overall:.2f}")
+                  Confidence: 0.88
+              """
+              # Validate inputs
+              if not 0.0 <= quality_score <= 1.0:
+                  raise ValueError("quality_score must be in [0.0, 1.0]")
+
+              # Weight factors: validation (30%), quality (40%), history (30%)
+              weighted_score = (
+                  0.3 * validation_result.completeness +
+                  0.4 * quality_score +
+                  0.3 * historical_success_rate
+              )
+
+              return ConfidenceScore(
+                  overall=weighted_score,
+                  validation_factor=validation_result.completeness,
+                  quality_factor=quality_score,
+                  history_factor=historical_success_rate
+              )
+        negative: |
+          def calculate_confidence_score(validation_result, quality_score, historical_success_rate):
+              # Calculate score
+              score = 0.3 * validation_result.completeness + 0.4 * quality_score + 0.3 * historical_success_rate
+              return score
+      enforcement: "Require comprehensive docstrings with type hints for all public functions."
+
+    - id: "DOC_004"
+      name: "STRUCTURED_METADATA"
+      description: |
+        All LLM-optimized documentation must include structured metadata in
+        frontmatter (YAML) or header fields (JSON). Required fields: version,
+        timestamp, task_id/project_id, status, author (human/llm). Enables
+        automated processing and version tracking.
+      validation_type: "schema_check"
+      severity: "medium"
+      validation_schema: |
+        {
+          "version": "string",
+          "timestamp": "ISO-8601",
+          "task_id": "string|int",
+          "status": "enum[in_progress,completed,blocked,failed]",
+          "author": "enum[human,llm,system]"
+        }
+      examples:
+        positive: |
+          {
+            "version": "1.0",
+            "timestamp": "2025-11-03T14:30:00Z",
+            "task_id": 123,
+            "status": "completed",
+            "author": "llm",
+            "task_data": {
+              "title": "Implement authentication module",
+              "complexity": "medium",
+              "duration_ms": 180000
+            }
+          }
+        negative: |
+          {
+            "task": "Implement authentication module",
+            "done": true,
+            "time": "today"
+          }
+      enforcement: "Validate metadata schema for all LLM-optimized docs."
+
+    - id: "DOC_005"
+      name: "VERSION_CONTROL_FRIENDLY"
+      description: |
+        Documentation should be version-control friendly: line-based formats
+        (YAML, JSON with newlines), no binary formats, deterministic ordering
+        (sorted keys), no timestamps in content (use metadata), meaningful
+        commit messages for doc changes.
+      validation_type: "format_check"
+      severity: "low"
+      validation_code: "check_vcs_friendly_format"
+      examples:
+        positive: |
+          # work_breakdown.yaml (sorted keys, line-based)
+          tasks:
+            - dependencies: []
+              estimated_tokens: 3000
+              id: "TASK_001"
+              name: "Create User model"
+              parallelizable: true
+              status: "completed"
+            - dependencies: ["TASK_001"]
+              estimated_tokens: 2000
+              id: "TASK_002"
+              name: "Implement password hashing"
+              parallelizable: true
+              status: "in_progress"
+        negative: |
+          # work_breakdown.json (single line, unsorted)
+          {"tasks":[{"id":"TASK_002","status":"in_progress","name":"Implement password hashing","dependencies":["TASK_001"],"parallelizable":true,"estimated_tokens":2000},{"id":"TASK_001","status":"completed","name":"Create User model","dependencies":[],"parallelizable":true,"estimated_tokens":3000}]}
+      enforcement: "Format JSON/YAML with indentation and sorted keys."
+
+  # ========================================================================
+  # DOMAIN 3: TESTING
+  # Rules for test creation, coverage, and crash recovery
+  # ========================================================================
+
+  testing:
+
+    - id: "TEST_001"
+      name: "COMPREHENSIVE_COVERAGE"
+      description: |
+        All new code must have comprehensive test coverage. Requirements:
+        1) Unit tests for all public functions (≥80% line coverage)
+        2) Integration tests for workflows (≥70% path coverage)
+        3) Edge case testing (empty, null, large, invalid inputs)
+        4) Error path testing (exceptions, timeouts, failures)
+        5) Mock external dependencies (databases, APIs, file systems)
+        6) Performance tests for critical paths (optional)
+      validation_type: "coverage_check"
+      severity: "critical"
+      validation_code: "check_test_coverage"
+      examples:
+        positive: |
+          # src/auth/authentication.py (implementation)
+          class AuthenticationManager:
+              def authenticate_user(self, username: str, password: str) -> Optional[User]:
+                  """Authenticate user with username and password."""
+                  if not username or not password:
+                      raise ValueError("Username and password required")
+                  user = self.user_repo.get_by_username(username)
+                  if not user:
+                      return None
+                  if not bcrypt.check_password_hash(user.password_hash, password):
+                      return None
+                  return user
+
+          # tests/test_authentication.py (comprehensive tests)
+          class TestAuthenticationManager:
+              def test_authenticate_valid_credentials_returns_user(self, auth_manager, mock_repo):
+                  mock_repo.get_by_username.return_value = User(username="john", password_hash="hash")
+                  user = auth_manager.authenticate_user("john", "secret")
+                  assert user is not None
+
+              def test_authenticate_invalid_password_returns_none(self, auth_manager, mock_repo):
+                  mock_repo.get_by_username.return_value = User(username="john", password_hash="hash")
+                  user = auth_manager.authenticate_user("john", "wrong")
+                  assert user is None
+
+              def test_authenticate_nonexistent_user_returns_none(self, auth_manager, mock_repo):
+                  mock_repo.get_by_username.return_value = None
+                  user = auth_manager.authenticate_user("invalid", "password")
+                  assert user is None
+
+              def test_authenticate_empty_username_raises_error(self, auth_manager):
+                  with pytest.raises(ValueError, match="Username and password required"):
+                      auth_manager.authenticate_user("", "password")
+
+              def test_authenticate_empty_password_raises_error(self, auth_manager):
+                  with pytest.raises(ValueError, match="Username and password required"):
+                      auth_manager.authenticate_user("john", "")
+        negative: |
+          # tests/test_authentication.py (incomplete)
+          def test_authenticate():
+              user = authenticate_user("john", "secret")
+              assert user is not None
+      enforcement: "Require ≥80% coverage with edge cases before accepting code."
+
+    - id: "TEST_002"
+      name: "TEST_NAMING_CONVENTION"
+      description: |
+        Test names must follow convention: test_<function>_<scenario>_<expected_outcome>.
+        This makes tests self-documenting and easier to understand. Use descriptive
+        scenario names that explain the test case. Group related tests in test classes.
+      validation_type: "regex"
+      severity: "medium"
+      validation_pattern: "^test_[a-z_]+_[a-z_]+_[a-z_]+$"
+      examples:
+        positive: |
+          class TestUserAuthentication:
+              def test_authenticate_valid_credentials_returns_user(self):
+                  pass
+
+              def test_authenticate_invalid_password_returns_none(self):
+                  pass
+
+              def test_authenticate_missing_user_returns_none(self):
+                  pass
+
+              def test_authenticate_empty_username_raises_valueerror(self):
+                  pass
+        negative: |
+          def test_auth():
+              pass
+
+          def testAuthentication():
+              pass
+
+          def test_valid_login():
+              pass
+      enforcement: "Reject tests with non-descriptive names."
+
+    - id: "TEST_003"
+      name: "SEQUENTIAL_CODE_AND_TEST"
+      description: |
+        CRITICAL: Never write code and run tests in parallel agents. Test execution
+        can crash sessions, and parallel crashes cause data loss. Code writing and
+        test execution must be separate sequential tasks. This prevents resource
+        conflicts and enables crash recovery.
+      validation_type: "manual_review"
+      severity: "critical"
+      validation_code: "check_no_parallel_code_and_test"
+      examples:
+        positive: |
+          # Correct workflow:
+          # Task 1: Write implementation code (Agent 1 or sequential)
+          # Task 2: Document test intentions (/tmp/test_intentions_*.json)
+          # Task 3: Commit code changes
+          # Task 4: Run tests (separate task, single agent)
+          # Task 5: If tests fail, return to Task 1
+
+          {
+            "tasks": [
+              {"id": "001", "type": "code", "parallel": false},
+              {"id": "002", "type": "test_intent", "parallel": false},
+              {"id": "003", "type": "commit", "parallel": false},
+              {"id": "004", "type": "test_run", "parallel": false}
+            ]
+          }
+        negative: |
+          # WRONG: Parallel code and test execution
+          {
+            "tasks": [
+              {"id": "001", "type": "code", "parallel": true, "agent": "agent_1"},
+              {"id": "002", "type": "test_run", "parallel": true, "agent": "agent_2"}
+            ]
+          }
+      enforcement: "Reject any parallel task plan that includes both code and test execution."
+
+    - id: "TEST_004"
+      name: "DOCUMENT_TEST_INTENTIONS"
+      description: |
+        Before running tests, document test plan in /tmp/test_intentions_<task_id>.json.
+        This creates a durable record that enables recovery if test crashes session.
+        Required fields: task_id, test_suite, expected_tests, coverage_target,
+        pass_criteria, timeout, crash_recovery_plan.
+      validation_type: "schema_check"
+      severity: "high"
+      validation_schema: |
+        {
+          "task_id": "string|int",
+          "test_suite": "string (path)",
+          "expected_tests": ["array of test names"],
+          "coverage_target": "float (0.0-1.0)",
+          "pass_criteria": "string",
+          "timeout_seconds": "int",
+          "crash_recovery_plan": "string"
+        }
+      examples:
+        positive: |
+          # /tmp/test_intentions_123.json
+          {
+            "task_id": 123,
+            "test_suite": "tests/test_authentication.py",
+            "expected_tests": [
+              "test_authenticate_valid_credentials_returns_user",
+              "test_authenticate_invalid_password_returns_none",
+              "test_authenticate_nonexistent_user_returns_none",
+              "test_authenticate_empty_username_raises_error"
+            ],
+            "coverage_target": 0.80,
+            "pass_criteria": "all tests pass and coverage ≥80%",
+            "timeout_seconds": 300,
+            "crash_recovery_plan": "If crash, mark tests as 'crashed', report to orchestrator, retry with longer timeout"
+          }
+        negative: |
+          # No test intentions documented before running tests
+          # Direct pytest execution without plan
+      enforcement: "Require test intentions file before running tests."
+
+    - id: "TEST_005"
+      name: "RESOURCE_LIMITS"
+      description: |
+        Tests must respect resource limits to prevent WSL2 crashes. Limits:
+        1) Max sleep per test: 0.5s (use fast_time fixture for longer)
+        2) Max threads per test: 5 (with mandatory timeout on join)
+        3) Max memory allocation: 20KB per test
+        4) Max test duration: 300 seconds (pytest --timeout=300)
+        5) Mark heavy tests with @pytest.mark.slow
+        6) Clean up background threads before test completion
+      validation_type: "ast_check"
+      severity: "high"
+      validation_code: "check_test_resource_usage"
+      examples:
+        positive: |
+          import pytest
+
+          def test_completion_detection(fast_time):
+              """Use fast_time fixture for sleeps."""
+              monitor.mark_complete()
+              time.sleep(2.0)  # Mocked by fast_time - instant
+              assert monitor.is_complete()
+
+          def test_concurrent_operations():
+              """Limited threads with timeouts."""
+              errors = []
+              threads = [threading.Thread(target=worker) for _ in range(3)]  # Max 5
+              for t in threads:
+                  t.start()
+              for t in threads:
+                  t.join(timeout=5.0)  # MANDATORY timeout
+                  if t.is_alive():
+                      errors.append("Thread timeout")
+              assert len(errors) == 0
+
+          @pytest.mark.slow
+          def test_large_dataset_processing():
+              """Heavy test marked as slow."""
+              data = generate_test_data(size=1000)
+              result = process_data(data)
+              assert len(result) == 1000
+        negative: |
+          def test_with_long_sleep():
+              time.sleep(5.0)  # Exceeds 0.5s limit
+              assert True
+
+          def test_many_threads():
+              threads = [threading.Thread(target=worker) for _ in range(20)]  # Exceeds 5 limit
+              for t in threads:
+                  t.start()
+              for t in threads:
+                  t.join()  # No timeout
+      enforcement: "Reject tests exceeding resource limits. Suggest fast_time fixture or @pytest.mark.slow."
+
+    - id: "TEST_006"
+      name: "SINGLE_AGENT_TESTING"
+      description: |
+        Only ONE agent runs tests at a time. Concurrent test execution causes
+        resource conflicts and crashes. Test tasks must have no parallel siblings.
+        Use sequential execution for all test-related tasks.
+      validation_type: "manual_review"
+      severity: "critical"
+      validation_code: "check_single_agent_testing"
+      examples:
+        positive: |
+          {
+            "execution_plan": {
+              "phase_1_code": {"agents": ["agent_1", "agent_2"], "parallel": true},
+              "phase_2_commit": {"agents": ["agent_1"], "parallel": false},
+              "phase_3_test": {"agents": ["agent_1"], "parallel": false}
+            }
+          }
+        negative: |
+          {
+            "execution_plan": {
+              "phase_1_code_and_test": {
+                "agents": ["agent_1", "agent_2"],
+                "parallel": true,
+                "tasks": ["code", "test"]
+              }
+            }
+          }
+      enforcement: "Reject parallel test execution plans."
+
+  # ========================================================================
+  # DOMAIN 4: ERROR_HANDLING
+  # Rules for error messages, recovery suggestions, and logging
+  # ========================================================================
+
+  error_handling:
+
+    - id: "ERROR_001"
+      name: "STRUCTURED_ERROR_LOGGING"
+      description: |
+        All errors must be logged with structured data (JSON) for analysis. Required
+        fields: error_type (exception class), error_message (human-readable),
+        stack_trace (full traceback), context (relevant variables/state),
+        recovery_attempted (bool), recovery_successful (bool), user_action_required (bool),
+        suggested_fixes (array of strings). Use logging.error() with extra={...}.
+      validation_type: "llm_check"
+      severity: "high"
+      validation_prompt: "Check that errors are logged with structured data including context and recovery suggestions"
+      examples:
+        positive: |
+          import logging
+
+          logger = logging.getLogger(__name__)
+
+          def process_payment(amount: Decimal, user_id: int):
+              try:
+                  result = payment_api.charge(amount, user_id)
+                  return result
+              except PaymentAPIException as e:
+                  logger.error("Payment processing failed", extra={
+                      'error_type': e.__class__.__name__,
+                      'error_message': str(e),
+                      'stack_trace': traceback.format_exc(),
+                      'context': {
+                          'amount': float(amount),
+                          'user_id': user_id,
+                          'api_endpoint': payment_api.endpoint
+                      },
+                      'recovery_attempted': True,
+                      'recovery_successful': False,
+                      'user_action_required': True,
+                      'suggested_fixes': [
+                          'Verify payment API credentials',
+                          'Check network connectivity',
+                          'Retry payment after 5 minutes'
+                      ]
+                  })
+                  raise PaymentException("Failed to process payment") from e
+        negative: |
+          def process_payment(amount, user_id):
+              try:
+                  result = payment_api.charge(amount, user_id)
+                  return result
+              except Exception as e:
+                  print(f"Error: {e}")  # No structured logging
+                  raise
+      enforcement: "Require structured error logging with context and recovery info."
+
+    - id: "ERROR_002"
+      name: "GRACEFUL_DEGRADATION"
+      description: |
+        Systems must handle failures gracefully and provide degraded functionality
+        rather than complete failure when possible. Strategies: fallback values,
+        cached data, retry with backoff, circuit breaker pattern, queue for later.
+        Always log degradation events for monitoring.
+      validation_type: "llm_check"
+      severity: "high"
+      validation_prompt: "Check code implements graceful degradation on failures"
+      examples:
+        positive: |
+          class DataService:
+              def __init__(self):
+                  self.cache = Cache()
+                  self.circuit_breaker = CircuitBreaker(failure_threshold=5)
+
+              def get_user_data(self, user_id: int) -> Dict:
+                  """Get user data with graceful degradation."""
+                  # Try primary source with circuit breaker
+                  if not self.circuit_breaker.is_open():
+                      try:
+                          data = self.api.fetch_user(user_id)
+                          self.cache.set(f"user:{user_id}", data, ttl=300)
+                          self.circuit_breaker.record_success()
+                          return data
+                      except APIException as e:
+                          self.circuit_breaker.record_failure()
+                          logger.warning("API fetch failed, trying cache", extra={
+                              'user_id': user_id,
+                              'error': str(e)
+                          })
+
+                  # Fallback to cache
+                  cached = self.cache.get(f"user:{user_id}")
+                  if cached:
+                      logger.info("Serving cached data", extra={'user_id': user_id})
+                      return cached
+
+                  # Final fallback: minimal data
+                  logger.error("Complete failure, serving minimal data", extra={
+                      'user_id': user_id
+                  })
+                  return {'id': user_id, 'name': 'Unknown', 'degraded': True}
+        negative: |
+          def get_user_data(user_id):
+              data = api.fetch_user(user_id)  # No error handling
+              return data  # Fails completely on error
+      enforcement: "Require graceful degradation strategies for external dependencies."
+
+    - id: "ERROR_003"
+      name: "RETRY_WITH_BACKOFF"
+      description: |
+        Transient errors (network, rate limits, timeouts) should be retried with
+        exponential backoff. Use different retry strategies for different error types.
+        Set maximum retry attempts to prevent infinite loops. Log all retry attempts.
+      validation_type: "ast_check"
+      severity: "medium"
+      validation_code: "check_retry_logic"
+      examples:
+        positive: |
+          import time
+          import random
+
+          def retry_with_backoff(func, max_attempts=3, base_delay=1.0):
+              """Retry function with exponential backoff."""
+              for attempt in range(max_attempts):
+                  try:
+                      return func()
+                  except TransientError as e:
+                      if attempt == max_attempts - 1:
+                          logger.error("Max retry attempts reached", extra={
+                              'function': func.__name__,
+                              'attempts': max_attempts,
+                              'error': str(e)
+                          })
+                          raise
+
+                      # Exponential backoff with jitter
+                      delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                      logger.warning("Retrying after error", extra={
+                          'function': func.__name__,
+                          'attempt': attempt + 1,
+                          'delay_seconds': delay,
+                          'error': str(e)
+                      })
+                      time.sleep(delay)
+
+          def fetch_data():
+              return retry_with_backoff(lambda: api.get_data(), max_attempts=3)
+        negative: |
+          def fetch_data():
+              while True:
+                  try:
+                      return api.get_data()
+                  except Exception:
+                      time.sleep(1)  # Fixed delay, infinite loop
+      enforcement: "Require exponential backoff for transient errors with max attempts."
+
+    - id: "ERROR_004"
+      name: "INFORMATIVE_ERROR_MESSAGES"
+      description: |
+        Error messages must be informative for both users and developers. Include:
+        1) What went wrong (clear, non-technical for users)
+        2) Why it happened (context for debugging)
+        3) What to do next (actionable recovery steps)
+        4) Never leak sensitive info (stack traces, credentials, internal paths)
+        5) Different messages for different audiences (user vs developer logs)
+      validation_type: "llm_check"
+      severity: "medium"
+      validation_prompt: "Check error messages are informative and actionable"
+      examples:
+        positive: |
+          class PaymentException(Exception):
+              """Payment processing exception."""
+
+              def __init__(self, user_message: str, developer_context: Dict):
+                  self.user_message = user_message
+                  self.developer_context = developer_context
+                  super().__init__(user_message)
+
+              def to_user_response(self) -> Dict:
+                  """User-facing error response (no sensitive info)."""
+                  return {
+                      'error': self.user_message,
+                      'suggested_actions': [
+                          'Verify your payment information',
+                          'Try a different payment method',
+                          'Contact support if problem persists'
+                      ]
+                  }
+
+              def to_log_entry(self) -> Dict:
+                  """Developer log entry (full context)."""
+                  return {
+                      'error': self.user_message,
+                      'context': self.developer_context,
+                      'timestamp': datetime.now(UTC).isoformat()
+                  }
+
+          # Usage
+          try:
+              process_payment(amount, card)
+          except PaymentAPIError as e:
+              exc = PaymentException(
+                  user_message="We couldn't process your payment",
+                  developer_context={
+                      'api_error': str(e),
+                      'amount': float(amount),
+                      'card_last_4': card.last_4,
+                      'api_response_code': e.response.status_code
+                  }
+              )
+              logger.error("Payment failed", extra=exc.to_log_entry())
+              return jsonify(exc.to_user_response()), 400
+        negative: |
+          try:
+              process_payment(amount, card)
+          except Exception as e:
+              return f"Error: {str(e)}", 500  # Leaks internal error details
+      enforcement: "Require separate user and developer error messages."
+
+    - id: "ERROR_005"
+      name: "CIRCUIT_BREAKER_PATTERN"
+      description: |
+        Use circuit breaker pattern for external dependencies to prevent cascading
+        failures. Circuit states: CLOSED (normal), OPEN (failing, reject immediately),
+        HALF_OPEN (testing recovery). Track failure count, timeout duration,
+        success threshold for recovery.
+      validation_type: "ast_check"
+      severity: "high"
+      validation_code: "check_circuit_breaker_usage"
+      examples:
+        positive: |
+          from enum import Enum
+          import time
+
+          class CircuitState(Enum):
+              CLOSED = "closed"
+              OPEN = "open"
+              HALF_OPEN = "half_open"
+
+          class CircuitBreaker:
+              def __init__(self, failure_threshold=5, timeout=60, success_threshold=2):
+                  self.failure_threshold = failure_threshold
+                  self.timeout = timeout
+                  self.success_threshold = success_threshold
+                  self.failure_count = 0
+                  self.success_count = 0
+                  self.state = CircuitState.CLOSED
+                  self.last_failure_time = None
+
+              def is_open(self) -> bool:
+                  """Check if circuit is open (rejecting calls)."""
+                  if self.state == CircuitState.OPEN:
+                      if time.time() - self.last_failure_time > self.timeout:
+                          self.state = CircuitState.HALF_OPEN
+                          logger.info("Circuit breaker transitioning to half-open")
+                          return False
+                      return True
+                  return False
+
+              def record_success(self):
+                  """Record successful call."""
+                  self.failure_count = 0
+                  if self.state == CircuitState.HALF_OPEN:
+                      self.success_count += 1
+                      if self.success_count >= self.success_threshold:
+                          self.state = CircuitState.CLOSED
+                          logger.info("Circuit breaker closed (recovered)")
+
+              def record_failure(self):
+                  """Record failed call."""
+                  self.failure_count += 1
+                  self.last_failure_time = time.time()
+                  if self.failure_count >= self.failure_threshold:
+                      self.state = CircuitState.OPEN
+                      logger.warning("Circuit breaker opened", extra={
+                          'failure_count': self.failure_count
+                      })
+        negative: |
+          def call_api():
+              try:
+                  return api.fetch()
+              except Exception:
+                  raise  # No circuit breaker, keeps failing
+      enforcement: "Require circuit breaker for external API calls."
+
+  # ========================================================================
+  # DOMAIN 5: PERFORMANCE
+  # Rules for optimization, resource usage, and scaling
+  # ========================================================================
+
+  performance:
+
+    - id: "PERF_001"
+      name: "PROFILE_BEFORE_OPTIMIZE"
+      description: |
+        Never optimize prematurely. Profile code first to identify actual bottlenecks.
+        Use profiling tools (cProfile, line_profiler, memory_profiler) to measure
+        performance. Set baselines for critical paths. Optimize only proven bottlenecks.
+        Measure impact of optimizations with before/after benchmarks.
+      validation_type: "manual_review"
+      severity: "medium"
+      validation_code: "check_profiling_evidence"
+      examples:
+        positive: |
+          # 1. Profile first
+          import cProfile
+          import pstats
+
+          def profile_function():
+              profiler = cProfile.Profile()
+              profiler.enable()
+              result = expensive_operation()
+              profiler.disable()
+
+              stats = pstats.Stats(profiler)
+              stats.sort_stats('cumulative')
+              stats.print_stats(10)
+              return result
+
+          # 2. Identify bottleneck: database query in loop
+          # 3. Optimize: batch query outside loop
+
+          # Before (slow):
+          def get_user_posts(user_ids):
+              posts = []
+              for user_id in user_ids:
+                  posts.extend(Post.query.filter_by(user_id=user_id).all())
+              return posts
+
+          # After (optimized):
+          def get_user_posts(user_ids):
+              return Post.query.filter(Post.user_id.in_(user_ids)).all()
+
+          # 4. Benchmark improvement
+          # Before: 2.5s for 1000 users
+          # After: 0.15s for 1000 users (16x faster)
+        negative: |
+          # Premature optimization without profiling
+          def process_data(items):
+              # Using complex algorithm "for performance"
+              return highly_optimized_but_unneeded_algorithm(items)
+      enforcement: "Require profiling evidence before accepting optimizations."
+
+    - id: "PERF_002"
+      name: "EFFICIENT_DATA_STRUCTURES"
+      description: |
+        Use appropriate data structures for the task. Guidelines:
+        1) List for ordered collections, set for membership tests
+        2) Dict for key-value lookups, defaultdict for counting
+        3) Deque for queues, heapq for priority queues
+        4) Avoid O(n²) algorithms when O(n log n) available
+        5) Use generators for large datasets (memory efficiency)
+      validation_type: "llm_check"
+      severity: "medium"
+      validation_prompt: "Analyze code for inefficient data structures or algorithms"
+      examples:
+        positive: |
+          # Efficient: O(n) membership test with set
+          valid_users = set(User.query.filter_by(active=True).values_list('id', flat=True))
+
+          def is_valid_user(user_id: int) -> bool:
+              return user_id in valid_users  # O(1) lookup
+
+          # Efficient: Generator for large dataset
+          def process_large_file(path: str):
+              with open(path) as f:
+                  for line in f:  # Generator, not loading entire file
+                      yield process_line(line)
+
+          # Efficient: defaultdict for counting
+          from collections import defaultdict
+
+          def count_words(text: str) -> Dict[str, int]:
+              counts = defaultdict(int)
+              for word in text.split():
+                  counts[word] += 1
+              return dict(counts)
+        negative: |
+          # Inefficient: O(n) membership test with list
+          valid_users = [u.id for u in User.query.filter_by(active=True).all()]
+
+          def is_valid_user(user_id):
+              return user_id in valid_users  # O(n) lookup
+
+          # Inefficient: Loading entire file into memory
+          def process_large_file(path):
+              with open(path) as f:
+                  lines = f.readlines()  # Loads entire file
+              return [process_line(line) for line in lines]
+      enforcement: "Suggest efficient data structures for identified use cases."
+
+    - id: "PERF_003"
+      name: "DATABASE_QUERY_OPTIMIZATION"
+      description: |
+        Optimize database queries for performance. Best practices:
+        1) Use indexes for frequently queried columns
+        2) Avoid N+1 queries (use joins or select_related)
+        3) Use pagination for large result sets
+        4) Batch inserts/updates when possible
+        5) Use query.count() instead of len(query.all())
+        6) Monitor slow queries (log queries > 100ms)
+      validation_type: "llm_check"
+      severity: "high"
+      validation_prompt: "Analyze database queries for N+1 problems and missing indexes"
+      examples:
+        positive: |
+          # Efficient: Use join to avoid N+1
+          def get_users_with_posts():
+              return User.query.options(
+                  joinedload(User.posts)
+              ).all()
+
+          # Efficient: Pagination for large results
+          def get_users_page(page=1, per_page=20):
+              return User.query.paginate(page=page, per_page=per_page)
+
+          # Efficient: Batch insert
+          def create_users(user_data_list):
+              users = [User(**data) for data in user_data_list]
+              db.session.bulk_save_objects(users)
+              db.session.commit()
+
+          # Efficient: Count without loading objects
+          def get_user_count():
+              return db.session.query(User).count()
+        negative: |
+          # N+1 query problem
+          def get_users_with_posts():
+              users = User.query.all()
+              for user in users:
+                  posts = user.posts  # Triggers query for each user
+              return users
+
+          # Inefficient: Loading all objects to count
+          def get_user_count():
+              return len(User.query.all())
+      enforcement: "Require query optimization for database operations."
+
+    - id: "PERF_004"
+      name: "CACHING_STRATEGY"
+      description: |
+        Implement caching for expensive operations. Strategies:
+        1) Memoization for pure functions (@lru_cache)
+        2) Redis/Memcached for distributed caching
+        3) Database query caching (with TTL)
+        4) HTTP response caching (with Cache-Control headers)
+        5) Set appropriate TTL based on data freshness requirements
+        6) Implement cache invalidation strategy
+      validation_type: "ast_check"
+      severity: "medium"
+      validation_code: "check_caching_usage"
+      examples:
+        positive: |
+          from functools import lru_cache
+          import redis
+
+          cache = redis.Redis(host='localhost', port=6379)
+
+          # Memoization for pure function
+          @lru_cache(maxsize=1000)
+          def fibonacci(n: int) -> int:
+              if n < 2:
+                  return n
+              return fibonacci(n-1) + fibonacci(n-2)
+
+          # Redis cache for expensive query
+          def get_user_profile(user_id: int) -> Dict:
+              cache_key = f"user_profile:{user_id}"
+
+              # Try cache first
+              cached = cache.get(cache_key)
+              if cached:
+                  return json.loads(cached)
+
+              # Cache miss: fetch from database
+              user = User.query.get(user_id)
+              profile = user.to_dict()
+
+              # Cache for 5 minutes
+              cache.setex(cache_key, 300, json.dumps(profile))
+              return profile
+
+          # Cache invalidation on update
+          def update_user_profile(user_id: int, data: Dict):
+              user = User.query.get(user_id)
+              user.update(data)
+              db.session.commit()
+
+              # Invalidate cache
+              cache.delete(f"user_profile:{user_id}")
+        negative: |
+          # No caching for expensive operation
+          def get_user_profile(user_id):
+              user = User.query.get(user_id)
+              # Expensive calculation repeated every call
+              return expensive_calculation(user)
+      enforcement: "Suggest caching for identified expensive operations."
+
+    - id: "PERF_005"
+      name: "ASYNC_IO_FOR_CONCURRENCY"
+      description: |
+        Use async I/O for concurrent operations (multiple API calls, database queries).
+        Use asyncio/aiohttp for network operations, async database drivers. Avoid
+        blocking I/O in async functions. Use connection pooling for efficiency.
+      validation_type: "ast_check"
+      severity: "medium"
+      validation_code: "check_async_usage"
+      examples:
+        positive: |
+          import asyncio
+          import aiohttp
+
+          async def fetch_user_data(session, user_id):
+              async with session.get(f'/api/users/{user_id}') as response:
+                  return await response.json()
+
+          async def fetch_all_users(user_ids):
+              async with aiohttp.ClientSession() as session:
+                  tasks = [fetch_user_data(session, uid) for uid in user_ids]
+                  return await asyncio.gather(*tasks)
+
+          # Usage
+          user_ids = [1, 2, 3, 4, 5]
+          results = asyncio.run(fetch_all_users(user_ids))
+        negative: |
+          # Synchronous sequential calls (slow)
+          def fetch_all_users(user_ids):
+              results = []
+              for user_id in user_ids:
+                  response = requests.get(f'/api/users/{user_id}')
+                  results.append(response.json())
+              return results
+      enforcement: "Suggest async I/O for concurrent network/database operations."
+
+  # ========================================================================
+  # DOMAIN 6: SECURITY
+  # Rules for secure coding, input validation, secrets management
+  # ========================================================================
+
+  security:
+
+    - id: "SEC_001"
+      name: "INPUT_VALIDATION"
+      description: |
+        Validate ALL user inputs against schema before processing. Requirements:
+        1) Type validation (string, int, email, URL, etc.)
+        2) Length/range validation (min/max)
+        3) Format validation (regex patterns)
+        4) Whitelist validation (enum values)
+        5) Sanitization (strip dangerous characters)
+        6) Reject invalid inputs with clear error messages
+      validation_type: "llm_check"
+      severity: "critical"
+      validation_prompt: "Check all user inputs are validated before use"
+      examples:
+        positive: |
+          from pydantic import BaseModel, Field, EmailStr, validator
+
+          class UserRegistration(BaseModel):
+              username: str = Field(..., min_length=3, max_length=20, regex=r'^[a-zA-Z0-9_]+$')
+              email: EmailStr
+              password: str = Field(..., min_length=8)
+              age: int = Field(..., ge=13, le=120)
+
+              @validator('password')
+              def password_strength(cls, v):
+                  if not any(c.isupper() for c in v):
+                      raise ValueError('Password must contain uppercase letter')
+                  if not any(c.isdigit() for c in v):
+                      raise ValueError('Password must contain digit')
+                  return v
+
+          @app.route('/register', methods=['POST'])
+          def register():
+              try:
+                  data = UserRegistration(**request.json)
+              except ValidationError as e:
+                  return jsonify({'errors': e.errors()}), 400
+
+              # Process validated data
+              create_user(data)
+              return jsonify({'status': 'success'}), 201
+        negative: |
+          @app.route('/register', methods=['POST'])
+          def register():
+              username = request.json['username']  # No validation
+              email = request.json['email']  # No validation
+              password = request.json['password']  # No validation
+              create_user(username, email, password)
+              return jsonify({'status': 'success'}), 201
+      enforcement: "Require input validation schema for all user inputs."
+
+    - id: "SEC_002"
+      name: "SQL_INJECTION_PREVENTION"
+      description: |
+        Prevent SQL injection attacks. Requirements:
+        1) Use parameterized queries (never string concatenation)
+        2) Use ORM (SQLAlchemy) with parameter binding
+        3) Validate/sanitize all inputs used in queries
+        4) Use allowlist for dynamic table/column names
+        5) Limit database permissions (principle of least privilege)
+      validation_type: "regex"
+      severity: "critical"
+      validation_pattern: "execute\\([\"'].*\\{.*\\}.*[\"']\\)|execute\\([\"'].*%.*[\"']\\)"
+      examples:
+        positive: |
+          from sqlalchemy import text
+
+          # Safe: Parameterized query
+          def get_user_by_id(user_id: int):
+              query = text("SELECT * FROM users WHERE id = :user_id")
+              result = db.execute(query, {'user_id': user_id})
+              return result.first()
+
+          # Safe: ORM with parameter binding
+          def get_user_by_username(username: str):
+              return User.query.filter_by(username=username).first()
+
+          # Safe: Allowlist for dynamic column names
+          ALLOWED_SORT_COLUMNS = {'name', 'email', 'created_at'}
+
+          def get_sorted_users(sort_by: str):
+              if sort_by not in ALLOWED_SORT_COLUMNS:
+                  raise ValueError("Invalid sort column")
+              return User.query.order_by(text(sort_by)).all()
+        negative: |
+          # DANGEROUS: SQL injection vulnerable
+          def get_user_by_id(user_id):
+              query = f"SELECT * FROM users WHERE id = {user_id}"
+              return db.execute(query)
+
+          # DANGEROUS: String concatenation
+          def get_user_by_username(username):
+              query = "SELECT * FROM users WHERE username = '" + username + "'"
+              return db.execute(query)
+      enforcement: "Reject any SQL queries using string formatting or concatenation."
+
+    - id: "SEC_003"
+      name: "SECRETS_MANAGEMENT"
+      description: |
+        Never hardcode secrets in code. Requirements:
+        1) Store secrets in environment variables
+        2) Use secret management services (AWS Secrets Manager, HashiCorp Vault)
+        3) Never commit secrets to version control (.env in .gitignore)
+        4) Rotate secrets regularly
+        5) Use different secrets for dev/staging/production
+        6) Validate secrets are present at startup (fail fast)
+      validation_type: "regex"
+      severity: "critical"
+      validation_pattern: "(?i)(password|secret|api[_-]?key|token)\\s*=\\s*[\"'][^\"']{8,}[\"']"
+      examples:
+        positive: |
+          import os
+          from typing import Optional
+
+          class Config:
+              """Configuration loaded from environment."""
+
+              def __init__(self):
+                  self.database_url = self._get_required('DATABASE_URL')
+                  self.api_key = self._get_required('API_KEY')
+                  self.secret_key = self._get_required('SECRET_KEY')
+                  self.debug = os.getenv('DEBUG', 'False').lower() == 'true'
+
+              def _get_required(self, key: str) -> str:
+                  """Get required environment variable or fail fast."""
+                  value = os.getenv(key)
+                  if not value:
+                      raise ValueError(f"Required environment variable {key} not set")
+                  return value
+
+          # Usage
+          config = Config()  # Fails fast if secrets missing
+
+          # .env file (NOT committed to git)
+          # DATABASE_URL=postgresql://localhost/mydb
+          # API_KEY=sk_live_xyz123
+          # SECRET_KEY=abc123xyz789
+        negative: |
+          # DANGEROUS: Hardcoded secrets
+          DATABASE_URL = "postgresql://user:password@localhost/mydb"
+          API_KEY = "sk_live_xyz123abc456"
+          SECRET_KEY = "my_secret_key_123"
+      enforcement: "Reject code with hardcoded secrets. Require environment variables."
+
+    - id: "SEC_004"
+      name: "AUTHENTICATION_AUTHORIZATION"
+      description: |
+        Implement proper authentication and authorization. Requirements:
+        1) Require authentication for all protected endpoints
+        2) Check authorization before accessing resources (RBAC)
+        3) Use secure session management (HttpOnly, Secure, SameSite cookies)
+        4) Implement rate limiting for auth endpoints
+        5) Use multi-factor authentication for sensitive operations
+        6) Log all authentication/authorization events
+      validation_type: "llm_check"
+      severity: "critical"
+      validation_prompt: "Check endpoints have proper authentication and authorization"
+      examples:
+        positive: |
+          from functools import wraps
+          from flask import request, abort
+
+          def require_auth(func):
+              """Decorator to require authentication."""
+              @wraps(func)
+              def wrapper(*args, **kwargs):
+                  token = request.headers.get('Authorization')
+                  if not token:
+                      abort(401, "Authentication required")
+
+                  user = verify_token(token)
+                  if not user:
+                      abort(401, "Invalid token")
+
+                  request.user = user
+                  return func(*args, **kwargs)
+              return wrapper
+
+          def require_role(role: str):
+              """Decorator to require specific role."""
+              def decorator(func):
+                  @wraps(func)
+                  def wrapper(*args, **kwargs):
+                      if not hasattr(request, 'user'):
+                          abort(401, "Authentication required")
+                      if request.user.role != role:
+                          abort(403, "Insufficient permissions")
+                      return func(*args, **kwargs)
+                  return wrapper
+              return decorator
+
+          @app.route('/api/admin/users')
+          @require_auth
+          @require_role('admin')
+          @limiter.limit("10 per minute")
+          def get_all_users():
+              """Admin-only endpoint with rate limiting."""
+              users = User.query.all()
+              return jsonify([u.to_dict() for u in users])
+        negative: |
+          @app.route('/api/admin/users')
+          def get_all_users():
+              # No authentication or authorization
+              users = User.query.all()
+              return jsonify([u.to_dict() for u in users])
+      enforcement: "Require authentication and authorization decorators on protected endpoints."
+
+    - id: "SEC_005"
+      name: "SECURE_COMMUNICATION"
+      description: |
+        Use secure communication protocols. Requirements:
+        1) HTTPS for all external communications (enforce TLS 1.2+)
+        2) Verify SSL certificates (no certificate verification bypass)
+        3) Use secure WebSocket connections (wss://)
+        4) Implement proper CORS policies (no Access-Control-Allow-Origin: *)
+        5) Set security headers (CSP, HSTS, X-Frame-Options, etc.)
+      validation_type: "llm_check"
+      severity: "high"
+      validation_prompt: "Check code uses secure communication protocols (HTTPS, no cert bypass)"
+      examples:
+        positive: |
+          import requests
+          from flask import Flask
+          from flask_talisman import Talisman
+
+          app = Flask(__name__)
+
+          # Force HTTPS
+          Talisman(app, force_https=True)
+
+          # Security headers
+          @app.after_request
+          def set_security_headers(response):
+              response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+              response.headers['X-Content-Type-Options'] = 'nosniff'
+              response.headers['X-Frame-Options'] = 'DENY'
+              response.headers['Content-Security-Policy'] = "default-src 'self'"
+              return response
+
+          # HTTPS with certificate verification
+          def fetch_external_data(url: str):
+              if not url.startswith('https://'):
+                  raise ValueError("Only HTTPS URLs allowed")
+              response = requests.get(url, verify=True, timeout=10)
+              return response.json()
+        negative: |
+          # DANGEROUS: HTTP, no cert verification
+          def fetch_external_data(url):
+              response = requests.get(url, verify=False)  # DANGEROUS
+              return response.json()
+
+          # DANGEROUS: Wide-open CORS
+          @app.after_request
+          def add_cors(response):
+              response.headers['Access-Control-Allow-Origin'] = '*'
+              return response
+      enforcement: "Require HTTPS, certificate verification, and security headers."
+
+  # ========================================================================
+  # DOMAIN 7: PARALLEL_AGENTS
+  # Rules for coordinating multiple agents and avoiding conflicts
+  # ========================================================================
+
+  parallel_agents:
+
+    - id: "PARALLEL_001"
+      name: "INDEPENDENT_TASKS_ONLY"
+      description: |
+        Only parallelize truly independent tasks with no shared mutable state.
+        Requirements:
+        1) Tasks must not modify the same files
+        2) Tasks must not share database records (no concurrent updates)
+        3) Tasks must be independently validatable
+        4) Each task must have ≤2 dependencies
+        5) Document task independence in execution plan
+      validation_type: "manual_review"
+      severity: "critical"
+      validation_code: "check_task_independence"
+      examples:
+        positive: |
+          {
+            "parallel_execution": {
+              "enabled": true,
+              "tasks": [
+                {
+                  "task_id": "TASK_001",
+                  "agent_id": "agent_1",
+                  "description": "Implement User model in src/models/user.py",
+                  "files": ["src/models/user.py", "tests/test_user.py"],
+                  "dependencies": [],
+                  "timeout_seconds": 600,
+                  "independence_check": {
+                    "no_shared_files": true,
+                    "no_shared_db_records": true,
+                    "independently_validatable": true
+                  }
+                },
+                {
+                  "task_id": "TASK_002",
+                  "agent_id": "agent_2",
+                  "description": "Implement Post model in src/models/post.py",
+                  "files": ["src/models/post.py", "tests/test_post.py"],
+                  "dependencies": [],
+                  "timeout_seconds": 600,
+                  "independence_check": {
+                    "no_shared_files": true,
+                    "no_shared_db_records": true,
+                    "independently_validatable": true
+                  }
+                }
+              ],
+              "coordination": {
+                "merge_strategy": "sequential_validation",
+                "conflict_resolution": "manual_review"
+              }
+            }
+          }
+        negative: |
+          {
+            "parallel_execution": {
+              "tasks": [
+                {
+                  "task_id": "TASK_001",
+                  "agent_id": "agent_1",
+                  "description": "Add authentication to User model",
+                  "files": ["src/models/user.py"]
+                },
+                {
+                  "task_id": "TASK_002",
+                  "agent_id": "agent_2",
+                  "description": "Add validation to User model",
+                  "files": ["src/models/user.py"]  # CONFLICT: Same file
+                }
+              ]
+            }
+          }
+      enforcement: "Reject parallel tasks that modify the same files or share mutable state."
+
+    - id: "PARALLEL_002"
+      name: "EXPLICIT_FILE_OWNERSHIP"
+      description: |
+        Each parallel task must declare file ownership. No two tasks can claim
+        the same file for writing. Read-only access is allowed for multiple tasks.
+        Orchestrator validates file ownership before execution. Log all file
+        modifications for conflict detection.
+      validation_type: "schema_check"
+      severity: "critical"
+      validation_schema: |
+        {
+          "task_id": "string",
+          "file_ownership": {
+            "read": ["array of file paths"],
+            "write": ["array of file paths"],
+            "create": ["array of file paths"]
+          }
+        }
+      examples:
+        positive: |
+          {
+            "parallel_tasks": [
+              {
+                "task_id": "TASK_001",
+                "agent_id": "agent_1",
+                "file_ownership": {
+                  "read": ["src/models/__init__.py"],
+                  "write": [],
+                  "create": ["src/models/user.py", "tests/test_user.py"]
+                }
+              },
+              {
+                "task_id": "TASK_002",
+                "agent_id": "agent_2",
+                "file_ownership": {
+                  "read": ["src/models/__init__.py"],
+                  "write": [],
+                  "create": ["src/models/post.py", "tests/test_post.py"]
+                }
+              }
+            ]
+          }
+        negative: |
+          {
+            "parallel_tasks": [
+              {
+                "task_id": "TASK_001",
+                "file_ownership": {
+                  "write": ["src/models/user.py"]
+                }
+              },
+              {
+                "task_id": "TASK_002",
+                "file_ownership": {
+                  "write": ["src/models/user.py"]  # CONFLICT
+                }
+              }
+            ]
+          }
+      enforcement: "Validate file ownership before parallel execution. Reject conflicts."
+
+    - id: "PARALLEL_003"
+      name: "FALLBACK_TO_SEQUENTIAL"
+      description: |
+        Always provide fallback to sequential execution if parallel fails. Track
+        parallel attempts for learning. On parallel failure: 1) Log failure reason,
+        2) Mark tasks as parallel_failed, 3) Retry sequentially, 4) Update metrics.
+        Never retry parallel execution immediately after failure.
+      validation_type: "manual_review"
+      severity: "high"
+      validation_code: "check_fallback_strategy"
+      examples:
+        positive: |
+          {
+            "execution_strategy": {
+              "primary": "parallel",
+              "fallback": "sequential",
+              "failure_handling": {
+                "log_attempt": true,
+                "retry_parallel": false,
+                "fallback_to_sequential": true,
+                "update_metrics": true
+              }
+            },
+            "parallel_attempt_log": {
+              "task_id": 123,
+              "parallel_attempted": true,
+              "parallel_failed": true,
+              "failure_reason": "File conflict detected during execution",
+              "fallback_to_sequential": true,
+              "sequential_result": "success"
+            }
+          }
+        negative: |
+          {
+            "execution_strategy": {
+              "primary": "parallel",
+              "fallback": "parallel",  # WRONG: No sequential fallback
+              "failure_handling": {
+                "retry_parallel": true  # WRONG: Immediate retry
+              }
+            }
+          }
+      enforcement: "Require sequential fallback for all parallel execution plans."
+
+    - id: "PARALLEL_004"
+      name: "MERGE_STRATEGY"
+      description: |
+        Define explicit merge strategy for parallel task results. Strategies:
+        1) Sequential validation (validate each task independently, then combined)
+        2) Git merge (automatic merge with conflict detection)
+        3) Manual review (human inspection required)
+        4) No merge (tasks completely independent)
+        Document merge strategy in execution plan. Test merged result before accepting.
+      validation_type: "schema_check"
+      severity: "high"
+      validation_schema: |
+        {
+          "merge_strategy": "enum[sequential_validation,git_merge,manual_review,no_merge]",
+          "conflict_resolution": "enum[auto,manual,reject]",
+          "validation_steps": ["array of strings"]
+        }
+      examples:
+        positive: |
+          {
+            "parallel_execution": {
+              "tasks": [...],
+              "coordination": {
+                "merge_strategy": "sequential_validation",
+                "conflict_resolution": "manual",
+                "validation_steps": [
+                  "Validate Task 1 output independently",
+                  "Validate Task 2 output independently",
+                  "Merge outputs (git merge or file concatenation)",
+                  "Validate merged result",
+                  "Run integration tests on merged code",
+                  "If validation fails, escalate to human review"
+                ]
+              }
+            }
+          }
+        negative: |
+          {
+            "parallel_execution": {
+              "tasks": [...]
+              # Missing merge strategy
+            }
+          }
+      enforcement: "Require explicit merge strategy for all parallel executions."
+
+    - id: "PARALLEL_005"
+      name: "TIMEOUT_AND_MONITORING"
+      description: |
+        Set timeouts for all parallel tasks and monitor progress. Requirements:
+        1) Each task has explicit timeout (default: 600s)
+        2) Monitor task progress (heartbeat every 30s)
+        3) Kill tasks exceeding timeout
+        4) Log task duration for complexity estimation
+        5) Track parallel vs sequential performance
+        6) Report timeout failures to orchestrator
+      validation_type: "schema_check"
+      severity: "medium"
+      validation_schema: |
+        {
+          "task_id": "string",
+          "timeout_seconds": "int",
+          "heartbeat_interval_seconds": "int (default: 30)",
+          "monitoring": {
+            "track_duration": "bool",
+            "log_progress": "bool",
+            "kill_on_timeout": "bool"
+          }
+        }
+      examples:
+        positive: |
+          {
+            "parallel_execution": {
+              "tasks": [
+                {
+                  "task_id": "TASK_001",
+                  "timeout_seconds": 600,
+                  "heartbeat_interval_seconds": 30,
+                  "monitoring": {
+                    "track_duration": true,
+                    "log_progress": true,
+                    "kill_on_timeout": true
+                  }
+                }
+              ]
+            }
+          }
+
+          # Monitoring implementation
+          class TaskMonitor:
+              def monitor_task(self, task_id, timeout):
+                  start_time = time.time()
+                  while True:
+                      elapsed = time.time() - start_time
+                      if elapsed > timeout:
+                          logger.error("Task timeout", extra={'task_id': task_id, 'elapsed': elapsed})
+                          kill_task(task_id)
+                          break
+                      if is_task_complete(task_id):
+                          logger.info("Task completed", extra={'task_id': task_id, 'duration': elapsed})
+                          break
+                      time.sleep(30)  # Heartbeat
+        negative: |
+          {
+            "parallel_execution": {
+              "tasks": [
+                {
+                  "task_id": "TASK_001"
+                  # No timeout, no monitoring
+                }
+              ]
+            }
+          }
+      enforcement: "Require timeout and monitoring for all parallel tasks."
+
+# End of prompt_rules.yaml

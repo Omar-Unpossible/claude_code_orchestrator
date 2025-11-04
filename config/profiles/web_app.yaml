@@ -1,0 +1,66 @@
+# Web Application Profile
+# Optimized for Node.js, React, and modern web development
+
+project:
+  language: javascript
+  test_framework: jest
+  code_style: eslint + prettier
+  package_manager: npm
+
+agent:
+  type: local
+  timeout: 300
+
+validation:
+  syntax_check: true
+  type_check: false  # TypeScript projects should override
+  style_check: true
+  min_validation_score: 0.65
+
+testing:
+  run_tests: true
+  coverage_threshold: 0.75  # Lower threshold for frontend
+  test_pattern: "**/*.test.{js,jsx,ts,tsx}"
+  test_command: "npm test"
+  fail_on_test_failure: true
+
+quality:
+  min_quality_score: 0.65
+  require_docstrings: false  # JSDoc optional
+  require_type_hints: false
+  max_complexity: 15  # Higher tolerance for frontend
+
+confidence:
+  min_confidence: 0.55  # Lower due to frontend complexity
+  use_llm_confidence: true
+  use_heuristic_confidence: true
+
+prompts:
+  include_patterns:
+    - "Use modern JavaScript (ES6+) features"
+    - "Follow React best practices (hooks, functional components)"
+    - "Use async/await for asynchronous operations"
+    - "Implement proper error boundaries in React"
+    - "Use semantic HTML5 elements"
+    - "Ensure accessibility (ARIA labels, keyboard navigation)"
+    - "Optimize for performance (lazy loading, code splitting)"
+    - "Write Jest tests with React Testing Library"
+
+git:
+  enabled: false
+  auto_commit: true
+  commit_strategy: per_task
+  create_branch: true
+  branch_prefix: "feature/task-"
+
+retry:
+  max_attempts: 3
+  base_delay: 1.0
+
+dependencies:
+  max_depth: 5
+  allow_cycles: false
+
+logging:
+  level: INFO
+  format: detailed

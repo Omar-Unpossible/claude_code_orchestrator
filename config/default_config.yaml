@@ -156,6 +156,43 @@ performance:
   enable_caching: true  # Enable caching where applicable
   cache_ttl: 300  # Cache time-to-live (seconds)
 
+# M9: Retry Configuration
+retry:
+  max_attempts: 5  # Maximum number of retry attempts
+  base_delay: 1.0  # Initial delay in seconds
+  max_delay: 60.0  # Maximum delay in seconds
+  backoff_multiplier: 2.0  # Exponential backoff multiplier (1s → 2s → 4s → 8s)
+  jitter: 0.1  # Random jitter factor (0.0-1.0) to prevent thundering herd
+  retryable_errors:  # Error patterns that should trigger retry
+    - "rate limit"
+    - "rate_limit"
+    - "too many requests"
+    - "timeout"
+    - "timed out"
+    - "connection"
+    - "network"
+    - "service unavailable"
+    - "temporarily unavailable"
+    - "try again"
+
+# M9: Task Dependencies
+dependencies:
+  max_depth: 10  # Maximum dependency chain depth
+  allow_cycles: false  # Whether to allow circular dependencies
+  fail_on_dependency_error: true  # Fail task if dependency fails
+
+# M9: Git Integration
+git:
+  enabled: false  # Enable git auto-integration (opt-in)
+  auto_commit: true  # Automatically commit after task completion
+  commit_strategy: per_task  # per_task | per_milestone | manual
+  create_branch: true  # Create branch per task
+  branch_prefix: "obra/task-"  # Branch name prefix
+  auto_pr: false  # Automatically create pull requests
+  pr_base_branch: main  # Base branch for PRs
+  commit_message_template: semantic  # Commit message style
+  include_metadata: true  # Include Obra metadata in commits
+
 # Development/Debug Settings (disable in production)
 debug:
   enabled: false  # Enable debug mode

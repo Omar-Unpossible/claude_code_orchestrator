@@ -4,7 +4,7 @@
 
 The Claude Code Orchestrator is a supervision system where a local LLM (Qwen 2.5 on RTX 5090) provides intelligent oversight for Claude Code CLI executing tasks in an isolated environment. This enables semi-autonomous software development with continuous validation and quality control.
 
-**Version**: 1.0.0
+**Version**: 1.2.0 (M9 In Progress)
 **Last Updated**: 2025-11-02
 
 ## High-Level Architecture
@@ -451,18 +451,215 @@ orchestration:
 - Tiktoken (accurate token counting)
 - Ollama (local LLM)
 
+## M9: Core Enhancements (v1.2) 🚧 IN PROGRESS
+
+**Purpose**: Reliability, workflow management, and usability improvements
+
+### Components
+
+#### 1. Retry Logic with Exponential Backoff
+**Module**: `src/utils/retry_manager.py`
+
+**Purpose**: Gracefully handle transient failures (rate limits, timeouts, network issues)
+
+**Key Features**:
+- Exponential backoff: 1s → 2s → 4s → 8s → 16s (configurable)
+- Jitter prevents thundering herd
+- Retryable vs non-retryable error classification
+- Integration points: Agent calls, LLM calls
+- Detailed retry logging
+
+**Configuration**:
+```yaml
+retry:
+  max_attempts: 5
+  base_delay: 1.0
+  max_delay: 60.0
+  backoff_multiplier: 2.0
+  jitter: 0.1
+```
+
+#### 2. Task Dependency System
+**Modules**:
+- `src/orchestration/dependency_resolver.py`
+- `src/core/models.py` (Task model update)
+- Database migration: Add `depends_on` JSON field
+
+**Purpose**: Enable complex workflows with task dependencies
+
+**Key Features**:
+- Define dependencies: Task B depends on Task A, C
+- Topological sort for execution order
+- Cycle detection (reject circular dependencies)
+- Automatic blocking until dependencies complete
+- Cascading failure handling
+- Visual dependency graph in reports
+
+**Database Schema**:
+```sql
+ALTER TABLE tasks ADD COLUMN depends_on TEXT;  -- JSON array
+```
+
+**Configuration**:
+```yaml
+dependencies:
+  max_depth: 10
+  allow_cycles: false
+  fail_on_dependency_error: true
+```
+
+#### 3. Git Auto-Integration
+**Module**: `src/utils/git_manager.py`
+
+**Purpose**: Automatic version control with semantic commits
+
+**Key Features**:
+- Auto-commit after successful task completion
+- LLM-generated semantic commit messages
+- Branch per task: `obra/task-{id}-{slug}`
+- Optional PR creation via `gh` CLI
+- Rollback support via git
+- Configurable commit strategy
+
+**Commit Message Format**:
+```
+feat(module): Task title
+
+Description...
+
+- Change 1
+- Change 2
+
+Obra Task ID: #123
+Confidence: 0.85
+Quality Score: 0.90
+```
+
+**Configuration**:
+```yaml
+git:
+  enabled: true
+  auto_commit: true
+  commit_strategy: per_task  # per_task | per_milestone | manual
+  create_branch: true
+  branch_prefix: obra/task-
+  auto_pr: false
+```
+
+#### 4. Configuration Profiles
+**Module**: `src/core/config.py` (updated)
+**Profiles**: `config/profiles/*.yaml`
+
+**Purpose**: Pre-configured settings for different project types
+
+**Profiles**:
+- `python_project.yaml` - Python development with pytest
+- `web_app.yaml` - Web application (Node.js, React)
+- `ml_project.yaml` - Machine learning/data science
+- `microservice.yaml` - Microservice architecture
+- `minimal.yaml` - Minimal overhead
+- `production.yaml` - Production-ready, high quality
+
+**Profile Loading Priority** (highest to lowest):
+1. CLI arguments
+2. Environment variables
+3. User config
+4. Project config
+5. **Profile** ← NEW
+6. Default config
+
+**Usage**:
+```bash
+obra project create "My Python App" --profile python_project
+```
+
+### Architecture Impact
+
+**New Modules** (3):
+- `src/utils/retry_manager.py` (~100 lines)
+- `src/orchestration/dependency_resolver.py` (~250 lines)
+- `src/utils/git_manager.py` (~200 lines)
+
+**Updated Modules** (5):
+- `src/core/models.py` - Task model with dependencies
+- `src/core/state.py` - Dependency queries
+- `src/core/config.py` - Profile loading
+- `src/orchestrator.py` - Git integration, dependency checking
+- `src/cli.py` - New flags
+
+**Database Changes**:
+- Migration: Add `depends_on` field to tasks table
+
+**Configuration Files** (6 profiles):
+- `config/profiles/*.yaml` (~50 lines each)
+
+**Tests** (~270 new tests):
+- Retry logic: 50 tests
+- Dependencies: 80 tests
+- Git integration: 60 tests
+- Profiles: 40 tests
+- Integration: 40 tests
+
+**Total M9 Code**:
+- Production: ~650 lines
+- Tests: ~800 lines
+- Config/Docs: ~700 lines
+- **Total: ~2,150 lines**
+
+### Data Flow Updates
+
+**With Retry Logic**:
+```
+Agent call → RetryManager wraps call → Exponential backoff on failure
+LLM call → RetryManager wraps call → Exponential backoff on failure
+```
+
+**With Dependencies**:
+```
+Orchestrator gets task
+    ↓
+DependencyResolver checks dependencies
+    ↓
+If blocked: Skip task, log reason
+If ready: Proceed with execution
+    ↓
+On completion: Update dependent tasks
+```
+
+**With Git Integration**:
+```
+Task completed successfully
+    ↓
+GitManager checks git status
+    ↓
+Generate commit message (LLM)
+    ↓
+Create branch (if enabled)
+    ↓
+Commit changes
+    ↓
+Optional: Create PR via gh CLI
+```
+
 ## Future Architecture Enhancements
 
-**v1.1**:
+**v1.3** (After M9):
+- Budget & Cost Controls (P0)
+- Metrics & Reporting System (P0)
+- Checkpoint System (P0)
+- Prompt Template Library (P0)
+- Escalation Levels (P0)
+
+**v1.4+**:
 - Web UI dashboard
 - Real-time WebSocket updates
 - Multi-project orchestration
+- Pattern learning from successful tasks
 
 **v2.0**:
 - Distributed architecture
-- Pattern learning from successful tasks
-- Auto-generated test suites
-- Git integration for automatic commits
+- Advanced ML-based pattern learning
+- Multi-agent collaboration
 
 ---
 

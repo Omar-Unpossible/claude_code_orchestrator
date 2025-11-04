@@ -1,0 +1,68 @@
+# Microservice Profile
+# Optimized for microservice architecture with API development
+
+project:
+  language: python  # or override with node, go, etc.
+  test_framework: pytest
+  code_style: "black + ruff"
+  package_manager: pip
+
+agent:
+  type: local
+  timeout: 300
+
+validation:
+  syntax_check: true
+  type_check: true
+  style_check: true
+  min_validation_score: 0.75  # Higher bar for production code
+
+testing:
+  run_tests: true
+  coverage_threshold: 0.85  # High coverage for services
+  test_pattern: "tests/test_*.py"
+  test_command: "pytest"
+  fail_on_test_failure: true
+
+quality:
+  min_quality_score: 0.75
+  require_docstrings: true
+  require_type_hints: true
+  max_complexity: 10
+
+confidence:
+  min_confidence: 0.65
+  use_llm_confidence: true
+  use_heuristic_confidence: true
+
+prompts:
+  include_patterns:
+    - "Follow REST API best practices"
+    - "Implement proper error handling and status codes"
+    - "Use Pydantic for request/response validation"
+    - "Implement health check endpoints"
+    - "Add OpenAPI/Swagger documentation"
+    - "Use structured logging with correlation IDs"
+    - "Implement retry logic with exponential backoff for external calls"
+    - "Handle database connections properly (pooling, cleanup)"
+    - "Add proper authentication and authorization"
+    - "Write integration tests for API endpoints"
+
+git:
+  enabled: false
+  auto_commit: true
+  commit_strategy: per_task
+  create_branch: true
+  branch_prefix: "feature/task-"
+
+retry:
+  max_attempts: 3
+  base_delay: 1.0
+
+dependencies:
+  max_depth: 5
+  allow_cycles: false
+
+logging:
+  level: INFO
+  format: json  # Structured logging for microservices

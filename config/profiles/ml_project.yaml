@@ -1,0 +1,67 @@
+# Machine Learning Project Profile
+# Optimized for data science and ML workflows with Jupyter, pandas, sklearn
+
+project:
+  language: python
+  test_framework: pytest
+  code_style: "black + flake8"
+  package_manager: pip
+
+agent:
+  type: local
+  timeout: 600  # 10 minutes for ML tasks (longer training times)
+
+validation:
+  syntax_check: true
+  type_check: false  # Relaxed for notebooks
+  style_check: true
+  min_validation_score: 0.60  # More lenient
+
+testing:
+  run_tests: true
+  coverage_threshold: 0.70  # Lower for exploratory code
+  test_pattern: "tests/test_*.py"
+  test_command: "pytest"
+  fail_on_test_failure: false  # Don't block on test failures
+
+quality:
+  min_quality_score: 0.60
+  require_docstrings: true
+  require_type_hints: false  # Optional for ML code
+  max_complexity: 20  # Higher tolerance for ML pipelines
+
+confidence:
+  min_confidence: 0.50  # Lower due to exploratory nature
+  use_llm_confidence: true
+  use_heuristic_confidence: true
+
+prompts:
+  include_patterns:
+    - "Use numpy/pandas for data manipulation"
+    - "Implement reproducible experiments (set random seeds)"
+    - "Log metrics and hyperparameters for each experiment"
+    - "Use scikit-learn pipelines for preprocessing"
+    - "Validate data shapes and types explicitly"
+    - "Handle missing values and outliers appropriately"
+    - "Document data sources and preprocessing steps"
+    - "Use cross-validation for model evaluation"
+    - "Save model artifacts and metadata"
+
+git:
+  enabled: false
+  auto_commit: true
+  commit_strategy: per_milestone  # Less frequent commits
+  create_branch: true
+  branch_prefix: "experiment/task-"
+
+retry:
+  max_attempts: 5  # More retries for flaky training
+  base_delay: 2.0
+
+dependencies:
+  max_depth: 10  # Complex pipelines
+  allow_cycles: false
+
+logging:
+  level: DEBUG  # Verbose for debugging experiments
+  format: detailed

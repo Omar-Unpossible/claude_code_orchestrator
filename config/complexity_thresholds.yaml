@@ -1,0 +1,319 @@
+# Complexity Thresholds Configuration
+# Defines heuristics for estimating task complexity and rules for automatic task decomposition
+# Used by ComplexityEstimator to determine when to break down tasks and parallelize execution
+
+# =============================================================================
+# COMPLEXITY HEURISTICS
+# =============================================================================
+# Heuristics for estimating the complexity of tasks based on various factors
+
+complexity_heuristics:
+  # Lines of Code (LOC) estimates by implementation type
+  # Used to estimate the size of code changes required
+  loc_estimation:
+    simple_function: 20          # Simple utility function (1-2 parameters, straightforward logic)
+    medium_function: 35          # Function with moderate logic (3-5 parameters, some branching)
+    complex_function: 50         # Complex function (6+ parameters, multiple branches, error handling)
+    simple_class: 80             # Simple class (2-4 methods, minimal state)
+    medium_class: 150            # Medium class (5-8 methods, moderate state management)
+    complex_class: 250           # Complex class (9+ methods, complex state, inheritance)
+    small_module: 200            # Small module (2-3 classes or 5-8 functions)
+    medium_module: 400           # Medium module (4-6 classes or 9-15 functions)
+    large_module: 600            # Large module (7+ classes or 16+ functions)
+    integration_layer: 300       # Integration between components (adapters, facades)
+    api_endpoint: 100            # REST API endpoint (route + handler + validation)
+    database_migration: 150      # Database schema change with migration code
+
+  # Complexity weight multipliers based on number of files modified
+  # More files = higher coordination overhead and integration complexity
+  file_count_weights:
+    1_file: 1.0                  # Single file modification (baseline)
+    2_3_files: 1.3               # 2-3 files (moderate coordination needed)
+    4_6_files: 1.6               # 4-6 files (significant integration work)
+    7_10_files: 2.0              # 7-10 files (high coordination complexity)
+    11_plus_files: 2.5           # 11+ files (very high complexity, strong decomposition candidate)
+
+  # Complexity score based on dependency chain depth
+  # Deeper dependencies = harder to understand, modify, and test
+  dependency_depth_scoring:
+    depth_0: 0                   # No dependencies (pure utility)
+    depth_1: 5                   # Direct dependencies only (imports 1 level deep)
+    depth_2: 12                  # Two levels of dependencies (A -> B -> C)
+    depth_3: 20                  # Three levels (A -> B -> C -> D)
+    depth_4: 30                  # Four levels (high coupling risk)
+    depth_5_plus: 40             # Five or more levels (architectural smell, requires careful handling)
+
+  # Conceptual complexity factors that increase difficulty
+  # These multiply the base complexity score
+  conceptual_complexity:
+    algorithm_implementation: 1.8    # Implementing algorithms (sorting, searching, graph algorithms)
+    concurrency_handling: 2.0        # Threading, async/await, race conditions, locks
+    security_critical: 1.7           # Authentication, authorization, encryption, input validation
+    performance_optimization: 1.6    # Profiling-guided optimization, caching strategies
+    backward_compatibility: 1.4      # Maintaining API compatibility while changing internals
+    legacy_code_modification: 1.5    # Working with poorly documented or complex legacy code
+    external_api_integration: 1.3    # Integrating with third-party APIs (error handling, rate limits)
+    data_migration: 1.6              # Migrating data between schemas or systems
+    distributed_systems: 2.2         # Distributed coordination, consensus, eventual consistency
+    machine_learning: 1.9            # ML model training, evaluation, deployment
+
+  # Special case multipliers for specific scenarios
+  special_cases:
+    first_implementation: 1.3    # First implementation in a new area (learning curve)
+    cross_cutting_concern: 1.5   # Changes affecting multiple layers (logging, error handling)
+    breaking_change: 1.6         # Changes that break existing APIs or contracts
+    experimental_feature: 1.4    # Proof-of-concept or experimental work (higher uncertainty)
+    production_hotfix: 1.8       # Critical bug fix under time pressure (extra validation needed)
+
+# =============================================================================
+# DECOMPOSITION THRESHOLDS
+# =============================================================================
+# Thresholds that trigger automatic task decomposition into subtasks
+
+decomposition_thresholds:
+  # Maximum token budget for a single task prompt
+  # Conservative limit to ensure Claude Code can handle the task in one session
+  max_tokens: 8000
+
+  # Maximum number of files to modify in a single task
+  # More files = higher risk of conflicts and cognitive overload
+  max_files: 5
+
+  # Maximum dependency chain depth for a single task
+  # Deeper chains require more context and increase failure risk
+  max_dependencies: 3
+
+  # Maximum estimated duration in hours for a single task
+  # Longer tasks have higher risk of context loss and errors
+  max_duration_hours: 4
+
+  # Estimated lines of code threshold for decomposition
+  # Tasks exceeding this should be broken down into smaller chunks
+  max_loc_estimate: 400
+
+  # Composite complexity score threshold
+  # Calculated from heuristics above; exceeding triggers decomposition
+  max_complexity_score: 100
+
+  # PHASE_5B: Decomposition suggestion threshold (not a command)
+  # Score >= this value means Obra SUGGESTS decomposition to Claude
+  # Claude makes final decision based on codebase understanding
+  suggestion_threshold: 60
+
+  # Deprecated: decompose_threshold (replaced by suggestion_threshold)
+  # Kept for backward compatibility, same semantics as suggestion_threshold
+  decompose_threshold: 70
+
+  # Automatically decompose when thresholds exceeded
+  # If false, will prompt for human confirmation before decomposing
+  auto_decompose: true
+
+  # Minimum number of subtasks to justify decomposition
+  # Don't decompose into 2 tasks; not worth the overhead
+  min_subtask_count: 3
+
+  # Confidence threshold for decomposition decision
+  # Only auto-decompose if LLM is confident about the breakdown strategy
+  decomposition_confidence_threshold: 0.75
+
+# =============================================================================
+# PARALLELIZATION RULES
+# =============================================================================
+# Rules for determining when and how to execute subtasks in parallel
+
+parallelization_rules:
+  # Minimum number of subtasks required to consider parallel execution
+  # Parallelizing 2 tasks has minimal benefit; need at least 3
+  min_subtasks_for_parallel: 3
+
+  # Maximum number of concurrent agents (Claude Code instances)
+  # Limited by system resources and API rate limits
+  max_concurrent_agents: 5
+
+  # Criteria for determining task independence
+  # ALL criteria must be met for tasks to be considered independent
+  independence_criteria:
+    # Tasks must not modify the same files
+    no_shared_files: true
+
+    # Tasks must not call or modify the same functions
+    no_shared_functions: true
+
+    # Tasks must not have sequential dependencies (Task B depends on Task A output)
+    no_sequential_dependencies: true
+
+    # Tasks must not modify shared global state
+    no_shared_global_state: true
+
+    # Tasks must not require the same exclusive resources (locks, file handles)
+    no_shared_exclusive_resources: true
+
+  # Conflict detection settings
+  conflict_detection:
+    # Check for file-level conflicts (same file modified by multiple tasks)
+    check_file_overlap: true
+
+    # Check for function call conflicts (Task A calls function modified by Task B)
+    check_function_calls: true
+
+    # Check for shared state access (global variables, singletons, database tables)
+    check_shared_state: true
+
+    # Check for import conflicts (circular dependencies after parallel changes)
+    check_import_cycles: true
+
+    # Fail-safe: if ANY conflict detected, execute sequentially
+    fail_safe_sequential: true
+
+  # Resource management for parallel execution
+  resource_limits:
+    # Maximum memory per agent (MB) - prevent system overload
+    max_memory_per_agent_mb: 2048
+
+    # Maximum CPU cores per agent - leave resources for validation LLM
+    max_cpu_cores_per_agent: 2
+
+    # Total system memory threshold (%) - don't parallelize if system is under pressure
+    max_total_memory_usage_percent: 80
+
+    # Agent startup delay (seconds) - stagger starts to avoid resource spikes
+    agent_startup_delay_seconds: 2
+
+  # Parallelization strategy selection
+  strategy:
+    # Prefer sequential for high-risk tasks (security, concurrency, data migration)
+    high_risk_sequential: true
+
+    # Use parallel for independent feature additions
+    independent_features_parallel: true
+
+    # Use parallel for test writing (tests are usually independent)
+    test_writing_parallel: true
+
+    # Use parallel for documentation updates
+    documentation_parallel: true
+
+# =============================================================================
+# TASK TYPE MULTIPLIERS
+# =============================================================================
+# Complexity multipliers based on the type of task being performed
+
+task_type_multipliers:
+  # Feature implementation (new functionality)
+  # Higher complexity due to design decisions, edge cases, and integration
+  feature_implementation: 1.5
+
+  # Bug fix (correcting existing behavior)
+  # Lower complexity as scope is usually well-defined
+  bug_fix: 0.8
+
+  # Refactoring (improving code structure without changing behavior)
+  # Moderate complexity, requires careful testing
+  refactoring: 1.2
+
+  # Test implementation (writing test cases)
+  # Lower complexity, usually well-scoped
+  testing: 0.6
+
+  # Documentation updates (comments, README, guides)
+  # Lowest complexity, minimal risk
+  documentation: 0.4
+
+  # Performance optimization (improving speed/memory)
+  # High complexity, requires profiling and validation
+  performance_optimization: 1.7
+
+  # Security hardening (adding security controls)
+  # High complexity, critical correctness
+  security_enhancement: 1.8
+
+  # API design (creating new interfaces)
+  # High complexity, long-term implications
+  api_design: 1.6
+
+  # Database schema change
+  # Moderate-high complexity, migration concerns
+  schema_migration: 1.4
+
+  # Dependency upgrade (updating libraries)
+  # Moderate complexity, compatibility concerns
+  dependency_upgrade: 1.3
+
+  # Build/deployment configuration
+  # Moderate complexity, infrastructure knowledge required
+  build_config: 1.2
+
+  # Code review/audit (analyzing existing code)
+  # Lower complexity, mostly reading
+  code_review: 0.7
+
+# =============================================================================
+# ESTIMATION CALIBRATION
+# =============================================================================
+# Settings for calibrating and improving complexity estimates over time
+
+estimation_calibration:
+  # Track actual vs estimated complexity for learning
+  track_accuracy: true
+
+  # Minimum completed tasks before adjusting thresholds
+  min_tasks_for_calibration: 20
+
+  # Weight for historical data in calibration (0.0 - 1.0)
+  # Higher = trust historical data more than default heuristics
+  historical_weight: 0.3
+
+  # Adjust thresholds if estimation error exceeds this percentage
+  max_acceptable_error_percent: 30
+
+  # Calibration adjustment rate (how quickly to adapt thresholds)
+  # Lower = more conservative, slower adaptation
+  adjustment_rate: 0.1
+
+# =============================================================================
+# SAFETY LIMITS
+# =============================================================================
+# Hard limits to prevent runaway decomposition or resource exhaustion
+
+safety_limits:
+  # Maximum depth of task decomposition (prevent infinite recursion)
+  max_decomposition_depth: 4
+
+  # Maximum total subtasks across all levels
+  max_total_subtasks: 50
+
+  # Minimum estimated LOC per subtask (don't over-decompose)
+  min_subtask_loc: 15
+
+  # Maximum time to spend on decomposition planning (minutes)
+  max_decomposition_planning_time_minutes: 10
+
+  # If decomposition fails, fall back to sequential execution
+  fallback_to_sequential_on_error: true
+
+  # Emergency stop: total orchestration time limit (hours)
+  max_total_orchestration_time_hours: 24
+
+# =============================================================================
+# CONFIDENCE SCORING
+# =============================================================================
+# Settings for confidence-based decomposition decisions
+
+confidence_scoring:
+  # Require LLM validation for decomposition decisions
+  require_llm_validation: true
+
+  # Minimum confidence to proceed with automatic decomposition
+  min_auto_decompose_confidence: 0.75
+
+  # Confidence threshold for parallel execution decision
+  min_parallel_confidence: 0.80
+
+  # If confidence is below threshold, trigger breakpoint for human decision
+  breakpoint_on_low_confidence: true
+
+  # Confidence penalty for untested code paths
+  untested_code_penalty: 0.15
+
+  # Confidence boost for similar previous successful tasks
+  similar_task_boost: 0.10

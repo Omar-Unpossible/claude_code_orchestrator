@@ -1,0 +1,56 @@
+# Minimal Profile
+# Lightweight configuration for quick prototyping and iteration
+
+project:
+  language: python
+  test_framework: pytest
+  code_style: minimal
+
+agent:
+  type: local
+  timeout: 180  # 3 minutes
+
+validation:
+  syntax_check: true
+  type_check: false  # Skip for speed
+  style_check: false  # Skip for speed
+  min_validation_score: 0.50
+
+testing:
+  run_tests: false  # Skip automated testing
+  coverage_threshold: 0.0
+  fail_on_test_failure: false
+
+quality:
+  min_quality_score: 0.50  # Lenient
+  require_docstrings: false
+  require_type_hints: false
+  max_complexity: 30  # Very permissive
+
+confidence:
+  min_confidence: 0.40  # Low bar
+  use_llm_confidence: false  # Skip LLM for speed
+  use_heuristic_confidence: true
+
+prompts:
+  include_patterns:
+    - "Focus on functionality over style"
+    - "Prototype quickly, optimize later"
+    - "Simple, straightforward implementations"
+
+git:
+  enabled: false
+  auto_commit: false
+  commit_strategy: manual
+
+retry:
+  max_attempts: 2  # Fewer retries
+  base_delay: 0.5
+
+dependencies:
+  max_depth: 3
+  allow_cycles: false
+
+logging:
+  level: WARNING  # Minimal logging
+  format: simple

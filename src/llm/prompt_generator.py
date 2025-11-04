@@ -20,7 +20,7 @@ import re
 import yaml
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 
 import jinja2
 import jinja2.meta
@@ -28,6 +28,11 @@ from jinja2 import Environment, FileSystemLoader, Template, TemplateError
 from jinja2.exceptions import TemplateNotFound, UndefinedError
 
 from src.core.exceptions import StateManagerException
+# Note: StructuredPromptBuilder is being created in parallel (TASK_3.2)
+from src.llm.structured_prompt_builder import StructuredPromptBuilder
+
+if TYPE_CHECKING:
+    from src.orchestration.complexity_estimate import ComplexityEstimate
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +66,24 @@ class PromptGenerator:
     - Prompt optimization
     - Few-shot example injection
     - Caching for performance
+    - **Structured mode support** (opt-in) for rule-based prompt generation
+    - **Optional complexity estimates** (PHASE_5B) for parallelization suggestions
 
-    Example:
+    The generator supports two modes:
+
+    1. **Unstructured Mode** (default): Uses Jinja2 templates from YAML files
+       - Natural language prompts with variable substitution
+       - Full template customization via config/prompt_templates.yaml
+       - Backward compatible with existing code
+
+    2. **Structured Mode** (opt-in): Uses StructuredPromptBuilder for rule-based prompts
+       - Declarative prompt rules with conditional logic
+       - More maintainable and testable
+       - Consistent structure across different prompt types
+       - Enable via `structured_mode=True` in constructor
+       - Optional complexity analysis for task parallelization suggestions
+
+    Example (Unstructured Mode):
         >>> from src.llm.local_interface import LocalLLMInterface
         >>> from src.core.state import StateManager
         >>>
@@ -85,6 +106,42 @@ class PromptGenerator:
         ...         'task_description': 'Add new functionality',
         ...         'working_directory': '/tmp/project'
         ...     }
+        ... )
+
+    Example (Structured Mode):
+        >>> from src.llm.structured_prompt_builder import StructuredPromptBuilder
+        >>>
+        >>> builder = StructuredPromptBuilder(rule_validator=rule_validator)
+        >>> generator = PromptGenerator(
+        ...     template_dir='config',
+        ...     llm_interface=llm,
+        ...     state_manager=state_manager,
+        ...     structured_mode=True,
+        ...     structured_builder=builder
+        ... )
+        >>>
+        >>> # Same API, but uses structured rules internally
+        >>> prompt = generator.generate_task_prompt(task, context)
+
+    Example (Structured Mode with Complexity Analysis):
+        >>> from src.orchestration.complexity_estimate import ComplexityEstimate
+        >>>
+        >>> # Generate complexity estimate
+        >>> estimate = ComplexityEstimate(
+        ...     task_id=1,
+        ...     estimated_tokens=5000,
+        ...     estimated_loc=250,
+        ...     estimated_files=3,
+        ...     complexity_score=65.0,
+        ...     obra_suggests_decomposition=True,
+        ...     obra_suggestion_confidence=0.8
+        ... )
+        >>>
+        >>> # Pass to prompt generator
+        >>> prompt = generator.generate_task_prompt(
+        ...     task,
+        ...     context,
+        ...     complexity_estimate=estimate
         ... )
 
     Thread-safety:
@@ -113,7 +170,9 @@ class PromptGenerator:
         template_dir: str,
         llm_interface: Any,  # LocalLLMInterface, avoiding circular import
         state_manager: Optional[Any] = None,  # StateManager
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        structured_mode: bool = False,
+        structured_builder: Optional[StructuredPromptBuilder] = None
     ):
         """Initialize PromptGenerator.
 
@@ -122,16 +181,29 @@ class PromptGenerator:
             llm_interface: LocalLLMInterface instance for token counting and summarization
             state_manager: Optional StateManager instance for pattern learning
             config: Optional configuration overrides
+            structured_mode: Enable structured prompt mode (default: False for backward compatibility)
+            structured_builder: Optional StructuredPromptBuilder instance for structured mode.
+                              If structured_mode=True and this is None, a default builder will be created.
         """
         self.template_dir = Path(template_dir)
         self.llm_interface = llm_interface
         self.state_manager = state_manager
         self.config = {**self.DEFAULT_CONFIG, **(config or {})}
 
+        # Structured mode configuration
+        self._structured_mode = structured_mode
+        self._structured_builder = structured_builder
+
         # Load templates from YAML
         self.templates_yaml_path = self.template_dir / 'prompt_templates.yaml'
         self.templates: Dict[str, str] = {}
         self._load_templates_from_yaml()
+
+        # Load hybrid prompt templates configuration (PHASE_6 TASK_6.1)
+        self.hybrid_templates_yaml_path = self.template_dir / 'hybrid_prompt_templates.yaml'
+        self.hybrid_config: Dict[str, Any] = {}
+        self.template_modes: Dict[str, str] = {}
+        self._load_hybrid_templates_config()
 
         # Create Jinja2 environment with custom filters
         self.env = Environment(
@@ -156,8 +228,9 @@ class PromptGenerator:
             'total_tokens_saved': 0
         }
 
+        mode_str = "structured" if self._structured_mode else "unstructured"
         logger.info(
-            f"PromptGenerator initialized with {len(self.templates)} templates "
+            f"PromptGenerator initialized in {mode_str} mode with {len(self.templates)} templates "
             f"from {self.templates_yaml_path}"
         )
 
@@ -197,11 +270,135 @@ class PromptGenerator:
                 context={'path': str(self.templates_yaml_path)}
             ) from e
 
+    def _load_hybrid_templates_config(self) -> None:
+        """Load hybrid prompt templates configuration (PHASE_6 TASK_6.1).
+
+        Loads configuration from hybrid_prompt_templates.yaml to determine
+        which templates should use structured mode on a per-template basis.
+
+        If file doesn't exist, uses default (all unstructured).
+        """
+        if not self.hybrid_templates_yaml_path.exists():
+            logger.info(
+                f"Hybrid templates config not found: {self.hybrid_templates_yaml_path}. "
+                "Using default (unstructured) mode for all templates."
+            )
+            return
+
+        try:
+            with open(self.hybrid_templates_yaml_path, 'r', encoding='utf-8') as f:
+                self.hybrid_config = yaml.safe_load(f)
+
+            if not isinstance(self.hybrid_config, dict):
+                logger.warning("Hybrid templates config is not a dictionary. Using defaults.")
+                return
+
+            # Extract template_modes from global.template_modes
+            global_config = self.hybrid_config.get('global', {})
+            self.template_modes = global_config.get('template_modes', {})
+
+            logger.info(
+                f"Loaded hybrid templates config with {len(self.template_modes)} template modes"
+            )
+
+            # Log which templates use structured mode
+            structured_templates = [
+                name for name, mode in self.template_modes.items()
+                if mode == 'structured'
+            ]
+            if structured_templates:
+                logger.info(
+                    f"Templates using structured mode: {', '.join(structured_templates)}"
+                )
+
+        except yaml.YAMLError as e:
+            logger.warning(
+                f"Failed to parse hybrid templates YAML: {e}. Using defaults."
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to load hybrid templates config: {e}. Using defaults."
+            )
+
     def _register_custom_filters(self) -> None:
         """Register custom Jinja2 filters."""
         self.env.filters['truncate'] = self._filter_truncate
         self.env.filters['summarize'] = self._filter_summarize
         self.env.filters['format_code'] = self._filter_format_code
+
+    def _is_structured_mode(self, template_name: Optional[str] = None) -> bool:
+        """Check if structured mode is enabled for a given template.
+
+        PHASE_6 TASK_6.1: Now supports per-template mode configuration from
+        hybrid_prompt_templates.yaml.
+
+        Args:
+            template_name: Optional template name to check specific mode.
+                          If provided, checks template_modes config.
+                          If None, uses global structured_mode setting.
+
+        Returns:
+            True if structured mode is enabled for this template, False otherwise
+
+        Example:
+            >>> # Check global mode
+            >>> generator._is_structured_mode()  # False (default)
+            >>>
+            >>> # Check specific template (PHASE_6)
+            >>> generator._is_structured_mode('validation')  # True (migrated)
+            >>> generator._is_structured_mode('task_execution')  # False (pending)
+        """
+        # If template name provided, check per-template configuration
+        if template_name and self.template_modes:
+            template_mode = self.template_modes.get(template_name, 'unstructured')
+            return template_mode == 'structured'
+
+        # Otherwise use global setting
+        return self._structured_mode
+
+    def _ensure_structured_builder(self) -> None:
+        """Ensure StructuredPromptBuilder is available.
+
+        Raises:
+            PromptGeneratorException: If structured mode is enabled but builder is not available
+        """
+        if self._structured_mode and self._structured_builder is None:
+            raise PromptGeneratorException(
+                "Structured mode is enabled but no StructuredPromptBuilder was provided",
+                context={'structured_mode': self._structured_mode}
+            )
+
+    def set_structured_mode(
+        self,
+        enabled: bool,
+        builder: Optional[StructuredPromptBuilder] = None
+    ) -> None:
+        """Toggle structured mode at runtime.
+
+        Args:
+            enabled: Enable or disable structured mode
+            builder: Optional StructuredPromptBuilder instance. If not provided and enabling,
+                    the existing builder will be used (must have been set in constructor).
+
+        Raises:
+            PromptGeneratorException: If enabling structured mode without a builder
+
+        Example:
+            >>> generator.set_structured_mode(True, my_builder)
+            >>> # Now uses structured mode
+            >>> generator.set_structured_mode(False)
+            >>> # Back to unstructured mode
+        """
+        self._structured_mode = enabled
+
+        if builder is not None:
+            self._structured_builder = builder
+
+        if enabled:
+            self._ensure_structured_builder()
+
+        mode_str = "structured" if enabled else "unstructured"
+        logger.info(f"PromptGenerator mode changed to {mode_str}")
 
     def _filter_truncate(self, text: str, max_tokens: int = 1000) -> str:
         """Truncate text to maximum token count.
@@ -799,6 +996,265 @@ class PromptGenerator:
             stats['avg_tokens_saved'] = 0.0
 
         return stats
+
+    def generate_task_prompt(
+        self,
+        task: Any,  # Task model, avoiding circular import
+        context: Dict[str, Any],
+        complexity_estimate: Optional['ComplexityEstimate'] = None
+    ) -> str:
+        """Generate task execution prompt.
+
+        Supports both structured and unstructured modes based on configuration.
+        PHASE_6 TASK_6.4: Automatically uses structured mode if configured in
+        hybrid_prompt_templates.yaml.
+
+        Optionally accepts complexity analysis from Obra for parallelization suggestions.
+
+        Args:
+            task: Task model instance with task details
+            context: Additional context for prompt generation
+            complexity_estimate: Optional complexity analysis from Obra (PHASE_5B)
+
+        Returns:
+            Generated prompt string
+
+        Example (Unstructured):
+            >>> prompt = generator.generate_task_prompt(
+            ...     task,
+            ...     {'working_directory': '/tmp/project'}
+            ... )
+
+        Example (Structured - PHASE_6):
+            >>> # Automatically uses structured mode if task_execution: structured in config
+            >>> prompt = generator.generate_task_prompt(task, context)
+
+        Example (Structured with Complexity):
+            >>> from src.orchestration.complexity_estimate import ComplexityEstimate
+            >>> estimate = ComplexityEstimate(...)
+            >>> prompt = generator.generate_task_prompt(
+            ...     task,
+            ...     context,
+            ...     complexity_estimate=estimate
+            ... )
+        """
+        if self._is_structured_mode(template_name='task_execution'):
+            # Use StructuredPromptBuilder (PHASE_6 migration)
+            self._ensure_structured_builder()
+            return self._structured_builder.build_task_execution_prompt(
+                task_data=self._task_to_dict(task),
+                context=context,
+                complexity_estimate=complexity_estimate
+            )
+        else:
+            # Use existing unstructured generation logic
+            variables = {
+                'project_name': getattr(task, 'project_name', 'Unknown'),
+                'task_id': getattr(task, 'id', 0),
+                'task_title': getattr(task, 'title', ''),
+                'task_description': getattr(task, 'description', ''),
+                'task_priority': getattr(task, 'priority', 5),
+                'working_directory': context.get('working_directory', '.'),
+                **context
+            }
+            return self.generate_prompt('task_execution', variables)
+
+    def generate_validation_prompt(
+        self,
+        task: Any,  # Task model
+        work_output: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Generate validation prompt.
+
+        Supports both structured and unstructured modes based on configuration.
+        PHASE_6 TASK_6.1: Automatically uses structured mode for validation if
+        configured in hybrid_prompt_templates.yaml.
+
+        Args:
+            task: Task model instance
+            work_output: The work output to validate
+            context: Additional context including validation criteria
+
+        Returns:
+            Generated validation prompt string
+
+        Example (Unstructured):
+            >>> prompt = generator.generate_validation_prompt(
+            ...     task,
+            ...     "Implementation complete",
+            ...     {'validation_criteria': ['Correctness', 'Completeness']}
+            ... )
+
+        Example (Structured - PHASE_6):
+            >>> # Automatically uses structured mode if validation: structured in config
+            >>> prompt = generator.generate_validation_prompt(task, output, context)
+        """
+        if self._is_structured_mode(template_name='validation'):
+            # Use StructuredPromptBuilder (PHASE_6 migration)
+            self._ensure_structured_builder()
+            # Extract code from work_output
+            code = work_output if isinstance(work_output, str) else work_output.get('code', str(work_output))
+            # Get rules from context or use empty list
+            rules = context.get('rules', [])
+            return self._structured_builder.build_validation_prompt(
+                code=code,
+                rules=rules
+            )
+        else:
+            # Use existing unstructured generation logic
+            variables = {
+                'task_title': getattr(task, 'title', ''),
+                'task_description': getattr(task, 'description', ''),
+                'expected_outcome': context.get('expected_outcome', 'Task completion'),
+                'work_output': work_output,
+                'validation_criteria': context.get('validation_criteria', [
+                    'Correctness',
+                    'Completeness',
+                    'Code quality'
+                ]),
+                **context
+            }
+            return self.generate_prompt('validation', variables)
+
+    def generate_error_analysis_prompt(
+        self,
+        task: Any,  # Task model
+        error_data: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> str:
+        """Generate error analysis prompt.
+
+        Supports both structured and unstructured modes based on configuration.
+
+        Args:
+            task: Task model instance
+            error_data: Error details (type, message, stacktrace, etc.)
+            context: Additional context
+
+        Returns:
+            Generated error analysis prompt string
+
+        Example (Unstructured):
+            >>> prompt = generator.generate_error_analysis_prompt(
+            ...     task,
+            ...     {
+            ...         'error_type': 'ValueError',
+            ...         'error_message': 'Invalid input',
+            ...         'error_stacktrace': '...'
+            ...     },
+            ...     {'agent_output': 'Previous output...'}
+            ... )
+
+        Example (Structured):
+            >>> generator.set_structured_mode(True, builder)
+            >>> prompt = generator.generate_error_analysis_prompt(task, error_data, context)
+        """
+        if self._is_structured_mode():
+            # Use StructuredPromptBuilder
+            self._ensure_structured_builder()
+            return self._structured_builder.build_error_analysis_prompt(
+                error_data=error_data
+            )
+        else:
+            # Use existing unstructured generation logic
+            variables = {
+                'task_title': getattr(task, 'title', ''),
+                'task_description': getattr(task, 'description', ''),
+                'error_type': error_data.get('error_type', 'Unknown'),
+                'error_message': error_data.get('error_message', ''),
+                'error_stacktrace': error_data.get('error_stacktrace', ''),
+                'agent_output': context.get('agent_output', ''),
+                **context
+            }
+            return self.generate_prompt('error_analysis', variables)
+
+    def generate_decision_prompt(
+        self,
+        task: Any,  # Task model
+        agent_response: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Generate decision prompt.
+
+        Supports both structured and unstructured modes based on configuration.
+
+        Args:
+            task: Task model instance
+            agent_response: The latest agent response
+            context: Additional context including validation results
+
+        Returns:
+            Generated decision prompt string
+
+        Example (Unstructured):
+            >>> prompt = generator.generate_decision_prompt(
+            ...     task,
+            ...     "Task completed",
+            ...     {
+            ...         'validation_result': {'is_valid': True, 'quality_score': 0.9},
+            ...         'attempt_count': 1
+            ...     }
+            ... )
+
+        Example (Structured):
+            >>> generator.set_structured_mode(True, builder)
+            >>> prompt = generator.generate_decision_prompt(task, response, context)
+        """
+        if self._is_structured_mode():
+            # Use StructuredPromptBuilder
+            self._ensure_structured_builder()
+            # Merge task data, agent response, and context into decision_context
+            decision_context = {
+                **self._task_to_dict(task),
+                'agent_response': agent_response,
+                **context
+            }
+            return self._structured_builder.build_decision_prompt(
+                decision_context=decision_context
+            )
+        else:
+            # Use existing unstructured generation logic
+            variables = {
+                'task_id': getattr(task, 'id', 0),
+                'task_title': getattr(task, 'title', ''),
+                'task_status': getattr(task, 'status', 'unknown'),
+                'agent_name': context.get('agent_name', 'Claude Code'),
+                'agent_response': agent_response,
+                'attempt_count': context.get('attempt_count', 1),
+                'max_attempts': context.get('max_attempts', 3),
+                'active_task_count': context.get('active_task_count', 0),
+                'pending_task_count': context.get('pending_task_count', 0),
+                'recent_breakpoint_count': context.get('recent_breakpoint_count', 0),
+                **context
+            }
+            return self.generate_prompt('decision', variables)
+
+    def _task_to_dict(self, task: Any) -> Dict[str, Any]:
+        """Convert task model to dictionary for structured builder.
+
+        Args:
+            task: Task model instance
+
+        Returns:
+            Dictionary representation of task
+        """
+        # Basic task attributes
+        task_dict = {
+            'task_id': getattr(task, 'id', 0),  # StructuredPromptBuilder expects 'task_id'
+            'title': getattr(task, 'title', ''),
+            'description': getattr(task, 'description', ''),
+            'status': getattr(task, 'status', 'unknown'),
+            'priority': getattr(task, 'priority', 5),
+        }
+
+        # Optional attributes
+        for attr in ['project_name', 'dependencies', 'expected_outcome',
+                     'working_directory', 'created_at', 'updated_at']:
+            if hasattr(task, attr):
+                task_dict[attr] = getattr(task, attr)
+
+        return task_dict
 
     def list_templates(self) -> List[str]:
         """List available template names.

@@ -57,6 +57,90 @@ class ContextManager:
         'documentation'
     ]
 
+    # Template-specific priority orders for optimal context selection
+    PRIORITY_BY_TEMPLATE = {
+        'task_execution': [
+            'current_task_description',
+            'recent_errors',
+            'active_code_files',
+            'task_dependencies',
+            'project_goals',
+            'conversation_history'
+        ],
+        'validation': [
+            'work_output',
+            'expected_outcome',
+            'file_changes',
+            'test_results',
+            'task_description',
+            'validation_criteria'
+        ],
+        'error_analysis': [
+            'error_message',
+            'error_stacktrace',
+            'agent_output',
+            'recent_errors',
+            'task_context',
+            'recent_interactions'
+        ],
+        'decision': [
+            'validation_result',
+            'agent_response',
+            'task_status',
+            'attempt_count',
+            'project_state',
+            'recent_breakpoints'
+        ],
+        'code_review': [
+            'file_changes',
+            'work_output',
+            'task_description',
+            'project_standards',
+            'test_results'
+        ]
+    }
+
+    # Template-specific scoring weights for optimal context ranking
+    # Each template optimizes for different scoring factors based on its use case
+    WEIGHTS_BY_TEMPLATE = {
+        'validation': {
+            # Validation needs critical facts about what was done (importance)
+            # and what was expected (relevance to task requirements)
+            'recency': 0.1,      # Recent changes less critical than correctness
+            'relevance': 0.3,    # Match to task requirements important
+            'importance': 0.5,   # Critical facts (test results, outcomes) most important
+            'size_efficiency': 0.1
+        },
+        'task_execution': {
+            # Task execution needs relevant code examples and error context
+            'recency': 0.2,      # Recent errors moderately important
+            'relevance': 0.5,    # Code examples matching task very important
+            'importance': 0.2,   # Task description important but not dominant
+            'size_efficiency': 0.1
+        },
+        'error_analysis': {
+            # Error analysis needs recent errors and their full context
+            'recency': 0.5,      # Most recent errors most relevant
+            'relevance': 0.2,    # Match to current task helpful
+            'importance': 0.2,   # Stack traces important
+            'size_efficiency': 0.1
+        },
+        'decision': {
+            # Decision making needs balanced view of all factors
+            'recency': 0.25,     # Recent validation results
+            'relevance': 0.25,   # Match to task context
+            'importance': 0.4,   # Validation scores critical
+            'size_efficiency': 0.1
+        },
+        'code_review': {
+            # Code review needs file changes and quality standards
+            'recency': 0.15,     # Recent changes somewhat important
+            'relevance': 0.35,   # Match to coding standards important
+            'importance': 0.4,   # File diffs and test results critical
+            'size_efficiency': 0.1
+        }
+    }
+
     def __init__(
         self,
         token_counter: TokenCounter,
@@ -90,7 +174,8 @@ class ContextManager:
         self,
         items: List[Dict[str, Any]],
         max_tokens: int,
-        priority_order: Optional[List[str]] = None
+        priority_order: Optional[List[str]] = None,
+        template_name: Optional[str] = None
     ) -> str:
         """Build context from items within token limit.
 
@@ -98,6 +183,7 @@ class ContextManager:
             items: List of context items with 'type', 'content', optional 'priority'
             max_tokens: Maximum tokens allowed
             priority_order: Optional priority ordering for types
+            template_name: Optional template name for template-specific priorities
 
         Returns:
             Built context string
@@ -105,6 +191,7 @@ class ContextManager:
         Example:
             >>> items = [{'type': 'task', 'content': 'Do X', 'priority': 10}]
             >>> context = manager.build_context(items, max_tokens=1000)
+            >>> context = manager.build_context(items, max_tokens=1000, template_name='validation')
         """
         with self._lock:
             # Check cache
@@ -113,9 +200,14 @@ class ContextManager:
                 logger.debug("Context cache hit")
                 return self._context_cache[cache_key]
 
-            # Prioritize items
-            priority_order = priority_order or self.DEFAULT_PRIORITY_ORDER
-            prioritized = self.prioritize_context(items, None, priority_order)
+            # Determine priority order
+            if template_name and template_name in self.PRIORITY_BY_TEMPLATE:
+                priority_order = self.PRIORITY_BY_TEMPLATE[template_name]
+            elif priority_order is None:
+                priority_order = self.DEFAULT_PRIORITY_ORDER
+
+            # Prioritize items (pass template_name for weight tuning)
+            prioritized = self.prioritize_context(items, None, priority_order, template_name)
 
             # Build context greedily
             context_parts = []
@@ -153,20 +245,27 @@ class ContextManager:
         self,
         items: List[Dict[str, Any]],
         task: Optional[Task] = None,
-        priority_order: Optional[List[str]] = None
+        priority_order: Optional[List[str]] = None,
+        template_name: Optional[str] = None
     ) -> List[Tuple[Dict[str, Any], float]]:
         """Prioritize context items by relevance score.
 
-        Scoring factors:
-        - Recency (30%): How recent the item is
-        - Relevance (40%): Keyword overlap with task
-        - Importance (20%): Manual priority assignment
-        - Size efficiency (10%): Information density
+        Scoring factors (weights vary by template):
+        - Recency: How recent the item is
+        - Relevance: Keyword overlap with task
+        - Importance: Manual priority assignment
+        - Size efficiency: Information density
+
+        Default weights (no template specified):
+        - Recency (30%), Relevance (40%), Importance (20%), Size efficiency (10%)
+
+        Template-specific weights optimize scoring for different use cases.
 
         Args:
             items: List of context items
             task: Optional task for relevance scoring
             priority_order: Optional type priority ordering
+            template_name: Optional template name for weight tuning
 
         Returns:
             List of (item, score) tuples, sorted by score (highest first)
@@ -180,7 +279,7 @@ class ContextManager:
         scored_items = []
 
         for item in items:
-            score = self._score_context_item(item, task, priority_order)
+            score = self._score_context_item(item, task, priority_order, template_name)
             scored_items.append((item, score))
 
         # Sort by score descending
@@ -192,18 +291,37 @@ class ContextManager:
         self,
         item: Dict[str, Any],
         task: Optional[Task],
-        priority_order: List[str]
+        priority_order: List[str],
+        template_name: Optional[str] = None
     ) -> float:
         """Score a single context item.
+
+        Uses template-specific weights if template_name is provided,
+        otherwise uses default class-level weights.
 
         Args:
             item: Context item
             task: Optional task
             priority_order: Type priority ordering
+            template_name: Optional template name for weight tuning
 
         Returns:
             Score (0.0-1.0)
         """
+        # Determine weights to use
+        if template_name and template_name in self.WEIGHTS_BY_TEMPLATE:
+            weights = self.WEIGHTS_BY_TEMPLATE[template_name]
+            weight_recency = weights['recency']
+            weight_relevance = weights['relevance']
+            weight_importance = weights['importance']
+            weight_size_efficiency = weights['size_efficiency']
+        else:
+            # Use default class-level weights
+            weight_recency = self.WEIGHT_RECENCY
+            weight_relevance = self.WEIGHT_RELEVANCE
+            weight_importance = self.WEIGHT_IMPORTANCE
+            weight_size_efficiency = self.WEIGHT_SIZE_EFFICIENCY
+
         score = 0.0
 
         # Recency score
@@ -219,7 +337,7 @@ class ContextManager:
         else:
             recency_score = 0.5
 
-        score += recency_score * self.WEIGHT_RECENCY
+        score += recency_score * weight_recency
 
         # Relevance score (keyword overlap)
         if task and task.description:
@@ -231,7 +349,7 @@ class ContextManager:
         else:
             relevance_score = 0.5
 
-        score += relevance_score * self.WEIGHT_RELEVANCE
+        score += relevance_score * weight_relevance
 
         # Importance score (priority + type priority)
         importance_score = item.get('priority', 5) / 10.0  # Normalize to 0-1
@@ -242,7 +360,7 @@ class ContextManager:
             type_priority = (len(priority_order) - priority_order.index(item_type)) / len(priority_order)
             importance_score = (importance_score + type_priority) / 2.0
 
-        score += importance_score * self.WEIGHT_IMPORTANCE
+        score += importance_score * weight_importance
 
         # Size efficiency score
         content = item.get('content', '')
@@ -254,7 +372,7 @@ class ContextManager:
         else:
             efficiency_score = 0.0
 
-        score += efficiency_score * self.WEIGHT_SIZE_EFFICIENCY
+        score += efficiency_score * weight_size_efficiency
 
         return min(1.0, max(0.0, score))
 

@@ -219,6 +219,58 @@ class Task(Base):
             'is_deleted': self.is_deleted
         }
 
+    # M9: Dependency management methods
+
+    def add_dependency(self, task_id: int) -> None:
+        """Add a task dependency (M9).
+
+        Args:
+            task_id: ID of task this task depends on
+
+        Example:
+            >>> task.add_dependency(5)  # Task depends on task #5
+        """
+        if self.dependencies is None:
+            self.dependencies = []
+        if task_id not in self.dependencies:
+            self.dependencies.append(task_id)
+
+    def remove_dependency(self, task_id: int) -> None:
+        """Remove a task dependency (M9).
+
+        Args:
+            task_id: ID of task to remove from dependencies
+
+        Example:
+            >>> task.remove_dependency(5)
+        """
+        if self.dependencies and task_id in self.dependencies:
+            self.dependencies.remove(task_id)
+
+    def get_dependencies(self) -> List[int]:
+        """Get list of task IDs this task depends on (M9).
+
+        Returns:
+            List of task IDs
+
+        Example:
+            >>> deps = task.get_dependencies()
+            >>> print(f"Depends on tasks: {deps}")
+        """
+        return self.dependencies if self.dependencies else []
+
+    def has_dependencies(self) -> bool:
+        """Check if task has any dependencies (M9).
+
+        Returns:
+            True if task has dependencies
+
+        Example:
+            >>> if task.has_dependencies():
+            ...     print("Task is waiting on dependencies")
+        """
+        return bool(self.dependencies)
+
 
 class Interaction(Base):
     """Interaction model.
@@ -492,6 +544,74 @@ class PatternLearning(Base):
         }
 
 
+class ParameterEffectiveness(Base):
+    """Track which parameters help LLM make accurate decisions.
+
+    Records which parameters were included in prompts and whether
+    the resulting LLM decision was accurate (as determined by
+    later human review or test outcomes).
+
+    This enables data-driven optimization of prompt parameters.
+
+    Attributes:
+        id: Primary key
+        template_name: Which template was used (e.g., 'validation', 'task_execution')
+        parameter_name: Which parameter (e.g., 'file_changes', 'retry_context')
+        was_included: Whether parameter fit in token budget and was included
+        validation_accurate: Whether LLM validation matched reality (nullable until known)
+        task_id: Associated task
+        prompt_token_count: Total tokens in prompt
+        parameter_token_count: Tokens used by this parameter
+        timestamp: When this was recorded
+    """
+    __tablename__ = 'parameter_effectiveness'
+
+    id = Column(Integer, primary_key=True)
+    template_name = Column(String(100), nullable=False, index=True)
+    parameter_name = Column(String(100), nullable=False, index=True)
+    was_included = Column(Boolean, nullable=False, index=True)
+    validation_accurate = Column(Boolean, nullable=True, index=True)
+
+    # Context
+    task_id = Column(Integer, ForeignKey('task.id'), nullable=True, index=True)
+    prompt_token_count = Column(Integer, nullable=True)
+    parameter_token_count = Column(Integer, nullable=True)
+
+    # Metadata
+    timestamp = Column(DateTime, server_default=func.now(), nullable=False, index=True)
+
+    # Relationships
+    task = relationship('Task', backref='parameter_usage')
+
+    __table_args__ = (
+        Index('idx_param_eff_template_param', 'template_name', 'parameter_name'),
+        Index('idx_param_eff_task_template', 'task_id', 'template_name'),
+    )
+
+    def __repr__(self):
+        return (
+            f"<ParameterEffectiveness("
+            f"template={self.template_name}, "
+            f"param={self.parameter_name}, "
+            f"included={self.was_included}, "
+            f"accurate={self.validation_accurate})>"
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'template_name': self.template_name,
+            'parameter_name': self.parameter_name,
+            'was_included': self.was_included,
+            'validation_accurate': self.validation_accurate,
+            'task_id': self.task_id,
+            'prompt_token_count': self.prompt_token_count,
+            'parameter_token_count': self.parameter_token_count,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
 class FileState(Base):
     """File state model.
 
@@ -535,6 +655,226 @@ class FileState(Base):
             'file_hash': self.file_hash,
             'file_size': self.file_size,
             'change_type': self.change_type,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class PromptRuleViolation(Base):
+    """Prompt rule violation model.
+
+    Tracks violations of prompt engineering rules for pattern learning.
+    Enables the system to learn from mistakes and improve prompt quality.
+    """
+    __tablename__ = 'prompt_rule_violation'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('task.id'), nullable=False, index=True)
+
+    # Rule details
+    rule_id = Column(String(50), nullable=False, index=True)  # e.g., "CODE_001"
+    rule_name = Column(String(255), nullable=False)
+    rule_domain = Column(String(50), nullable=False, index=True)  # e.g., "code_generation"
+
+    # Violation details
+    violation_details = Column(JSON, nullable=False)  # Context, location, specifics
+    severity = Column(String(20), nullable=False, index=True)  # critical, high, medium, low
+
+    # Resolution tracking
+    resolved = Column(Boolean, default=False, nullable=False, index=True)
+    resolution_notes = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    task = relationship('Task', backref='rule_violations')
+
+    __table_args__ = (
+        Index('idx_violation_task_rule', 'task_id', 'rule_id'),
+        Index('idx_violation_severity_resolved', 'severity', 'resolved'),
+    )
+
+    def __repr__(self):
+        return f"<PromptRuleViolation(id={self.id}, rule='{self.rule_id}', severity='{self.severity}')>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'task_id': self.task_id,
+            'rule_id': self.rule_id,
+            'rule_name': self.rule_name,
+            'rule_domain': self.rule_domain,
+            'violation_details': self.violation_details,
+            'severity': self.severity,
+            'resolved': self.resolved,
+            'resolution_notes': self.resolution_notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None
+        }
+
+
+class ComplexityEstimate(Base):
+    """Task complexity estimate model.
+
+    Stores complexity estimates for tasks to enable automatic decomposition
+    and resource planning. Tracks both heuristic and actual complexity.
+    """
+    __tablename__ = 'complexity_estimate'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('task.id'), nullable=False, unique=True, index=True)
+
+    # Estimated complexity metrics
+    estimated_tokens = Column(Integer, nullable=False)
+    estimated_loc = Column(Integer, nullable=False)  # Lines of code
+    estimated_files = Column(Integer, nullable=False)
+    estimated_duration_minutes = Column(Integer, nullable=False)
+
+    # Complexity scores (0-100 scale)
+    overall_complexity_score = Column(Integer, nullable=False)
+    heuristic_score = Column(Integer, nullable=False)
+    llm_adjusted_score = Column(Integer, nullable=True)
+
+    # Decomposition decision
+    should_decompose = Column(Boolean, nullable=False, index=True)
+    decomposition_reason = Column(Text, nullable=True)
+
+    # Actual metrics (filled after task completion)
+    actual_tokens = Column(Integer, nullable=True)
+    actual_loc = Column(Integer, nullable=True)
+    actual_files = Column(Integer, nullable=True)
+    actual_duration_minutes = Column(Integer, nullable=True)
+
+    # Accuracy tracking
+    estimation_accuracy = Column(Float, nullable=True)  # 0.0-1.0
+
+    # Metadata
+    estimation_factors = Column(JSON, default=dict)  # Factors that influenced estimate
+    confidence = Column(Float, nullable=False, default=0.5)  # 0.0-1.0
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    task = relationship('Task', backref='complexity_estimate')
+
+    __table_args__ = (
+        CheckConstraint('overall_complexity_score >= 0 AND overall_complexity_score <= 100', name='check_complexity_range'),
+        CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_confidence_range'),
+        Index('idx_complexity_should_decompose', 'should_decompose', 'overall_complexity_score'),
+    )
+
+    def __repr__(self):
+        return f"<ComplexityEstimate(task_id={self.task_id}, score={self.overall_complexity_score}, decompose={self.should_decompose})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'task_id': self.task_id,
+            'estimated_tokens': self.estimated_tokens,
+            'estimated_loc': self.estimated_loc,
+            'estimated_files': self.estimated_files,
+            'estimated_duration_minutes': self.estimated_duration_minutes,
+            'overall_complexity_score': self.overall_complexity_score,
+            'heuristic_score': self.heuristic_score,
+            'llm_adjusted_score': self.llm_adjusted_score,
+            'should_decompose': self.should_decompose,
+            'decomposition_reason': self.decomposition_reason,
+            'actual_tokens': self.actual_tokens,
+            'actual_loc': self.actual_loc,
+            'actual_files': self.actual_files,
+            'actual_duration_minutes': self.actual_duration_minutes,
+            'estimation_accuracy': self.estimation_accuracy,
+            'estimation_factors': self.estimation_factors,
+            'confidence': self.confidence,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class ParallelAgentAttempt(Base):
+    """Parallel agent execution attempt model.
+
+    Tracks attempts to execute tasks using multiple parallel agents.
+    Records success/failure, agent coordination, and performance metrics.
+    """
+    __tablename__ = 'parallel_agent_attempt'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('task.id'), nullable=False, index=True)
+
+    # Parallel execution details
+    num_agents = Column(Integer, nullable=False)
+    agent_ids = Column(JSON, nullable=False)  # List of agent identifiers
+    subtask_ids = Column(JSON, nullable=False)  # List of subtask IDs assigned to agents
+
+    # Execution results
+    success = Column(Boolean, nullable=False, index=True)
+    failure_reason = Column(Text, nullable=True)
+    conflict_detected = Column(Boolean, default=False, nullable=False)
+    conflict_details = Column(JSON, nullable=True)
+
+    # Performance metrics
+    total_duration_seconds = Column(Float, nullable=False)
+    sequential_estimate_seconds = Column(Float, nullable=True)
+    speedup_factor = Column(Float, nullable=True)  # Actual time / Sequential estimate
+
+    # Resource usage
+    max_concurrent_agents = Column(Integer, nullable=False)
+    total_token_usage = Column(Integer, nullable=True)
+    failed_agent_count = Column(Integer, default=0, nullable=False)
+
+    # Strategy used
+    parallelization_strategy = Column(String(100), nullable=False)  # e.g., "file_based", "feature_based"
+    fallback_to_sequential = Column(Boolean, default=False, nullable=False)
+
+    # Metadata
+    execution_metadata = Column(JSON, default=dict)  # Additional context
+
+    # Timestamps
+    started_at = Column(DateTime, nullable=False, index=True)
+    completed_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    # Relationships
+    task = relationship('Task', backref='parallel_attempts')
+
+    __table_args__ = (
+        CheckConstraint('num_agents >= 2', name='check_min_agents'),
+        CheckConstraint('speedup_factor > 0', name='check_positive_speedup'),
+        Index('idx_parallel_success_strategy', 'success', 'parallelization_strategy'),
+    )
+
+    def __repr__(self):
+        return f"<ParallelAgentAttempt(id={self.id}, task_id={self.task_id}, agents={self.num_agents}, success={self.success})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'task_id': self.task_id,
+            'num_agents': self.num_agents,
+            'agent_ids': self.agent_ids,
+            'subtask_ids': self.subtask_ids,
+            'success': self.success,
+            'failure_reason': self.failure_reason,
+            'conflict_detected': self.conflict_detected,
+            'conflict_details': self.conflict_details,
+            'total_duration_seconds': self.total_duration_seconds,
+            'sequential_estimate_seconds': self.sequential_estimate_seconds,
+            'speedup_factor': self.speedup_factor,
+            'max_concurrent_agents': self.max_concurrent_agents,
+            'total_token_usage': self.total_token_usage,
+            'failed_agent_count': self.failed_agent_count,
+            'parallelization_strategy': self.parallelization_strategy,
+            'fallback_to_sequential': self.fallback_to_sequential,
+            'execution_metadata': self.execution_metadata,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

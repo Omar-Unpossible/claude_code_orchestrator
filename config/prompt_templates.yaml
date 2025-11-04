@@ -10,8 +10,38 @@ task_execution: |
   **Title**: {{ task_title }}
   **Description**: {{ task_description }}
   **Priority**: {{ task_priority | default(5) }}
-  {% if task_dependencies %}
+  {% if task_dependencies_detailed %}
+
+  ### Dependencies ({{ task_dependencies_detailed | length }})
+  This task depends on the following tasks completing first:
+  {% for dep in task_dependencies_detailed %}
+  - **Task #{{ dep.id }}**: {{ dep.title }}
+    - Status: {{ dep.status }}
+    {% if dep.completion_percentage is defined %}
+    - Completion: {{ dep.completion_percentage }}%
+    {% endif %}
+    {% if dep.output %}
+    - Output Summary: {{ dep.output | truncate(200) }}
+    {% endif %}
+    {% if dep.blocking_reason %}
+    - ⚠️  Blocking: {{ dep.blocking_reason }}
+    {% endif %}
+  {% endfor %}
+  {% elif task_dependencies %}
   **Dependencies**: {{ task_dependencies | join(', ') }}
+  {% endif %}
+
+  {% if retry_context %}
+  ## 🔄 Retry Information
+  **Attempt**: {{ retry_context.attempt_number }} of {{ retry_context.max_attempts }}
+  **Previous Failure**: {{ retry_context.failure_reason }}
+  **What to improve**: {{ retry_context.improvements | join(', ') }}
+  {% if retry_context.previous_errors %}
+  **Errors from last attempt**:
+  {% for error in retry_context.previous_errors %}
+  - {{ error }}
+  {% endfor %}
+  {% endif %}
   {% endif %}
 
   ## Project Context
@@ -19,6 +49,22 @@ task_execution: |
   {% if project_goals %}
   Project Goals:
   {{ project_goals | truncate(500) }}
+  {% endif %}
+
+  {% if git_context %}
+  ## Recent Changes (Git)
+  {% if git_context.recent_commits %}
+  Recent commits in this branch:
+  {% for commit in git_context.recent_commits[:3] %}
+  - {{ commit.hash[:7] }}: {{ commit.message }} ({{ commit.author }}, {{ commit.timestamp }})
+  {% endfor %}
+  {% endif %}
+  {% if git_context.current_branch %}
+  Current branch: {{ git_context.current_branch }}
+  {% endif %}
+  {% if git_context.uncommitted_changes %}
+  ⚠️  {{ git_context.uncommitted_changes }} uncommitted changes
+  {% endif %}
   {% endif %}
 
   {% if current_files %}
@@ -64,20 +110,63 @@ validation: |
   **Task**: {{ task_title }}
   **Description**: {{ task_description }}
   **Expected Outcome**: {{ expected_outcome }}
+  {% if task_dependencies %}
+  **Upstream Dependencies**: {{ task_dependencies | join(', ') }}
+  {% endif %}
 
   ## Work Submitted
   {{ work_output | truncate(3000) }}
 
   {% if file_changes %}
-  ## Files Changed
+  ## Files Changed ({{ file_changes | length }} files)
   {% for change in file_changes %}
-  - {{ change.path }} ({{ change.change_type }}): {{ change.summary }}
+  ### {{ change.path }} ({{ change.change_type }})
+  **Summary**: {{ change.summary }}
+  {% if change.diff %}
+  **Changes**:
+  ```diff
+  {{ change.diff | truncate(500) }}
+  ```
+  {% endif %}
+  {% if change.lines_added is defined and change.lines_removed is defined %}
+  **Lines**: +{{ change.lines_added }} -{{ change.lines_removed }}
+  {% endif %}
   {% endfor %}
+  {% endif %}
+
+  {% if git_validation %}
+  ## Git Validation
+  **Commit Hash**: {{ git_validation.commit_hash }}
+  **Files in Commit**: {{ git_validation.files_count }}
+  **Commit Message**: {{ git_validation.message }}
+  {% if git_validation.branch %}
+  **Branch**: {{ git_validation.branch }}
+  {% endif %}
+  {% endif %}
+
+  {% if dependency_impact %}
+  ## Dependency Impact Analysis
+  {% if dependency_impact.affected_tasks %}
+  **Downstream Tasks Affected**: {{ dependency_impact.affected_tasks | join(', ') }}
+  {% endif %}
+  {% if dependency_impact.breaking_changes %}
+  **⚠️  Potential Breaking Changes**: {{ dependency_impact.breaking_changes | length }}
+  {% for breaking in dependency_impact.breaking_changes %}
+  - {{ breaking }}
+  {% endfor %}
+  {% endif %}
   {% endif %}
 
   {% if test_results %}
   ## Test Results
   {{ test_results | summarize(max_tokens=500) }}
+  {% endif %}
+
+  {% if retry_context %}
+  ## Retry Context
+  This is attempt {{ retry_context.attempt_number }} of {{ retry_context.max_attempts }}.
+  **Previous failure**: {{ retry_context.failure_reason }}
+  **Improvements made**: {{ retry_context.improvements | join(', ') }}
   {% endif %}
 
   ## Validation Criteria
@@ -86,11 +175,19 @@ validation: |
   - {{ criterion }}
   {% endfor %}
 
-  Respond with a JSON object containing:
-  - "is_valid": boolean
-  - "quality_score": float (0.0-1.0)
-  - "issues": list of strings (any problems found)
-  - "suggestions": list of strings (improvement recommendations)
+  **RESPOND WITH ONLY A VALID JSON OBJECT. NO PREAMBLE OR EXPLANATION.**
+
+  Required JSON format:
+  {
+    "is_valid": true,
+    "quality_score": 0.85,
+    "issues": ["Issue 1", "Issue 2"],
+    "suggestions": ["Suggestion 1"],
+    "dependency_concerns": ["Concern 1"],
+    "reasoning": "Brief explanation"
+  }
+
+  Your JSON response:
 
 # Error analysis prompt - for local LLM to analyze failures
 error_analysis: |

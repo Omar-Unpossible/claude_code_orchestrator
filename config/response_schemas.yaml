@@ -1,0 +1,680 @@
+# Response Schemas for Claude Code Orchestrator
+# Defines JSON schemas for all response types from Claude Code
+# Used by ResponseValidator to validate structured responses
+
+version: "1.0"
+description: "JSON schemas for validating LLM responses in Obra orchestration system"
+
+schemas:
+
+  # 1. TASK EXECUTION RESPONSE
+  # Used when Claude Code completes a task execution prompt
+  task_execution:
+    schema_name: "task_execution_response"
+    description: "Response from Claude Code when executing a development task"
+    version: "1.0"
+
+    required_fields:
+      - name: "status"
+        type: "string"
+        allowed_values: ["completed", "failed", "partial", "blocked", "needs_decomposition"]
+        description: "Overall task completion status"
+
+      - name: "files_modified"
+        type: "array"
+        item_type: "object"
+        description: "List of files created, modified, or deleted during task execution"
+        item_schema:
+          - name: "path"
+            type: "string"
+            description: "Absolute path to the file"
+          - name: "change_type"
+            type: "string"
+            allowed_values: ["created", "modified", "deleted"]
+          - name: "lines_changed"
+            type: "object"
+            description: "Line count changes"
+            properties:
+              - name: "added"
+                type: "integer"
+              - name: "removed"
+                type: "integer"
+
+      - name: "execution_summary"
+        type: "string"
+        description: "Brief 1-3 sentence summary of work completed"
+        max_length: 500
+
+    optional_fields:
+      - name: "tests_added"
+        type: "array"
+        item_type: "object"
+        description: "Tests written during task execution"
+        item_schema:
+          - name: "test_file"
+            type: "string"
+            description: "Path to test file"
+          - name: "test_name"
+            type: "string"
+            description: "Name of test function/class"
+          - name: "coverage_percentage"
+            type: "number"
+            description: "Code coverage percentage for this test"
+
+      - name: "issues_encountered"
+        type: "array"
+        item_type: "object"
+        description: "Problems encountered during execution"
+        item_schema:
+          - name: "issue_type"
+            type: "string"
+            allowed_values: ["error", "warning", "blocker"]
+          - name: "description"
+            type: "string"
+          - name: "resolution"
+            type: "string"
+            description: "How the issue was resolved, or null if unresolved"
+
+      - name: "suggestions"
+        type: "array"
+        item_type: "string"
+        description: "Recommendations for improvements or follow-up work"
+
+      - name: "complexity_increase"
+        type: "number"
+        description: "Estimated complexity increase (0.0-1.0) if scope grew during execution"
+
+      - name: "parallel_tasks_identified"
+        type: "array"
+        item_type: "object"
+        description: "Independent subtasks identified that could run in parallel"
+        item_schema:
+          - name: "task_description"
+            type: "string"
+          - name: "estimated_complexity"
+            type: "string"
+            allowed_values: ["low", "medium", "high"]
+          - name: "dependencies"
+            type: "array"
+            item_type: "integer"
+            description: "Task IDs this subtask depends on"
+
+      - name: "dependencies_impact"
+        type: "array"
+        item_type: "string"
+        description: "Notes about how this task affects downstream dependencies"
+
+    validation_rules:
+      - "status must be one of the allowed values (completed, failed, partial, blocked, needs_decomposition)"
+      - "files_modified must contain absolute paths, not relative paths"
+      - "execution_summary must be concise (1-3 sentences, max 500 chars)"
+      - "lines_changed.added and lines_changed.removed must be non-negative integers"
+      - "If status is 'failed' or 'blocked', issues_encountered must not be empty"
+      - "If status is 'needs_decomposition', parallel_tasks_identified should be provided"
+      - "test_file paths in tests_added must exist in files_modified or be existing test files"
+      - "coverage_percentage must be between 0.0 and 100.0"
+
+    example:
+      status: "completed"
+      files_modified:
+        - path: "/home/user/obra/src/auth/authentication.py"
+          change_type: "created"
+          lines_changed:
+            added: 234
+            removed: 0
+        - path: "/home/user/obra/src/auth/token_manager.py"
+          change_type: "created"
+          lines_changed:
+            added: 127
+            removed: 0
+        - path: "/home/user/obra/src/api/auth_endpoints.py"
+          change_type: "modified"
+          lines_changed:
+            added: 98
+            removed: 12
+      tests_added:
+        - test_file: "/home/user/obra/tests/test_authentication.py"
+          test_name: "test_login_valid_credentials"
+          coverage_percentage: 85.4
+        - test_file: "/home/user/obra/tests/test_authentication.py"
+          test_name: "test_login_invalid_credentials"
+          coverage_percentage: 85.4
+        - test_file: "/home/user/obra/tests/test_token_manager.py"
+          test_name: "test_generate_token_valid_user"
+          coverage_percentage: 92.1
+      execution_summary: "Implemented authentication module with bcrypt password hashing, JWT token generation, and Redis session management. Added rate limiting and input validation. All 12 unit tests passing with 87% coverage."
+      issues_encountered: []
+      suggestions:
+        - "Consider adding OAuth2 support in future iteration"
+        - "Add integration tests for session timeout scenarios"
+
+
+  # 2. VALIDATION RESPONSE
+  # Used when local LLM validates Claude Code's work
+  validation:
+    schema_name: "validation_response"
+    description: "Response from local LLM when validating completed work for quality and correctness"
+    version: "1.0"
+
+    required_fields:
+      - name: "is_valid"
+        type: "boolean"
+        description: "Whether the work meets all acceptance criteria"
+
+      - name: "quality_score"
+        type: "number"
+        description: "Overall quality rating (0.0-1.0)"
+        min_value: 0.0
+        max_value: 1.0
+
+      - name: "issues"
+        type: "array"
+        item_type: "string"
+        description: "List of problems or defects found in the work"
+
+      - name: "suggestions"
+        type: "array"
+        item_type: "string"
+        description: "Recommended improvements or enhancements"
+
+    optional_fields:
+      - name: "dependency_concerns"
+        type: "array"
+        item_type: "string"
+        description: "Potential issues that could affect downstream dependent tasks"
+
+      - name: "reasoning"
+        type: "string"
+        description: "Brief explanation of the validation decision"
+        max_length: 1000
+
+      - name: "rule_violations"
+        type: "array"
+        item_type: "object"
+        description: "Specific code quality rules that were violated"
+        item_schema:
+          - name: "rule_id"
+            type: "string"
+          - name: "rule_name"
+            type: "string"
+          - name: "severity"
+            type: "string"
+            allowed_values: ["low", "medium", "high", "critical"]
+          - name: "file_path"
+            type: "string"
+          - name: "line_number"
+            type: "integer"
+          - name: "violation_description"
+            type: "string"
+
+      - name: "test_coverage"
+        type: "object"
+        description: "Test coverage analysis"
+        properties:
+          - name: "overall_percentage"
+            type: "number"
+          - name: "missing_coverage_areas"
+            type: "array"
+            item_type: "string"
+
+      - name: "security_concerns"
+        type: "array"
+        item_type: "string"
+        description: "Security vulnerabilities or risks identified"
+
+    validation_rules:
+      - "is_valid must be true or false (boolean)"
+      - "quality_score must be between 0.0 and 1.0 inclusive"
+      - "If is_valid is false, issues array must not be empty"
+      - "If quality_score < 0.6, issues should explain why quality is low"
+      - "reasoning should be concise but informative (max 1000 chars)"
+      - "rule_violations must reference specific files and line numbers"
+      - "security_concerns should be flagged with high severity"
+
+    example:
+      is_valid: true
+      quality_score: 0.85
+      issues:
+        - "Missing error handling for database connection failures in auth_endpoints.py line 45"
+        - "Token expiration time is hardcoded (should be configurable)"
+      suggestions:
+        - "Add integration tests for rate limiting behavior"
+        - "Consider using environment variables for token expiration settings"
+        - "Add logging for failed authentication attempts"
+      dependency_concerns:
+        - "Session management changes may require updates to logout endpoint in dependent tasks"
+      reasoning: "Implementation is solid with good test coverage (87%). Main concerns are error handling completeness and configuration flexibility. No security issues identified."
+      rule_violations:
+        - rule_id: "CODE_002"
+          rule_name: "NO_HARDCODED_VALUES"
+          severity: "medium"
+          file_path: "/home/user/obra/src/auth/token_manager.py"
+          line_number: 23
+          violation_description: "Token expiration time is hardcoded as 3600 instead of using config"
+      test_coverage:
+        overall_percentage: 87.0
+        missing_coverage_areas:
+          - "Error handling paths in token_manager.py"
+          - "Rate limiter edge cases (exactly at threshold)"
+
+
+  # 3. ERROR ANALYSIS RESPONSE
+  # Used when local LLM analyzes errors or failures
+  error_analysis:
+    schema_name: "error_analysis_response"
+    description: "Response from local LLM when analyzing task execution errors or failures"
+    version: "1.0"
+
+    required_fields:
+      - name: "error_category"
+        type: "string"
+        allowed_values: ["transient", "configuration", "code_defect", "dependency", "environment", "timeout", "unknown"]
+        description: "Classification of the error type"
+
+      - name: "root_cause"
+        type: "string"
+        description: "Identified root cause of the error (1-3 sentences)"
+        max_length: 500
+
+      - name: "is_recoverable"
+        type: "boolean"
+        description: "Whether the error can be fixed with a retry or requires manual intervention"
+
+      - name: "recovery_strategy"
+        type: "string"
+        allowed_values: ["retry", "retry_with_changes", "manual_intervention", "escalate", "skip"]
+        description: "Recommended approach to recover from this error"
+
+    optional_fields:
+      - name: "suggested_fixes"
+        type: "array"
+        item_type: "string"
+        description: "Specific actionable steps to resolve the error"
+
+      - name: "retry_modifications"
+        type: "object"
+        description: "Changes to make before retrying (if recovery_strategy is retry_with_changes)"
+        properties:
+          - name: "prompt_adjustments"
+            type: "array"
+            item_type: "string"
+          - name: "context_additions"
+            type: "array"
+            item_type: "string"
+          - name: "constraints_to_add"
+            type: "array"
+            item_type: "string"
+
+      - name: "human_action_required"
+        type: "boolean"
+        description: "Whether human intervention is necessary"
+
+      - name: "related_errors"
+        type: "array"
+        item_type: "string"
+        description: "Similar errors seen in recent history that may provide context"
+
+      - name: "confidence"
+        type: "number"
+        description: "Confidence in the analysis (0.0-1.0)"
+        min_value: 0.0
+        max_value: 1.0
+
+    validation_rules:
+      - "error_category must be one of the allowed values"
+      - "root_cause must be concise and specific (not generic)"
+      - "is_recoverable must be boolean (true/false)"
+      - "If is_recoverable is true, recovery_strategy cannot be 'manual_intervention'"
+      - "If recovery_strategy is 'retry_with_changes', retry_modifications must be provided"
+      - "suggested_fixes should be actionable and specific (not vague)"
+      - "confidence should reflect uncertainty in analysis"
+
+    example:
+      error_category: "code_defect"
+      root_cause: "Unhandled exception when database connection pool is exhausted. Code assumes connection is always available without checking for None return value."
+      is_recoverable: true
+      recovery_strategy: "retry_with_changes"
+      suggested_fixes:
+        - "Add null check after get_connection() call in authentication.py line 67"
+        - "Implement connection pool size increase or timeout handling"
+        - "Add try-except block for PoolExhaustedError"
+      retry_modifications:
+        prompt_adjustments:
+          - "Add requirement: Handle database connection failures gracefully with proper error messages"
+          - "Add requirement: Implement connection pool timeout and retry logic"
+        context_additions:
+          - "Previous attempt failed due to missing null check on database connection"
+        constraints_to_add:
+          - "All database operations must have error handling for connection failures"
+      human_action_required: false
+      confidence: 0.9
+
+
+  # 4. DECISION RESPONSE
+  # Used when DecisionEngine determines next action
+  decision:
+    schema_name: "decision_response"
+    description: "Response from local LLM when deciding the next orchestration action"
+    version: "1.0"
+
+    required_fields:
+      - name: "decision"
+        type: "string"
+        allowed_values: ["proceed", "retry", "breakpoint", "delegate", "skip", "decompose"]
+        description: "Chosen next action for the orchestrator"
+
+      - name: "reasoning"
+        type: "string"
+        description: "Explanation for why this decision was made (2-4 sentences)"
+        max_length: 1000
+
+      - name: "confidence"
+        type: "number"
+        description: "Confidence in this decision (0.0-1.0)"
+        min_value: 0.0
+        max_value: 1.0
+
+    optional_fields:
+      - name: "next_steps"
+        type: "array"
+        item_type: "string"
+        description: "Specific actions to take based on this decision"
+
+      - name: "retry_parameters"
+        type: "object"
+        description: "Parameters for retry (if decision is 'retry')"
+        properties:
+          - name: "max_attempts"
+            type: "integer"
+          - name: "delay_seconds"
+            type: "integer"
+          - name: "prompt_modifications"
+            type: "array"
+            item_type: "string"
+
+      - name: "breakpoint_details"
+        type: "object"
+        description: "Details for human review (if decision is 'breakpoint')"
+        properties:
+          - name: "severity"
+            type: "string"
+            allowed_values: ["low", "medium", "high", "critical"]
+          - name: "questions_for_human"
+            type: "array"
+            item_type: "string"
+          - name: "context_summary"
+            type: "string"
+
+      - name: "delegation_target"
+        type: "string"
+        description: "Agent to delegate to (if decision is 'delegate')"
+        allowed_values: ["aider", "claude_code_alternate", "human_review"]
+
+      - name: "decomposition_plan"
+        type: "object"
+        description: "Task breakdown plan (if decision is 'decompose')"
+        properties:
+          - name: "subtasks"
+            type: "array"
+            item_type: "object"
+          - name: "parallelizable"
+            type: "boolean"
+          - name: "estimated_total_complexity"
+            type: "string"
+
+      - name: "risk_assessment"
+        type: "string"
+        allowed_values: ["low", "medium", "high", "critical"]
+        description: "Risk level of proceeding with this decision"
+
+    validation_rules:
+      - "decision must be one of the allowed values"
+      - "reasoning must be specific and actionable (not generic)"
+      - "confidence must be between 0.0 and 1.0"
+      - "If decision is 'retry', retry_parameters must be provided"
+      - "If decision is 'breakpoint', breakpoint_details must be provided"
+      - "If decision is 'delegate', delegation_target must be provided"
+      - "If decision is 'decompose', decomposition_plan must be provided"
+      - "If confidence < 0.5, consider 'breakpoint' instead of 'proceed'"
+
+    example:
+      decision: "proceed"
+      reasoning: "Task completed successfully with high quality score (0.85). Minor issues identified (hardcoded values, missing edge case tests) do not block progress. Suggestions noted for future improvements. No security concerns or dependency blockers."
+      confidence: 0.9
+      next_steps:
+        - "Mark task as completed"
+        - "Update dependency graph to unblock downstream tasks"
+        - "Log suggestions for future refactoring backlog"
+        - "Proceed to next task in queue"
+      risk_assessment: "low"
+
+
+  # 5. PLANNING RESPONSE
+  # Used when local LLM breaks down complex tasks
+  planning:
+    schema_name: "planning_response"
+    description: "Response from local LLM when analyzing task complexity and creating execution plan"
+    version: "1.0"
+
+    required_fields:
+      - name: "complexity_estimate"
+        type: "object"
+        description: "Estimated complexity metrics for the task"
+        properties:
+          - name: "overall_score"
+            type: "number"
+            description: "Complexity score (0-100, higher = more complex)"
+          - name: "estimated_tokens"
+            type: "integer"
+            description: "Estimated token usage for task completion"
+          - name: "estimated_duration_minutes"
+            type: "integer"
+            description: "Estimated time to complete in minutes"
+          - name: "estimated_files"
+            type: "integer"
+            description: "Number of files expected to be modified/created"
+
+      - name: "should_decompose"
+        type: "boolean"
+        description: "Whether task should be broken into subtasks"
+
+      - name: "execution_strategy"
+        type: "string"
+        allowed_values: ["sequential", "parallel", "hybrid"]
+        description: "Recommended execution approach"
+
+    optional_fields:
+      - name: "subtasks"
+        type: "array"
+        item_type: "object"
+        description: "Breakdown of task into smaller subtasks (if should_decompose is true)"
+        item_schema:
+          - name: "subtask_id"
+            type: "string"
+          - name: "title"
+            type: "string"
+          - name: "description"
+            type: "string"
+          - name: "estimated_complexity"
+            type: "string"
+            allowed_values: ["low", "medium", "high"]
+          - name: "dependencies"
+            type: "array"
+            item_type: "string"
+            description: "IDs of subtasks this depends on"
+          - name: "can_parallelize"
+            type: "boolean"
+
+      - name: "parallelization_groups"
+        type: "array"
+        item_type: "object"
+        description: "Groups of subtasks that can run in parallel"
+        item_schema:
+          - name: "group_id"
+            type: "string"
+          - name: "subtask_ids"
+            type: "array"
+            item_type: "string"
+          - name: "estimated_speedup"
+            type: "number"
+            description: "Expected speedup vs sequential (e.g., 2.0 = twice as fast)"
+
+      - name: "dependencies_identified"
+        type: "array"
+        item_type: "object"
+        description: "Dependencies and their relationships"
+        item_schema:
+          - name: "from_subtask"
+            type: "string"
+          - name: "to_subtask"
+            type: "string"
+          - name: "dependency_type"
+            type: "string"
+            allowed_values: ["data", "order", "resource"]
+
+      - name: "risk_factors"
+        type: "array"
+        item_type: "object"
+        description: "Potential risks or challenges"
+        item_schema:
+          - name: "risk_description"
+            type: "string"
+          - name: "severity"
+            type: "string"
+            allowed_values: ["low", "medium", "high"]
+          - name: "mitigation"
+            type: "string"
+
+      - name: "resource_requirements"
+        type: "object"
+        description: "Estimated resource needs"
+        properties:
+          - name: "agent_count"
+            type: "integer"
+          - name: "memory_mb"
+            type: "integer"
+          - name: "requires_gpu"
+            type: "boolean"
+
+    validation_rules:
+      - "complexity_estimate.overall_score must be between 0 and 100"
+      - "estimated_tokens must be positive integer"
+      - "estimated_duration_minutes must be positive integer"
+      - "If should_decompose is true, subtasks array must not be empty"
+      - "If execution_strategy is 'parallel', parallelization_groups should be provided"
+      - "Subtask dependencies must reference valid subtask_ids (no circular dependencies)"
+      - "If complexity > 70, should_decompose should typically be true"
+      - "estimated_speedup for parallel groups must be > 1.0"
+
+    example:
+      complexity_estimate:
+        overall_score: 65
+        estimated_tokens: 18000
+        estimated_duration_minutes: 25
+        estimated_files: 6
+      should_decompose: true
+      execution_strategy: "parallel"
+      subtasks:
+        - subtask_id: "AUTH_001"
+          title: "Create User model and database schema"
+          description: "Define User model with SQLAlchemy, create migration script"
+          estimated_complexity: "low"
+          dependencies: []
+          can_parallelize: true
+        - subtask_id: "AUTH_002"
+          title: "Implement password hashing module"
+          description: "Create password hashing utilities with bcrypt, salt generation"
+          estimated_complexity: "low"
+          dependencies: []
+          can_parallelize: true
+        - subtask_id: "AUTH_003"
+          title: "Implement token generation and validation"
+          description: "JWT token creation, validation, refresh token logic"
+          estimated_complexity: "medium"
+          dependencies: ["AUTH_001"]
+          can_parallelize: false
+        - subtask_id: "AUTH_004"
+          title: "Create authentication endpoints"
+          description: "REST API endpoints for login, logout, token refresh"
+          estimated_complexity: "medium"
+          dependencies: ["AUTH_001", "AUTH_002", "AUTH_003"]
+          can_parallelize: false
+        - subtask_id: "AUTH_005"
+          title: "Write unit and integration tests"
+          description: "Test coverage for all auth components"
+          estimated_complexity: "medium"
+          dependencies: ["AUTH_004"]
+          can_parallelize: false
+      parallelization_groups:
+        - group_id: "PARALLEL_GROUP_1"
+          subtask_ids: ["AUTH_001", "AUTH_002"]
+          estimated_speedup: 1.8
+      dependencies_identified:
+        - from_subtask: "AUTH_003"
+          to_subtask: "AUTH_001"
+          dependency_type: "data"
+        - from_subtask: "AUTH_004"
+          to_subtask: "AUTH_003"
+          dependency_type: "order"
+      risk_factors:
+        - risk_description: "Token security implementation is critical and error-prone"
+          severity: "high"
+          mitigation: "Use well-tested JWT library, add comprehensive security tests"
+        - risk_description: "Database migration may conflict with existing schema"
+          severity: "medium"
+          mitigation: "Review existing migrations before creating new one"
+      resource_requirements:
+        agent_count: 2
+        memory_mb: 512
+        requires_gpu: false
+
+
+# Common Validation Utilities
+# Reusable validation patterns across all schemas
+
+common_patterns:
+  absolute_path:
+    pattern: "^/.*"
+    description: "Must be an absolute path starting with /"
+
+  relative_path:
+    pattern: "^[^/].*"
+    description: "Must be a relative path not starting with /"
+
+  iso_timestamp:
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    description: "ISO-8601 formatted timestamp"
+
+  percentage:
+    min: 0.0
+    max: 100.0
+    description: "Percentage value between 0 and 100"
+
+  confidence_score:
+    min: 0.0
+    max: 1.0
+    description: "Confidence score between 0.0 and 1.0"
+
+  severity_levels:
+    values: ["low", "medium", "high", "critical"]
+    description: "Standard severity classification"
+
+
+# Schema Usage Guidelines
+guidelines:
+  general:
+    - "All responses must be valid JSON (no preamble or explanatory text)"
+    - "Required fields must always be present (no null values unless specified)"
+    - "Optional fields can be omitted entirely or set to null"
+    - "String fields should avoid excessive verbosity (stay under max_length)"
+    - "Enum fields must use exact values from allowed_values (case-sensitive)"
+
+  error_handling:
+    - "If LLM cannot determine a field value, use null for optional fields"
+    - "For required fields, provide best-effort estimate or safe default"
+    - "Log schema validation failures for continuous improvement"
+
+  versioning:
+    - "Schema version is tracked in 'version' field for each schema"
+    - "Breaking changes require version increment"
+    - "Non-breaking additions can use same version with new optional fields"

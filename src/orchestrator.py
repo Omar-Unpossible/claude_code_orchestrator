@@ -34,6 +34,8 @@ from src.orchestration.task_scheduler import TaskScheduler
 from src.orchestration.breakpoint_manager import BreakpointManager
 from src.orchestration.decision_engine import DecisionEngine
 from src.orchestration.quality_controller import QualityController
+from src.orchestration.complexity_estimator import TaskComplexityEstimator
+from src.orchestration.complexity_estimate import ComplexityEstimate
 from src.utils.token_counter import TokenCounter
 from src.utils.context_manager import ContextManager
 from src.utils.confidence_scorer import ConfidenceScorer
@@ -108,12 +110,16 @@ class Orchestrator:
         self.token_counter: Optional[TokenCounter] = None
         self.context_manager: Optional[ContextManager] = None
         self.confidence_scorer: Optional[ConfidenceScorer] = None
+        self.complexity_estimator: Optional[TaskComplexityEstimator] = None
 
         # Runtime state
         self.current_project: Optional[ProjectState] = None
         self.current_task: Optional[Task] = None
         self._iteration_count = 0
         self._start_time: Optional[datetime] = None
+
+        # Complexity estimation config
+        self._enable_complexity_estimation = self.config.get('enable_complexity_estimation', False)
 
         logger.info("Orchestrator created")
 
@@ -158,6 +164,7 @@ class Orchestrator:
                 self._initialize_llm()
                 self._initialize_agent()
                 self._initialize_orchestration()
+                self._initialize_complexity_estimator()
                 self._initialize_monitoring()
 
                 self._state = OrchestratorState.INITIALIZED
@@ -261,6 +268,24 @@ class Orchestrator:
         )
         logger.info("Orchestration components initialized")
 
+    def _initialize_complexity_estimator(self) -> None:
+        """Initialize TaskComplexityEstimator if enabled."""
+        if not self._enable_complexity_estimation:
+            logger.info("Complexity estimation disabled")
+            return
+
+        try:
+            config_path = self.config.get('orchestration.complexity_config_path', 'config/complexity_thresholds.yaml')
+            self.complexity_estimator = TaskComplexityEstimator(
+                llm_interface=self.llm_interface,
+                state_manager=self.state_manager,
+                config_path=config_path
+            )
+            logger.info("TaskComplexityEstimator initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize complexity estimator: {e}")
+            self.complexity_estimator = None
+
     def _initialize_monitoring(self) -> None:
         """Initialize monitoring components."""
         if self.current_project:
@@ -273,15 +298,28 @@ class Orchestrator:
             self.file_watcher.start_watching()
             logger.info("File monitoring started")
 
-    def execute_task(self, task_id: int, max_iterations: int = 10) -> Dict[str, Any]:
-        """Execute a single task.
+    def execute_task(self, task_id: int, max_iterations: int = 10, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute a single task with optional complexity estimation.
+
+        Process:
+        1. Get task from StateManager
+        2. Estimate complexity (if enabled) - suggestions only
+        3. Log complexity estimate
+        4. Execute task (Claude handles parallelization if needed)
+        5. Return results
 
         Args:
             task_id: Task ID to execute
             max_iterations: Maximum iterations before giving up
+            context: Optional execution context
 
         Returns:
-            Dictionary with execution results
+            Dictionary with execution results:
+            - task_id: int
+            - status: str
+            - result: Any
+            - complexity_estimate: Optional[Dict]
+            - parallel_metadata: Dict (parsed from Claude's response)
 
         Raises:
             OrchestratorException: If execution fails
@@ -314,8 +352,27 @@ class Orchestrator:
 
                 logger.info(f"Executing task {task_id}: {self.current_task.title}")
 
-                # Main execution loop
-                result = self._execution_loop(max_iterations)
+                # Estimate complexity if enabled (suggestions only, not commands)
+                complexity_estimate = None
+                if self.complexity_estimator:
+                    complexity_estimate = self._estimate_task_complexity(self.current_task, context)
+                    logger.info(
+                        f"Complexity estimate: {complexity_estimate.complexity_score}/100, "
+                        f"suggestions: {len(complexity_estimate.decomposition_suggestions)} subtasks, "
+                        f"{len(complexity_estimate.parallelization_opportunities)} parallel groups"
+                    )
+
+                # Execute with single agent (Claude may use Task tool internally)
+                result = self._execute_single_task(
+                    self.current_task,
+                    max_iterations,
+                    context,
+                    complexity_estimate=complexity_estimate
+                )
+
+                # Add complexity estimate to result if available
+                if complexity_estimate:
+                    result['complexity_estimate'] = complexity_estimate.to_dict()
 
                 logger.info(f"Task {task_id} completed: {result['status']}")
                 return result
@@ -324,14 +381,23 @@ class Orchestrator:
                 logger.error(f"Task execution failed: {e}", exc_info=True)
                 raise
 
-    def _execution_loop(self, max_iterations: int) -> Dict[str, Any]:
-        """Main execution loop for a task.
+    def _execute_single_task(
+        self,
+        task: Task,
+        max_iterations: int,
+        context: Optional[Dict[str, Any]] = None,
+        complexity_estimate: Optional[ComplexityEstimate] = None
+    ) -> Dict[str, Any]:
+        """Execute a single task (Claude handles parallelization if needed).
 
         Args:
+            task: Task to execute
             max_iterations: Maximum iterations
+            context: Optional execution context
+            complexity_estimate: Optional complexity estimate to include in prompt
 
         Returns:
-            Execution results
+            Execution results including parallel_metadata
         """
         iteration = 0
         accumulated_context = []
@@ -348,10 +414,17 @@ class Orchestrator:
                 context = self._build_context(accumulated_context)
                 self._print_obra(f"Built context ({len(context)} chars)")
 
-                # 2. Generate prompt
+                # 2. Generate prompt (include complexity estimate if available)
+                prompt_context = {
+                    'task': self.current_task,
+                    'context': context
+                }
+                if complexity_estimate:
+                    prompt_context['complexity_estimate'] = complexity_estimate
+
                 prompt = self.prompt_generator.generate_prompt(
                     'task_execution',
-                    {'task': self.current_task, 'context': context}
+                    prompt_context
                 )
 
                 # 3. Send to agent
@@ -414,12 +487,17 @@ class Orchestrator:
                         self.current_task.id,
                         'completed'
                     )
+
+                    # Parse parallel metadata from Claude's response
+                    parallel_metadata = self._parse_parallel_metadata(response)
+
                     return {
                         'status': 'completed',
                         'response': response,
                         'iterations': iteration,
                         'quality_score': quality_result.overall_score,
-                        'confidence': confidence
+                        'confidence': confidence,
+                        'parallel_metadata': parallel_metadata
                     }
 
                 elif action.type == DecisionEngine.ACTION_ESCALATE:
@@ -501,6 +579,101 @@ class Orchestrator:
 
         return context
 
+    def _parse_parallel_metadata(self, agent_response: str) -> Dict[str, Any]:
+        """Parse parallel execution metadata from Claude's response.
+
+        Claude may use Task tool to deploy agents. This parses whether
+        Claude chose to parallelize and what tasks were executed.
+
+        Args:
+            agent_response: Response from agent
+
+        Returns:
+            Dict with: parallel_execution_used, parallel_decision_rationale, tasks_parallelized
+        """
+        from src.utils.json_extractor import extract_json
+
+        try:
+            response_json = extract_json(agent_response)
+
+            if response_json:
+                return {
+                    'parallel_execution_used': response_json.get('parallel_execution_used', False),
+                    'parallel_decision_rationale': response_json.get('parallel_decision_rationale', ''),
+                    'tasks_parallelized': response_json.get('tasks_parallelized', [])
+                }
+        except Exception as e:
+            logger.debug(f"Could not parse parallel metadata: {e}")
+
+        return {
+            'parallel_execution_used': False,
+            'parallel_decision_rationale': 'Could not parse response',
+            'tasks_parallelized': []
+        }
+
+    def _estimate_task_complexity(
+        self,
+        task: Task,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ComplexityEstimate:
+        """Estimate task complexity and log to StateManager.
+
+        Args:
+            task: Task to estimate
+            context: Optional execution context
+
+        Returns:
+            ComplexityEstimate with all fields populated
+        """
+        try:
+            logger.info(f"Estimating complexity for task {task.id}")
+
+            estimate = self.complexity_estimator.estimate_complexity(
+                task=task,
+                context=context
+            )
+
+            # Update task_id if not set (ComplexityEstimator sets it, but verify)
+            if estimate.task_id == 0:
+                estimate = ComplexityEstimate(
+                    task_id=task.id,
+                    estimated_tokens=estimate.estimated_tokens,
+                    estimated_loc=estimate.estimated_loc,
+                    estimated_files=estimate.estimated_files,
+                    complexity_score=estimate.complexity_score,
+                    should_decompose=estimate.should_decompose,
+                    decomposition_suggestions=estimate.decomposition_suggestions,
+                    parallelization_opportunities=estimate.parallelization_opportunities,
+                    estimated_duration_minutes=estimate.estimated_duration_minutes,
+                    confidence=estimate.confidence,
+                    timestamp=estimate.timestamp
+                )
+
+            logger.info(
+                f"Task {task.id} complexity: {estimate.complexity_score}/100 "
+                f"({estimate.get_complexity_category()}), "
+                f"should_decompose={estimate.should_decompose}"
+            )
+
+            return estimate
+
+        except Exception as e:
+            logger.error(f"Failed to estimate complexity: {e}")
+            # Return a default estimate
+            return ComplexityEstimate(
+                task_id=task.id,
+                estimated_tokens=4000,
+                estimated_loc=100,
+                estimated_files=1,
+                complexity_score=50.0,
+                should_decompose=False,
+                decomposition_suggestions=[],
+                parallelization_opportunities=[],
+                estimated_duration_minutes=60,
+                confidence=0.5,
+                timestamp=datetime.now()
+            )
+
     def run(self, project_id: Optional[int] = None) -> None:
         """Run continuous orchestration loop.
 
@@ -552,7 +725,7 @@ class Orchestrator:
 
             # Stop file watcher
             if self.file_watcher:
-                self.file_watcher.stop()
+                self.file_watcher.stop_watching()
 
             # Cleanup agent
             if self.agent:

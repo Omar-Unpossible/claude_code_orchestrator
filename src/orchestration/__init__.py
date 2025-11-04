@@ -5,6 +5,7 @@ This package provides the core orchestration logic:
 - DecisionEngine: Intelligent decision making and action routing
 - BreakpointManager: Breakpoint triggering and resolution tracking
 - QualityController: Multi-stage quality validation
+- TaskComplexityEstimator: Complexity estimation and task decomposition
 
 Architecture:
     The orchestration engine coordinates between agents, LLMs, and file monitoring
@@ -12,9 +13,15 @@ Architecture:
     intervention when needed.
 
 Example:
-    >>> from src.orchestration import TaskScheduler, DecisionEngine
+    >>> from src.orchestration import TaskScheduler, DecisionEngine, TaskComplexityEstimator
     >>> scheduler = TaskScheduler(state_manager)
     >>> engine = DecisionEngine(state_manager, config)
+    >>> estimator = TaskComplexityEstimator(llm_interface, state_manager)
+    >>>
+    >>> # Estimate complexity
+    >>> estimate = estimator.estimate_complexity(task)
+    >>> if estimate.should_decompose:
+    ...     print("Task needs decomposition")
     >>>
     >>> # Schedule tasks
     >>> scheduler.schedule_task(task1)
@@ -29,6 +36,9 @@ from src.orchestration.task_scheduler import TaskScheduler
 from src.orchestration.breakpoint_manager import BreakpointManager, BreakpointEvent
 from src.orchestration.decision_engine import DecisionEngine, Action
 from src.orchestration.quality_controller import QualityController, QualityResult
+from src.orchestration.complexity_estimate import ComplexityEstimate
+from src.orchestration.subtask import SubTask
+from src.orchestration.complexity_estimator import TaskComplexityEstimator
 
 __all__ = [
     'TaskScheduler',
@@ -37,5 +47,8 @@ __all__ = [
     'DecisionEngine',
     'Action',
     'QualityController',
-    'QualityResult'
+    'QualityResult',
+    'ComplexityEstimate',
+    'SubTask',
+    'TaskComplexityEstimator'
 ]

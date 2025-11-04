@@ -6,7 +6,7 @@ interface for communicating with Ollama (running Qwen or other models locally).
 Features:
 - Streaming and non-streaming generation
 - Request/response caching with LRU cache
-- Retry logic with exponential backoff
+- Retry logic with exponential backoff (M9: Uses RetryManager)
 - Token counting approximation using tiktoken
 - Performance metrics tracking
 - Health checking
@@ -34,6 +34,7 @@ from src.plugins.exceptions import (
     LLMModelNotFoundException,
     LLMResponseException
 )
+from src.utils.retry_manager import RetryManager, RetryConfig, create_retry_manager_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,9 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
         self.retry_attempts: int = 3
         self.retry_backoff_base: float = 2.0
         self.retry_backoff_max: float = 60.0
+
+        # M9: Retry manager (initialized in initialize())
+        self.retry_manager: Optional[RetryManager] = None
 
         # Performance metrics
         self.metrics = {
@@ -151,6 +155,16 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
         self.retry_attempts = self.config['retry_attempts']
         self.retry_backoff_base = self.config.get('retry_backoff_base', 2.0)
         self.retry_backoff_max = self.config.get('retry_backoff_max', 60.0)
+
+        # M9: Initialize retry manager
+        retry_config = RetryConfig(
+            max_attempts=self.retry_attempts,
+            base_delay=1.0,
+            max_delay=self.retry_backoff_max,
+            backoff_multiplier=self.retry_backoff_base,
+            jitter=0.1
+        )
+        self.retry_manager = RetryManager(retry_config)
 
         # Reinitialize cache with new size
         self._init_cache()
@@ -436,7 +450,7 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
         endpoint: str,
         payload: dict
     ) -> str:
-        """Make HTTP request with exponential backoff retry.
+        """Make HTTP request with exponential backoff retry (M9: Uses RetryManager).
 
         Args:
             endpoint: API endpoint path (e.g., '/api/generate')
@@ -450,12 +464,10 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
             LLMTimeoutException: If request times out
         """
         url = f"{self.endpoint}{endpoint}"
-        last_exception: Optional[Exception] = None
 
-        for attempt in range(self.retry_attempts):
+        def _make_single_request() -> str:
+            """Single request attempt (for retry manager)."""
             try:
-                logger.debug(f"Request attempt {attempt + 1}/{self.retry_attempts} to {url}")
-
                 response = requests.post(
                     url,
                     json=payload,
@@ -482,49 +494,37 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
 
                 return response_text
 
-            except requests.exceptions.Timeout:
+            except requests.exceptions.Timeout as e:
                 self.metrics['timeouts'] += 1
-                last_exception = LLMTimeoutException(
+                raise LLMTimeoutException(
                     provider='ollama',
                     model=self.model,
                     timeout_seconds=self.timeout
-                )
-                logger.warning(f"Request timed out (attempt {attempt + 1})")
+                ) from e
 
             except requests.exceptions.RequestException as e:
-                last_exception = LLMException(
+                raise LLMException(
                     f"Request failed: {e}",
-                    context={'endpoint': url, 'attempt': attempt + 1},
+                    context={'endpoint': url},
                     recovery='Check Ollama service status'
-                )
-                logger.warning(f"Request failed (attempt {attempt + 1}): {e}")
+                ) from e
 
-            except (LLMResponseException, json.JSONDecodeError) as e:
-                last_exception = e if isinstance(e, LLMResponseException) else LLMResponseException(
+            except json.JSONDecodeError as e:
+                raise LLMResponseException(
                     provider='ollama',
                     details=f"Failed to parse response: {e}"
-                )
-                logger.warning(f"Response parsing failed (attempt {attempt + 1}): {e}")
+                ) from e
 
-            # Exponential backoff before retry (except on last attempt)
-            if attempt < self.retry_attempts - 1:
-                backoff = min(
-                    self.retry_backoff_base ** attempt,
-                    self.retry_backoff_max
-                )
-                logger.debug(f"Retrying in {backoff:.1f}s...")
-                time.sleep(backoff)
-
-        # All retries failed
-        self.metrics['errors'] += 1
-        if last_exception:
-            raise last_exception
-
-        raise LLMException(
-            "All retry attempts failed",
-            context={'attempts': self.retry_attempts},
-            recovery='Check Ollama service and network connectivity'
-        )
+        # Use retry manager if available (M9), otherwise fall back to direct call
+        if self.retry_manager:
+            try:
+                return self.retry_manager.execute(_make_single_request)
+            except Exception as e:
+                self.metrics['errors'] += 1
+                raise
+        else:
+            # Fallback for backward compatibility
+            return _make_single_request()
 
     def estimate_tokens(self, text: str) -> int:
         """Estimate token count for text.

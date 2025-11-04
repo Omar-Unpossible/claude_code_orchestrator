@@ -1,0 +1,1258 @@
+# LLM-First Prompt Engineering Framework - Implementation Plan
+# Machine-Optimized Format for Automated Execution
+# Version: 1.0
+# Date: 2025-11-03
+
+metadata:
+  plan_name: "LLM-First Prompt Engineering Framework Implementation"
+  plan_version: "1.1"
+  created_date: "2025-11-03"
+  updated_date: "2025-11-03"
+  design_document: "docs/design/LLM_FIRST_PROMPT_ENGINEERING_FRAMEWORK.md"
+  total_estimated_duration_hours: 84
+  phases: 7  # Added Phase 0 for prerequisites
+  total_tasks: 33  # Added TASK_0.1 and TASK_1.9
+  parallelizable_tasks: 12
+  sequential_tasks: 21
+  testing_events: 7  # Added TASK_1.9 regression testing
+
+  # Critical Rules
+  critical_rules:
+    - id: "RULE_TEST_SEQUENTIAL"
+      description: "NEVER run tests in parallel with code writing"
+      enforcement: "All test tasks must have no parallel siblings"
+
+    - id: "RULE_DOCUMENT_TEST_INTENTIONS"
+      description: "Document test plan BEFORE executing tests"
+      enforcement: "Create /tmp/test_intentions_<task_id>.json before running pytest"
+
+    - id: "RULE_SINGLE_AGENT_TESTING"
+      description: "Only ONE agent runs tests at a time"
+      enforcement: "Test tasks are always sequential, never parallel"
+
+    - id: "RULE_CRASH_RECOVERY"
+      description: "Enable recovery from test crashes"
+      enforcement: "Check for test_intentions files on session resume"
+
+# ============================================================================
+# PHASE 0: Prerequisites & Setup
+# Purpose: Configure Alembic for database migrations
+# Dependencies: None (must complete before Phase 1)
+# Estimated Duration: 2 hours
+# ============================================================================
+
+phase_0:
+  phase_id: "PHASE_0"
+  name: "Prerequisites & Setup"
+  description: "Configure Alembic for database migrations"
+  estimated_duration_hours: 2
+  dependencies: []
+  tasks:
+
+    - task_id: "TASK_0.1"
+      name: "Setup Alembic for database migrations"
+      description: |
+        Install and configure Alembic for managing database schema migrations.
+        Create initial migration for existing tables, configure env.py to use
+        our SQLAlchemy models.
+
+        Current situation: Database tables created via Base.metadata.create_all()
+        in StateManager (line 105). Need migration system for production.
+      estimated_duration_hours: 2
+      complexity: "medium"
+      dependencies: []
+      parallelizable_with: []
+      deliverables:
+        - "alembic.ini"
+        - "alembic/env.py"
+        - "alembic/script.py.mako"
+        - "alembic/versions/001_initial_schema.py"
+        - "requirements.txt (updated)"
+      files_to_create:
+        - path: "alembic.ini"
+          lines_estimate: 80
+          description: "Alembic configuration"
+        - path: "alembic/env.py"
+          lines_estimate: 100
+          description: "Alembic environment setup"
+        - path: "alembic/versions/001_initial_schema.py"
+          lines_estimate: 200
+          description: "Initial migration for existing tables"
+      files_to_modify:
+        - path: "requirements.txt"
+          lines_added_estimate: 1
+          description: "Add alembic dependency"
+      acceptance_criteria:
+        - "Alembic added to requirements.txt"
+        - "Alembic initialized (alembic init alembic)"
+        - "alembic.ini configured with correct database URL"
+        - "env.py imports Base from src.core.models"
+        - "Initial migration created for all existing tables"
+        - "Migration tested: alembic upgrade head (creates all tables)"
+        - "Migration tested: alembic downgrade base (drops all tables)"
+        - "Migration reversible and idempotent"
+      steps:
+        - "Add 'alembic>=1.12.0' to requirements.txt"
+        - "Install: pip install alembic"
+        - "Initialize: alembic init alembic"
+        - "Edit alembic.ini: set sqlalchemy.url"
+        - "Edit alembic/env.py: import Base, set target_metadata = Base.metadata"
+        - "Create initial migration: alembic revision --autogenerate -m 'Initial schema'"
+        - "Test migration: alembic upgrade head"
+        - "Test downgrade: alembic downgrade base"
+        - "Test re-upgrade: alembic upgrade head"
+
+# ============================================================================
+# PHASE 1: Infrastructure Foundation
+# Purpose: Create core components and configuration infrastructure
+# Dependencies: PHASE_0 complete
+# Estimated Duration: 16-20 hours
+# ============================================================================
+
+phase_1:
+  phase_id: "PHASE_1"
+  name: "Infrastructure Foundation"
+  description: "Create configuration files, data models, and base classes"
+  estimated_duration_hours: 18
+  dependencies: []
+  tasks:
+
+    # ----- Configuration Files -----
+
+    - task_id: "TASK_1.1"
+      name: "Create prompt_rules.yaml configuration"
+      description: |
+        Create comprehensive YAML configuration file defining all prompt rules
+        across domains: code generation, documentation, testing, error handling,
+        performance, security.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: []
+      parallelizable_with: ["TASK_1.2", "TASK_1.3"]
+      deliverables:
+        - "config/prompt_rules.yaml"
+      files_to_create:
+        - path: "config/prompt_rules.yaml"
+          lines_estimate: 400
+          description: "Rule definitions for all domains"
+      acceptance_criteria:
+        - "All 7 domains covered (code, docs, testing, error, perf, security, parallel)"
+        - "Each rule has: id, name, description, validation_type, severity"
+        - "YAML structure validates against schema"
+        - "Include examples for each rule"
+      test_plan:
+        test_after_task: "TASK_1.4"
+        test_type: "validation"
+        test_description: "Validate YAML structure and completeness"
+
+    - task_id: "TASK_1.2"
+      name: "Create response_schemas.yaml configuration"
+      description: |
+        Define JSON schemas for all response types: task_execution, validation,
+        error_analysis, decision, planning. Include field definitions, types,
+        validation rules.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: []
+      parallelizable_with: ["TASK_1.1", "TASK_1.3"]
+      deliverables:
+        - "config/response_schemas.yaml"
+      files_to_create:
+        - path: "config/response_schemas.yaml"
+          lines_estimate: 300
+          description: "Response schemas for all prompt types"
+      acceptance_criteria:
+        - "Schemas for: task_execution, validation, error_analysis, decision, planning"
+        - "Each schema defines: required_fields, optional_fields, field_types, validation_rules"
+        - "Includes examples for each schema"
+
+    - task_id: "TASK_1.3"
+      name: "Create complexity_thresholds.yaml configuration"
+      description: |
+        Define complexity estimation heuristics and decomposition thresholds:
+        LOC estimates, file count, dependency depth, token budgets, parallelization rules.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: []
+      parallelizable_with: ["TASK_1.1", "TASK_1.2"]
+      deliverables:
+        - "config/complexity_thresholds.yaml"
+      files_to_create:
+        - path: "config/complexity_thresholds.yaml"
+          lines_estimate: 200
+          description: "Complexity estimation configuration"
+      acceptance_criteria:
+        - "Heuristics for: LOC, file count, dependency depth, conceptual complexity"
+        - "Thresholds: max_tokens, max_files, max_dependencies, max_duration"
+        - "Parallelization rules defined"
+
+    # ----- Sequential Testing Event 1 -----
+
+    - task_id: "TASK_1.4"
+      name: "[TEST] Validate configuration files"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then validate all YAML configuration files.
+        Test structure, completeness, and schema compliance.
+      estimated_duration_hours: 1
+      complexity: "low"
+      dependencies: ["TASK_1.1", "TASK_1.2", "TASK_1.3"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_1.4.json"
+      test_intentions_schema:
+        task_id: "TASK_1.4"
+        test_suite: "config/"
+        expected_tests:
+          - "test_prompt_rules_yaml_valid_structure"
+          - "test_prompt_rules_yaml_all_domains_present"
+          - "test_response_schemas_yaml_valid_structure"
+          - "test_response_schemas_yaml_all_schemas_present"
+          - "test_complexity_thresholds_yaml_valid_structure"
+        coverage_target: 1.0
+        pass_criteria: "All YAML files parse correctly and validate against schemas"
+        timeout_seconds: 60
+        crash_recovery_plan: "Reload YAML files and retry validation without pytest"
+      deliverables:
+        - "/tmp/test_intentions_TASK_1.4.json"
+        - "tests/test_config_validation.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All configuration files validate successfully"
+        - "No structural errors in YAML"
+
+    # ----- Data Models -----
+
+    - task_id: "TASK_1.5"
+      name: "Add database models for new tables"
+      description: |
+        Extend src/core/models.py with new database models:
+        - PromptRuleViolation: Track rule violations for learning
+        - ComplexityEstimate: Store task complexity estimates
+        - ParallelAgentAttempt: Track parallel agent deployments and outcomes
+        Update relationships and indexes.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_1.4"]
+      parallelizable_with: []
+      deliverables:
+        - "src/core/models.py (modifications)"
+      files_to_modify:
+        - path: "src/core/models.py"
+          lines_added_estimate: 200
+          description: "Add 3 new model classes with relationships"
+      acceptance_criteria:
+        - "PromptRuleViolation model with: rule_id, task_id, violation_details, severity, timestamp"
+        - "ComplexityEstimate model with: task_id, estimated_tokens, estimated_loc, complexity_score"
+        - "ParallelAgentAttempt model with: task_id, agent_ids, success, failure_reason, duration"
+        - "All models have proper indexes and relationships"
+        - "Follows existing model patterns (type hints, docstrings)"
+
+    - task_id: "TASK_1.6"
+      name: "Add StateManager methods for new models"
+      description: |
+        Extend src/core/state.py with methods to create/query new models:
+        - log_rule_violation(), get_rule_violations()
+        - log_complexity_estimate(), get_complexity_estimate()
+        - log_parallel_attempt(), get_parallel_attempts()
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_1.5"]
+      parallelizable_with: []
+      deliverables:
+        - "src/core/state.py (modifications)"
+      files_to_modify:
+        - path: "src/core/state.py"
+          lines_added_estimate: 150
+          description: "Add 6 new methods for new models"
+      acceptance_criteria:
+        - "All methods follow existing StateManager patterns"
+        - "Thread-safe with proper locking"
+        - "Error handling with DatabaseException"
+        - "Type hints and Google-style docstrings"
+
+    # ----- Sequential Testing Event 2 -----
+
+    - task_id: "TASK_1.7"
+      name: "[TEST] Test new database models and StateManager methods"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then write and run comprehensive tests for
+        new models and StateManager methods.
+      estimated_duration_hours: 2
+      complexity: "medium"
+      dependencies: ["TASK_1.6"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_1.7.json"
+      test_intentions_schema:
+        task_id: "TASK_1.7"
+        test_suite: "tests/test_state_new_models.py"
+        expected_tests:
+          - "test_log_rule_violation"
+          - "test_get_rule_violations_by_task"
+          - "test_log_complexity_estimate"
+          - "test_get_complexity_estimate"
+          - "test_log_parallel_attempt"
+          - "test_get_parallel_attempts_for_task"
+        coverage_target: 0.85
+        pass_criteria: "All tests pass, ≥85% coverage for new methods"
+        timeout_seconds: 300
+        crash_recovery_plan: "Check test_intentions file, resume from last successful test"
+      deliverables:
+        - "/tmp/test_intentions_TASK_1.7.json"
+        - "tests/test_state_new_models.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All tests pass"
+        - "Coverage ≥85% for new models and methods"
+
+    - task_id: "TASK_1.8"
+      name: "Create database migration for new tables"
+      description: |
+        Create Alembic migration script for new tables: PromptRuleViolation,
+        ComplexityEstimate, ParallelAgentAttempt. Test migration up/down.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: ["TASK_1.7"]
+      parallelizable_with: []
+      deliverables:
+        - "alembic/versions/<timestamp>_add_llm_first_tables.py"
+      acceptance_criteria:
+        - "Migration creates all 3 tables with proper columns"
+        - "All indexes created"
+        - "Migration reversible (downgrade works)"
+        - "Tested on SQLite and PostgreSQL"
+
+    # ----- Sequential Testing Event 7 (Regression Check) -----
+
+    - task_id: "TASK_1.9"
+      name: "[TEST] Regression testing - Full test suite"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then run the full existing test suite to
+        ensure Phase 1 changes don't break existing functionality. This is a
+        safety checkpoint before adding complexity in Phase 2+.
+
+        Current baseline: 96 tests passing (from parameter optimization work).
+      estimated_duration_hours: 1
+      complexity: "low"
+      dependencies: ["TASK_1.8"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_1.9.json"
+      test_intentions_schema:
+        task_id: "TASK_1.9"
+        test_suite: "tests/"
+        expected_tests: "All existing tests (96+)"
+        coverage_target: 0.88
+        pass_criteria: "All existing tests pass, no regressions, coverage maintained ≥88%"
+        timeout_seconds: 600
+        crash_recovery_plan: "Resume from test_intentions file, continue with Phase 2"
+      deliverables:
+        - "/tmp/test_intentions_TASK_1.9.json"
+        - "Regression test report (pytest output)"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All existing tests pass (96+ tests)"
+        - "No regressions introduced by Phase 1"
+        - "Coverage maintained at ≥88%"
+        - "New Phase 1 code (configs, models) doesn't break existing code"
+
+# ============================================================================
+# PHASE 2: Prompt Rule Engine
+# Purpose: Implement rule loading, application, and validation system
+# Dependencies: PHASE_1 complete
+# Estimated Duration: 14-18 hours
+# ============================================================================
+
+phase_2:
+  phase_id: "PHASE_2"
+  name: "Prompt Rule Engine"
+  description: "Implement rule system for applying and validating prompt rules"
+  estimated_duration_hours: 16
+  dependencies: ["PHASE_1"]
+  tasks:
+
+    - task_id: "TASK_2.1"
+      name: "Implement PromptRule data class"
+      description: |
+        Create PromptRule data class to represent individual rules loaded from YAML.
+        Include methods for serialization, validation, and application.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: ["TASK_1.8"]
+      parallelizable_with: ["TASK_2.2"]
+      deliverables:
+        - "src/llm/prompt_rule.py"
+      files_to_create:
+        - path: "src/llm/prompt_rule.py"
+          lines_estimate: 150
+          description: "PromptRule data class with validation methods"
+      acceptance_criteria:
+        - "PromptRule has: id, name, description, validation_type, severity, validation_code"
+        - "to_dict() and from_dict() methods for serialization"
+        - "Type hints and comprehensive docstrings"
+
+    - task_id: "TASK_2.2"
+      name: "Implement RuleValidationResult data class"
+      description: |
+        Create RuleValidationResult to encapsulate validation outcomes:
+        is_valid, violations, errors, warnings.
+      estimated_duration_hours: 1
+      complexity: "low"
+      dependencies: ["TASK_1.8"]
+      parallelizable_with: ["TASK_2.1"]
+      deliverables:
+        - "src/llm/rule_validation_result.py"
+      files_to_create:
+        - path: "src/llm/rule_validation_result.py"
+          lines_estimate: 100
+          description: "RuleValidationResult data class"
+      acceptance_criteria:
+        - "Encapsulates: is_valid, violations (list), errors (list), warnings (list)"
+        - "Methods: add_violation(), add_error(), add_warning(), to_dict()"
+
+    - task_id: "TASK_2.3"
+      name: "Implement PromptRuleEngine core class"
+      description: |
+        Create PromptRuleEngine class to load rules from YAML, apply rules to
+        prompts, and validate responses against rules.
+      estimated_duration_hours: 5
+      complexity: "high"
+      dependencies: ["TASK_2.1", "TASK_2.2"]
+      parallelizable_with: []
+      deliverables:
+        - "src/llm/prompt_rule_engine.py"
+      files_to_create:
+        - path: "src/llm/prompt_rule_engine.py"
+          lines_estimate: 400
+          description: "Core rule engine implementation"
+      acceptance_criteria:
+        - "load_rules_from_yaml() parses config/prompt_rules.yaml"
+        - "get_rules_for_prompt_type() filters rules by prompt type"
+        - "apply_rules_to_prompt() injects rules into prompt structure"
+        - "validate_response_against_rules() validates LLM responses"
+        - "log_rule_violation() integrates with StateManager"
+        - "Thread-safe with proper locking"
+        - "Comprehensive error handling"
+
+    - task_id: "TASK_2.4"
+      name: "Implement AST-based code validation"
+      description: |
+        Create code validators for AST analysis: detect stubs, hardcoded values,
+        missing docstrings, missing tests. Used by rule validation.
+      estimated_duration_hours: 4
+      complexity: "high"
+      dependencies: ["TASK_2.3"]
+      parallelizable_with: []
+      deliverables:
+        - "src/llm/code_validators.py"
+      files_to_create:
+        - path: "src/llm/code_validators.py"
+          lines_estimate: 350
+          description: "AST-based code quality validators"
+      acceptance_criteria:
+        - "detect_stubs(): Find 'pass', 'TODO', 'NotImplemented'"
+        - "detect_hardcoded_values(): Find magic numbers, hardcoded strings"
+        - "check_docstring_coverage(): Verify all public functions documented"
+        - "check_test_coverage(): Verify tests exist for all functions"
+        - "Uses Python AST module"
+        - "Returns structured validation results"
+
+    # ----- Sequential Testing Event 3 -----
+
+    - task_id: "TASK_2.5"
+      name: "[TEST] Test PromptRuleEngine and validators"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then write and run comprehensive tests for
+        PromptRuleEngine, PromptRule, RuleValidationResult, and code validators.
+      estimated_duration_hours: 4
+      complexity: "high"
+      dependencies: ["TASK_2.4"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_2.5.json"
+      test_intentions_schema:
+        task_id: "TASK_2.5"
+        test_suite: "tests/test_prompt_rule_engine.py"
+        expected_tests:
+          - "test_load_rules_from_yaml"
+          - "test_get_rules_for_prompt_type"
+          - "test_apply_rules_to_prompt"
+          - "test_validate_response_against_rules"
+          - "test_detect_stubs"
+          - "test_detect_hardcoded_values"
+          - "test_check_docstring_coverage"
+          - "test_check_test_coverage"
+          - "test_rule_violation_logging"
+        coverage_target: 0.85
+        pass_criteria: "All tests pass, ≥85% coverage for rule engine"
+        timeout_seconds: 300
+        crash_recovery_plan: "Resume from test_intentions file, skip crashed test"
+      deliverables:
+        - "/tmp/test_intentions_TASK_2.5.json"
+        - "tests/test_prompt_rule_engine.py"
+        - "tests/test_code_validators.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All tests pass"
+        - "Coverage ≥85% for PromptRuleEngine and validators"
+
+# ============================================================================
+# PHASE 3: Structured Prompt System
+# Purpose: Implement structured prompt building and response parsing
+# Dependencies: PHASE_2 complete
+# Estimated Duration: 16-20 hours
+# ============================================================================
+
+phase_3:
+  phase_id: "PHASE_3"
+  name: "Structured Prompt System"
+  description: "Build machine-optimized prompt builder and response parser"
+  estimated_duration_hours: 18
+  dependencies: ["PHASE_2"]
+  tasks:
+
+    - task_id: "TASK_3.1"
+      name: "Implement StructuredPromptBuilder"
+      description: |
+        Create StructuredPromptBuilder to generate machine-optimized prompts
+        in JSON format with metadata, context, instruction, response_schema.
+        Integrates with ContextManager for template-specific prioritization.
+      estimated_duration_hours: 6
+      complexity: "high"
+      dependencies: ["TASK_2.5"]
+      parallelizable_with: []
+      deliverables:
+        - "src/llm/structured_prompt_builder.py"
+      files_to_create:
+        - path: "src/llm/structured_prompt_builder.py"
+          lines_estimate: 500
+          description: "Structured prompt builder with JSON optimization"
+      acceptance_criteria:
+        - "build_prompt() creates structured JSON prompts"
+        - "Integrates with PromptRuleEngine for rule injection"
+        - "Integrates with ContextManager for context prioritization"
+        - "Supports hybrid mode (JSON metadata + NL instructions)"
+        - "_optimize_prompt_tokens() fits prompts within token budget"
+        - "Caching for repeated prompts"
+        - "Type hints and comprehensive docstrings"
+
+    - task_id: "TASK_3.2"
+      name: "Implement StructuredResponseParser"
+      description: |
+        Create StructuredResponseParser to parse and validate LLM responses.
+        Uses json_extractor.py for extraction, validates against schemas,
+        checks rule compliance.
+      estimated_duration_hours: 4
+      complexity: "medium"
+      dependencies: ["TASK_2.5"]
+      parallelizable_with: ["TASK_3.1"]
+      deliverables:
+        - "src/llm/structured_response_parser.py"
+      files_to_create:
+        - path: "src/llm/structured_response_parser.py"
+          lines_estimate: 350
+          description: "Response parser with schema validation"
+      acceptance_criteria:
+        - "parse_response() extracts JSON from various formats"
+        - "Validates against expected schema (from config/response_schemas.yaml)"
+        - "Integrates with PromptRuleEngine for rule validation"
+        - "Returns ParsedResponse with: is_valid, data, schema_errors, rule_violations"
+        - "Robust error handling and recovery"
+
+    - task_id: "TASK_3.3"
+      name: "Update PromptGenerator for structured mode"
+      description: |
+        Extend src/llm/prompt_generator.py to support structured_mode flag.
+        When enabled, delegate to StructuredPromptBuilder. Maintain backward
+        compatibility with existing Jinja2 templates.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_3.1"]
+      parallelizable_with: ["TASK_3.2"]
+      deliverables:
+        - "src/llm/prompt_generator.py (modifications)"
+      files_to_modify:
+        - path: "src/llm/prompt_generator.py"
+          lines_added_estimate: 100
+          description: "Add structured_mode support"
+      acceptance_criteria:
+        - "Add structured_mode parameter to generate_prompt()"
+        - "If structured_mode=True, use StructuredPromptBuilder"
+        - "If structured_mode=False, use existing Jinja2 templates"
+        - "Backward compatible (default structured_mode=False initially)"
+        - "Pass-through all relevant parameters"
+
+    - task_id: "TASK_3.4"
+      name: "Create hybrid prompt templates"
+      description: |
+        Create new hybrid templates combining JSON structure with natural language
+        instructions. Templates for: task_execution_hybrid, validation_hybrid,
+        error_analysis_hybrid.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_3.3"]
+      parallelizable_with: []
+      deliverables:
+        - "config/hybrid_prompt_templates.yaml"
+      files_to_create:
+        - path: "config/hybrid_prompt_templates.yaml"
+          lines_estimate: 600
+          description: "Hybrid templates with JSON + NL"
+      acceptance_criteria:
+        - "Templates for: task_execution_hybrid, validation_hybrid, error_analysis_hybrid"
+        - "JSON metadata sections"
+        - "Natural language instruction sections"
+        - "Response schema specifications"
+        - "Rule injection placeholders"
+
+    # ----- Sequential Testing Event 4 -----
+
+    - task_id: "TASK_3.5"
+      name: "[TEST] Test structured prompt system"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then test StructuredPromptBuilder,
+        StructuredResponseParser, updated PromptGenerator, and hybrid templates.
+      estimated_duration_hours: 3
+      complexity: "high"
+      dependencies: ["TASK_3.4"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_3.5.json"
+      test_intentions_schema:
+        task_id: "TASK_3.5"
+        test_suite: "tests/test_structured_prompts.py"
+        expected_tests:
+          - "test_build_structured_prompt_basic"
+          - "test_build_structured_prompt_with_rules"
+          - "test_build_structured_prompt_token_optimization"
+          - "test_parse_response_valid_json"
+          - "test_parse_response_with_preamble"
+          - "test_parse_response_schema_validation"
+          - "test_parse_response_rule_validation"
+          - "test_prompt_generator_structured_mode"
+          - "test_prompt_generator_backward_compatible"
+          - "test_hybrid_templates"
+        coverage_target: 0.85
+        pass_criteria: "All tests pass, ≥85% coverage for structured prompt system"
+        timeout_seconds: 300
+        crash_recovery_plan: "Resume from test_intentions file"
+      deliverables:
+        - "/tmp/test_intentions_TASK_3.5.json"
+        - "tests/test_structured_prompts.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All tests pass"
+        - "Coverage ≥85% for StructuredPromptBuilder and StructuredResponseParser"
+
+# ============================================================================
+# PHASE 4: Complexity Estimation & Task Decomposition
+# Purpose: Implement task complexity analysis and automatic decomposition
+# Dependencies: PHASE_3 complete
+# Estimated Duration: 12-16 hours
+# ============================================================================
+
+phase_4:
+  phase_id: "PHASE_4"
+  name: "Complexity Estimation"
+  description: "Implement task complexity estimation and decomposition logic"
+  estimated_duration_hours: 14
+  dependencies: ["PHASE_3"]
+  tasks:
+
+    - task_id: "TASK_4.1"
+      name: "Implement ComplexityEstimate data class"
+      description: |
+        Create ComplexityEstimate data class to represent task complexity
+        analysis results: estimated_tokens, estimated_loc, complexity_score,
+        should_decompose, decomposition_suggestions, parallelization_opportunities.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: ["TASK_3.5"]
+      parallelizable_with: ["TASK_4.2"]
+      deliverables:
+        - "src/orchestration/complexity_estimate.py"
+      files_to_create:
+        - path: "src/orchestration/complexity_estimate.py"
+          lines_estimate: 150
+          description: "ComplexityEstimate data class"
+      acceptance_criteria:
+        - "Fields: estimated_tokens, estimated_loc, estimated_files, complexity_score"
+        - "Fields: should_decompose, decomposition_suggestions, parallelization_opportunities"
+        - "to_dict() and from_dict() for serialization"
+        - "Type hints and docstrings"
+
+    - task_id: "TASK_4.2"
+      name: "Implement SubTask data class"
+      description: |
+        Create SubTask data class to represent decomposed subtasks:
+        id, description, estimated_complexity, dependencies, parallelizable.
+      estimated_duration_hours: 1
+      complexity: "low"
+      dependencies: ["TASK_3.5"]
+      parallelizable_with: ["TASK_4.1"]
+      deliverables:
+        - "src/orchestration/subtask.py"
+      files_to_create:
+        - path: "src/orchestration/subtask.py"
+          lines_estimate: 100
+          description: "SubTask data class"
+      acceptance_criteria:
+        - "Fields: id, description, estimated_complexity, dependencies, parallelizable"
+        - "to_dict() and from_dict() methods"
+
+    - task_id: "TASK_4.3"
+      name: "Implement TaskComplexityEstimator heuristics"
+      description: |
+        Create TaskComplexityEstimator class with heuristic-based complexity
+        analysis: keyword counting, verb/noun extraction, LOC estimation based
+        on task description.
+      estimated_duration_hours: 5
+      complexity: "high"
+      dependencies: ["TASK_4.1", "TASK_4.2"]
+      parallelizable_with: []
+      deliverables:
+        - "src/orchestration/complexity_estimator.py"
+      files_to_create:
+        - path: "src/orchestration/complexity_estimator.py"
+          lines_estimate: 450
+          description: "Complexity estimator with heuristics and LLM analysis"
+      acceptance_criteria:
+        - "estimate_complexity() returns ComplexityEstimate"
+        - "_heuristic_analysis() uses keyword patterns, verb counting"
+        - "_llm_analysis() uses Qwen for detailed complexity analysis"
+        - "_combine_estimates() merges heuristic and LLM scores"
+        - "_suggest_decomposition() generates subtask suggestions"
+        - "Loads thresholds from config/complexity_thresholds.yaml"
+        - "Integrates with StateManager to log estimates"
+
+    - task_id: "TASK_4.4"
+      name: "Implement parallelization analyzer"
+      description: |
+        Add parallelization analysis to TaskComplexityEstimator:
+        identify independent subtasks, build dependency graph, group
+        parallelizable tasks, estimate speedup.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_4.3"]
+      parallelizable_with: []
+      deliverables:
+        - "src/orchestration/complexity_estimator.py (modifications)"
+      files_to_modify:
+        - path: "src/orchestration/complexity_estimator.py"
+          lines_added_estimate: 200
+          description: "Add parallelization analysis methods"
+      acceptance_criteria:
+        - "_identify_parallelizable_subtasks() builds dependency graph"
+        - "_group_parallel_tasks() creates ParallelGroup objects"
+        - "_estimate_parallel_speedup() calculates time savings"
+        - "Returns parallelization_opportunities in ComplexityEstimate"
+
+    # ----- Sequential Testing Event 5 -----
+
+    - task_id: "TASK_4.5"
+      name: "[TEST] Test complexity estimator"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then test TaskComplexityEstimator with
+        various task descriptions, validate estimates, test decomposition logic.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_4.4"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_4.5.json"
+      test_intentions_schema:
+        task_id: "TASK_4.5"
+        test_suite: "tests/test_complexity_estimator.py"
+        expected_tests:
+          - "test_estimate_complexity_simple_task"
+          - "test_estimate_complexity_complex_task"
+          - "test_decomposition_triggered_above_threshold"
+          - "test_decomposition_suggestions_valid"
+          - "test_parallelization_analysis"
+          - "test_dependency_graph_building"
+          - "test_integration_with_state_manager"
+        coverage_target: 0.85
+        pass_criteria: "All tests pass, ≥85% coverage for complexity estimator"
+        timeout_seconds: 300
+        crash_recovery_plan: "Resume from test_intentions file"
+      deliverables:
+        - "/tmp/test_intentions_TASK_4.5.json"
+        - "tests/test_complexity_estimator.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All tests pass"
+        - "Coverage ≥85% for TaskComplexityEstimator"
+
+# ============================================================================
+# PHASE 5: Integration & Orchestration
+# Purpose: Integrate new components with existing Orchestrator
+# Dependencies: PHASE_4 complete
+# Estimated Duration: 10-14 hours
+# ============================================================================
+
+phase_5:
+  phase_id: "PHASE_5"
+  name: "Integration & Orchestration"
+  description: "Integrate all components with Orchestrator and QualityController"
+  estimated_duration_hours: 12
+  dependencies: ["PHASE_4"]
+  tasks:
+
+    - task_id: "TASK_5.1"
+      name: "Update QualityController to use StructuredResponseParser"
+      description: |
+        Modify QualityController to parse responses using StructuredResponseParser,
+        validate against rules, log rule violations.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_4.5"]
+      parallelizable_with: []
+      deliverables:
+        - "src/orchestration/quality_controller.py (modifications)"
+      files_to_modify:
+        - path: "src/orchestration/quality_controller.py"
+          lines_added_estimate: 150
+          description: "Integrate StructuredResponseParser and rule validation"
+      acceptance_criteria:
+        - "Use StructuredResponseParser in validate_output()"
+        - "Check rule_violations in ParsedResponse"
+        - "Log violations via StateManager.log_rule_violation()"
+        - "Include rule compliance in QualityResult"
+        - "Backward compatible with existing validation"
+
+    - task_id: "TASK_5.2"
+      name: "Update Orchestrator to use TaskComplexityEstimator"
+      description: |
+        Modify Orchestrator to estimate task complexity before execution,
+        trigger decomposition if needed, deploy parallel agents for
+        independent subtasks.
+      estimated_duration_hours: 4
+      complexity: "high"
+      dependencies: ["TASK_4.5"]
+      parallelizable_with: ["TASK_5.1"]
+      deliverables:
+        - "src/orchestrator.py (modifications)"
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          lines_added_estimate: 200
+          description: "Integrate complexity estimation and parallel agent deployment"
+      acceptance_criteria:
+        - "Estimate complexity before execute_task()"
+        - "If should_decompose=True, create subtasks"
+        - "If parallelizable tasks identified, deploy multiple agents"
+        - "Track parallel attempts via StateManager.log_parallel_attempt()"
+        - "Implement fallback to sequential on parallel failure"
+        - "Log complexity estimates for analysis"
+
+    - task_id: "TASK_5.3"
+      name: "Implement parallel agent coordination"
+      description: |
+        Create ParallelAgentCoordinator to manage multiple Claude Code agents
+        running in parallel: spawn agents, monitor progress, handle failures,
+        merge results.
+      estimated_duration_hours: 5
+      complexity: "high"
+      dependencies: ["TASK_5.2"]
+      parallelizable_with: []
+      deliverables:
+        - "src/orchestration/parallel_agent_coordinator.py"
+      files_to_create:
+        - path: "src/orchestration/parallel_agent_coordinator.py"
+          lines_estimate: 400
+          description: "Parallel agent coordination and result merging"
+      acceptance_criteria:
+        - "spawn_parallel_agents() creates multiple agent instances"
+        - "monitor_agent_progress() tracks each agent's status"
+        - "handle_agent_failure() implements recovery strategy"
+        - "merge_agent_results() combines outputs from successful agents"
+        - "Enforces RULE_SINGLE_AGENT_TESTING (no parallel testing)"
+        - "Logs all parallel attempts for learning"
+
+    # ----- Sequential Testing Event 6 -----
+
+    - task_id: "TASK_5.4"
+      name: "[TEST] Test integration components"
+      description: |
+        **TESTING EVENT - MUST BE SEQUENTIAL**
+        Document test intentions, then test QualityController integration,
+        Orchestrator complexity estimation, parallel agent coordination.
+      estimated_duration_hours: 3
+      complexity: "high"
+      dependencies: ["TASK_5.3"]
+      parallelizable_with: []  # NEVER parallel with testing
+      task_type: "testing"
+      test_intentions_file: "/tmp/test_intentions_TASK_5.4.json"
+      test_intentions_schema:
+        task_id: "TASK_5.4"
+        test_suite: "tests/test_integration_llm_first.py"
+        expected_tests:
+          - "test_quality_controller_structured_response_parsing"
+          - "test_quality_controller_rule_violation_logging"
+          - "test_orchestrator_complexity_estimation"
+          - "test_orchestrator_task_decomposition"
+          - "test_parallel_agent_coordination"
+          - "test_parallel_agent_failure_recovery"
+          - "test_sequential_testing_enforcement"
+        coverage_target: 0.80
+        pass_criteria: "All tests pass, ≥80% coverage for integration"
+        timeout_seconds: 300
+        crash_recovery_plan: "Resume from test_intentions file"
+      deliverables:
+        - "/tmp/test_intentions_TASK_5.4.json"
+        - "tests/test_integration_llm_first.py"
+      acceptance_criteria:
+        - "Test intentions documented before running tests"
+        - "All tests pass"
+        - "Coverage ≥80% for integration components"
+
+# ============================================================================
+# PHASE 6: Migration & Validation
+# Purpose: Migrate existing prompts, validate system, measure performance
+# Dependencies: PHASE_5 complete
+# Estimated Duration: 12-16 hours
+# ============================================================================
+
+phase_6:
+  phase_id: "PHASE_6"
+  name: "Migration & Validation"
+  description: "Migrate existing prompts and validate entire system"
+  estimated_duration_hours: 14
+  dependencies: ["PHASE_5"]
+  tasks:
+
+    - task_id: "TASK_6.1"
+      name: "Migrate validation prompts to structured format"
+      description: |
+        Convert validation template to use StructuredPromptBuilder.
+        Validation already uses JSON responses, easiest to migrate first.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: ["TASK_5.4"]
+      parallelizable_with: []
+      deliverables:
+        - "config/hybrid_prompt_templates.yaml (updates)"
+      acceptance_criteria:
+        - "validation_hybrid template uses structured format"
+        - "Backward compatible with existing validation"
+        - "Response parsing uses StructuredResponseParser"
+
+    - task_id: "TASK_6.2"
+      name: "Create A/B testing framework"
+      description: |
+        Implement A/B testing to compare structured vs natural language prompts.
+        Track metrics: token usage, success rate, latency, rule violations.
+      estimated_duration_hours: 4
+      complexity: "medium"
+      dependencies: ["TASK_6.1"]
+      parallelizable_with: []
+      deliverables:
+        - "src/evaluation/ab_testing.py"
+      files_to_create:
+        - path: "src/evaluation/ab_testing.py"
+          lines_estimate: 300
+          description: "A/B testing framework for prompt comparison"
+      acceptance_criteria:
+        - "Run same task with both prompt formats"
+        - "Collect metrics: tokens, latency, success_rate, rule_violations"
+        - "Statistical significance testing (t-test)"
+        - "Export results to JSON for analysis"
+
+    - task_id: "TASK_6.3"
+      name: "Run A/B validation tests"
+      description: |
+        Execute A/B tests on validation prompts (structured vs natural language).
+        Collect data over 20-30 validation tasks.
+      estimated_duration_hours: 3
+      complexity: "medium"
+      dependencies: ["TASK_6.2"]
+      parallelizable_with: []
+      task_type: "validation"
+      deliverables:
+        - "evaluation_results/ab_test_validation_prompts.json"
+      acceptance_criteria:
+        - "Run ≥20 validation tasks with both formats"
+        - "Collect comprehensive metrics"
+        - "Generate statistical analysis report"
+        - "Determine if structured format shows improvement"
+
+    - task_id: "TASK_6.4"
+      name: "Migrate task_execution prompts to hybrid format"
+      description: |
+        Convert task_execution template to hybrid format (JSON metadata + NL instructions).
+        Based on A/B test results.
+      estimated_duration_hours: 2
+      complexity: "low"
+      dependencies: ["TASK_6.3"]
+      parallelizable_with: []
+      deliverables:
+        - "config/hybrid_prompt_templates.yaml (updates)"
+      acceptance_criteria:
+        - "task_execution_hybrid template implemented"
+        - "Uses JSON for metadata, NL for instructions"
+        - "Backward compatible"
+
+    - task_id: "TASK_6.5"
+      name: "Update documentation"
+      description: |
+        Update all documentation to reflect new LLM-first prompt system.
+        ARCHITECTURE.md, README.md, ADRs.
+      estimated_duration_hours: 3
+      complexity: "low"
+      dependencies: ["TASK_6.4"]
+      parallelizable_with: []
+      deliverables:
+        - "docs/architecture/ARCHITECTURE.md (updates)"
+        - "docs/decisions/ADR-005-llm-first-prompts.md"
+        - "README.md (updates)"
+        - "docs/guides/PROMPT_ENGINEERING_GUIDE.md (new)"
+      acceptance_criteria:
+        - "ARCHITECTURE.md documents all new components"
+        - "ADR-005 explains LLM-first design decisions"
+        - "README.md updated with new features"
+        - "PROMPT_ENGINEERING_GUIDE.md provides usage examples"
+
+# ============================================================================
+# SUMMARY & METRICS
+# ============================================================================
+
+summary:
+  total_phases: 7  # Added Phase 0
+  total_tasks: 33  # Added TASK_0.1 and TASK_1.9
+  total_testing_events: 7  # Added TASK_1.9 regression testing
+
+  # Task breakdown by type
+  task_types:
+    implementation: 26  # Added TASK_0.1
+    testing: 7  # Added TASK_1.9
+    validation: 0
+
+  # Parallelization analysis
+  parallelization:
+    total_parallelizable_tasks: 8
+    parallel_groups:
+      - group_id: "PARALLEL_GROUP_1"
+        phase: "PHASE_1"
+        tasks: ["TASK_1.1", "TASK_1.2", "TASK_1.3"]
+        estimated_duration_hours: 3  # Max of parallel tasks
+
+      - group_id: "PARALLEL_GROUP_2"
+        phase: "PHASE_2"
+        tasks: ["TASK_2.1", "TASK_2.2"]
+        estimated_duration_hours: 2
+
+      - group_id: "PARALLEL_GROUP_3"
+        phase: "PHASE_3"
+        tasks: ["TASK_3.1", "TASK_3.2"]
+        estimated_duration_hours: 6
+
+      - group_id: "PARALLEL_GROUP_4"
+        phase: "PHASE_3"
+        tasks: ["TASK_3.2", "TASK_3.3"]
+        estimated_duration_hours: 4
+
+      - group_id: "PARALLEL_GROUP_5"
+        phase: "PHASE_4"
+        tasks: ["TASK_4.1", "TASK_4.2"]
+        estimated_duration_hours: 2
+
+      - group_id: "PARALLEL_GROUP_6"
+        phase: "PHASE_5"
+        tasks: ["TASK_5.1", "TASK_5.2"]
+        estimated_duration_hours: 4
+
+  # Duration estimates
+  duration_estimates:
+    sequential_execution_hours: 95  # All tasks sequential (was 92, +3 for new tasks)
+    optimized_parallel_execution_hours: 84  # With parallelization (was 80, +4 for sequential tasks)
+    time_savings_hours: 11  # Reduced from 12 due to more sequential tasks
+    time_savings_percentage: 11.6  # 11/95 = 11.6%
+
+  # Testing safety
+  testing_safety:
+    total_testing_events: 6
+    testing_tasks_always_sequential: true
+    test_intentions_files_created: 6
+    crash_recovery_enabled: true
+
+  # Files affected
+  files_affected:
+    files_created: 17
+    files_modified: 5
+    total_files: 22
+    estimated_total_lines: 5150
+
+  # Coverage targets
+  coverage_targets:
+    overall_target: 0.85
+    critical_components_target: 0.90
+
+# ============================================================================
+# EXECUTION WORKFLOW
+# ============================================================================
+
+execution_workflow:
+  workflow_steps:
+    - step: 1
+      description: "Execute PHASE_1 tasks"
+      parallel_groups: ["PARALLEL_GROUP_1"]
+      sequential_tasks: ["TASK_1.4", "TASK_1.5", "TASK_1.6", "TASK_1.7", "TASK_1.8"]
+      testing_events: ["TASK_1.4", "TASK_1.7"]
+
+    - step: 2
+      description: "Execute PHASE_2 tasks"
+      parallel_groups: ["PARALLEL_GROUP_2"]
+      sequential_tasks: ["TASK_2.3", "TASK_2.4", "TASK_2.5"]
+      testing_events: ["TASK_2.5"]
+
+    - step: 3
+      description: "Execute PHASE_3 tasks"
+      parallel_groups: ["PARALLEL_GROUP_3", "PARALLEL_GROUP_4"]
+      sequential_tasks: ["TASK_3.4", "TASK_3.5"]
+      testing_events: ["TASK_3.5"]
+
+    - step: 4
+      description: "Execute PHASE_4 tasks"
+      parallel_groups: ["PARALLEL_GROUP_5"]
+      sequential_tasks: ["TASK_4.3", "TASK_4.4", "TASK_4.5"]
+      testing_events: ["TASK_4.5"]
+
+    - step: 5
+      description: "Execute PHASE_5 tasks"
+      parallel_groups: ["PARALLEL_GROUP_6"]
+      sequential_tasks: ["TASK_5.3", "TASK_5.4"]
+      testing_events: ["TASK_5.4"]
+
+    - step: 6
+      description: "Execute PHASE_6 tasks"
+      parallel_groups: []
+      sequential_tasks: ["TASK_6.1", "TASK_6.2", "TASK_6.3", "TASK_6.4", "TASK_6.5"]
+      testing_events: []
+
+# ============================================================================
+# CRASH RECOVERY PROTOCOL
+# ============================================================================
+
+crash_recovery:
+  protocol:
+    description: "Enable recovery from session crashes during testing"
+
+  on_session_resume:
+    step_1:
+      action: "Check for /tmp/test_intentions_*.json files"
+      code_snippet: |
+        import glob
+        import json
+        from pathlib import Path
+
+        intentions_files = glob.glob('/tmp/test_intentions_TASK_*.json')
+        for file_path in intentions_files:
+            with open(file_path, 'r') as f:
+                intentions = json.load(f)
+            # Check if test was running (compare timestamps)
+            # Determine recovery action
+
+    step_2:
+      action: "Determine if crash occurred during testing"
+      logic: |
+        - If test_intentions file exists and modification time < 5 minutes ago
+        - AND no corresponding test results file exists
+        - THEN assume crash during testing
+
+    step_3:
+      action: "Report crash and decide recovery strategy"
+      options:
+        - "Retry test with same parameters"
+        - "Skip crashed test and continue with next task"
+        - "Mark task as blocked and escalate to human"
+
+    step_4:
+      action: "Update task status in StateManager"
+      fields:
+        - "parallel_attempted: bool"
+        - "parallel_failed: bool"
+        - "test_crashed: bool"
+        - "crash_timestamp: datetime"
+        - "recovery_action: str"
+
+# ============================================================================
+# SUCCESS CRITERIA
+# ============================================================================
+
+success_criteria:
+  overall:
+    - "All 31 tasks completed successfully"
+    - "All 6 testing events pass with ≥85% coverage"
+    - "No regressions in existing functionality"
+    - "Backward compatibility maintained"
+
+  phase_specific:
+    phase_1:
+      - "All configuration files valid and comprehensive"
+      - "Database models created with proper relationships"
+      - "Migration tested and reversible"
+
+    phase_2:
+      - "PromptRuleEngine loads and applies rules correctly"
+      - "Code validators detect quality issues accurately"
+      - "Rule violations logged for analysis"
+
+    phase_3:
+      - "Structured prompts generate valid JSON"
+      - "Response parser handles various formats robustly"
+      - "Hybrid templates balance efficiency and clarity"
+
+    phase_4:
+      - "Complexity estimator provides accurate estimates"
+      - "Decomposition suggestions are sensible"
+      - "Parallelization analysis identifies opportunities"
+
+    phase_5:
+      - "Integration with Orchestrator seamless"
+      - "Parallel agent coordination works reliably"
+      - "Sequential testing enforced"
+
+    phase_6:
+      - "A/B testing shows measurable improvement"
+      - "Migration to structured format smooth"
+      - "Documentation complete and accurate"
+
+  metrics_targets:
+    token_efficiency:
+      target_improvement: "30-50%"
+      measurement: "Compare structured vs natural language token counts"
+
+    parsing_success_rate:
+      target: "≥95%"
+      measurement: "JSON extraction success rate from LLM responses"
+
+    rule_compliance:
+      target: "≥90%"
+      measurement: "Percentage of responses passing rule validation"
+
+    complexity_estimation_accuracy:
+      target: "≥80%"
+      measurement: "Estimated vs actual LOC/tokens within 20% margin"
+
+    parallel_speedup:
+      target: "≥1.5x"
+      measurement: "Parallel execution time vs sequential for parallelizable tasks"
+
+# ============================================================================
+# NOTES & RECOMMENDATIONS
+# ============================================================================
+
+notes:
+  - "This plan follows LLM-first principles: structured, machine-readable, discrete tasks"
+  - "Testing is ALWAYS sequential to avoid session crashes"
+  - "Test intentions documented before execution for crash recovery"
+  - "Parallelization maximized where safe (8 parallel groups identified)"
+  - "Backward compatibility maintained throughout migration"
+  - "Estimated 13% time savings through parallelization (80h vs 92h sequential)"
+  - "A/B testing validates improvements empirically before full migration"
+  - "All new code follows project standards (type hints, docstrings, tests)"

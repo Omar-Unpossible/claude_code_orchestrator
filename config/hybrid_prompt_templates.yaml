@@ -1,0 +1,326 @@
+# Hybrid Prompt Templates Configuration
+# Machine-Optimized Format for LLM-First Prompt Engineering
+#
+# This file configures which prompt types use structured (hybrid) format vs traditional Jinja2 templates.
+# Structured format combines JSON metadata with natural language instructions for better parseability.
+#
+# Version: 1.0
+# Created: 2025-11-03 (PHASE_6 - Migration & Validation)
+
+metadata:
+  version: "1.0"
+  created_date: "2025-11-03"
+  description: "Hybrid prompt template configuration for Obra orchestration system"
+  framework: "LLM-First Prompt Engineering Framework"
+
+  # Migration status
+  migration_status:
+    validation: "migrated"  # TASK_6.1 - Uses StructuredPromptBuilder
+    task_execution: "migrated"  # TASK_6.4 - Migrated based on A/B test results
+    error_analysis: "pending"
+    decision: "pending"
+    planning: "pending"
+
+# Global configuration for structured mode
+global:
+  # Default mode for prompt generation
+  default_mode: "unstructured"  # Backward compatible default
+
+  # Per-template mode overrides
+  template_modes:
+    validation: "structured"  # PHASE_6 TASK_6.1 - Migrated to structured
+    task_execution: "structured"  # PHASE_6 TASK_6.4 - Migrated based on A/B results
+    error_analysis: "unstructured"  # Future migration
+    decision: "unstructured"  # Future migration
+    planning: "unstructured"  # Future migration
+
+# Structured template definitions
+# These define the structure and behavior of hybrid prompts
+structured_templates:
+
+  # ============================================================================
+  # VALIDATION TEMPLATE (MIGRATED - TASK_6.1)
+  # ============================================================================
+
+  validation:
+    enabled: true
+    migrated_date: "2025-11-03"
+    description: "Code validation with rule compliance checking"
+
+    # Metadata structure for validation prompts
+    metadata_schema:
+      prompt_type: "validation"
+      code_length: "int - Number of characters in code being validated"
+      rules:
+        description: "List of rules to validate against"
+        items:
+          id: "str - Unique rule ID (e.g., CODE_001)"
+          name: "str - Human-readable rule name"
+          description: "str - Detailed rule description"
+          severity: "str - critical|high|medium|low"
+          validation_type: "str - ast_check|manual_review|llm_based"
+      expectations:
+        detailed_violations: true
+        location_info: true
+        suggestions: true
+
+    # Expected response structure
+    response_schema:
+      is_valid: "bool - Whether code passes all rules"
+      quality_score: "float - 0-100 quality score"
+      violations:
+        description: "List of rule violations found"
+        items:
+          rule_id: "str - Which rule was violated"
+          file: "str - File path (if applicable)"
+          line: "int - Line number"
+          severity: "str - critical|high|medium|low"
+          message: "str - Violation description"
+          suggestion: "str - How to fix the violation"
+      warnings:
+        description: "List of non-blocking warnings"
+        items: "str - Warning message"
+      passed_rules:
+        description: "List of rule IDs that passed"
+        items: "str - Rule ID"
+
+    # Domains for rule injection
+    rule_domains:
+      - code_generation
+      - documentation
+      - testing
+      - security
+
+    # Example usage (for documentation)
+    example:
+      input:
+        code: |
+          def login_user(email, password):
+              # TODO: implement login logic
+              pass
+        rules:
+          - id: "CODE_001"
+            name: "NO_STUBS"
+            description: "Never generate stub functions or placeholder code"
+            severity: "critical"
+            validation_type: "ast_check"
+
+      expected_output:
+        is_valid: false
+        quality_score: 30
+        violations:
+          - rule_id: "CODE_001"
+            file: "auth.py"
+            line: 2
+            severity: "critical"
+            message: "Function contains only TODO comment and pass statement"
+            suggestion: "Implement complete login logic with email/password verification"
+        warnings: []
+        passed_rules: []
+
+  # ============================================================================
+  # TASK_EXECUTION TEMPLATE (MIGRATED - TASK_6.4)
+  # ============================================================================
+
+  task_execution:
+    enabled: true  # TASK_6.4: Enabled based on validation A/B test results
+    migrated_date: "2025-11-03"
+    description: "Task execution prompts with complexity analysis and parallelization suggestions"
+
+    # Metadata structure (to be implemented in TASK_6.4)
+    metadata_schema:
+      prompt_type: "task_execution"
+      task_id: "int - Unique task identifier"
+      context:
+        project_id: "int - Project identifier"
+        files: "list[str] - Relevant file paths"
+        dependencies: "list[str] - Required dependencies"
+        working_directory: "str - Workspace path"
+      rules:
+        description: "List of applicable rules"
+        items: "Rule objects (same structure as validation)"
+      expectations:
+        complete_implementation: true
+        include_tests: true
+        include_documentation: true
+      complexity_analysis:
+        description: "Optional Obra complexity estimate (PHASE_5B)"
+        obra_suggests_decomposition: "bool - Whether Obra suggests breaking down task"
+        suggested_subtasks: "list[str] - Suggested decomposition"
+        suggested_parallel_groups: "list[dict] - Groups that could run in parallel"
+
+    # Expected response structure
+    response_schema:
+      task_completed: "bool - Whether task is complete"
+      files_modified: "list[str] - Files that were changed"
+      tests_added: "bool - Whether tests were added"
+      parallel_execution_used: "bool - Whether Claude used Task tool for parallelization"
+      parallel_decision_rationale: "str - Why Claude chose to parallelize or not"
+      tasks_parallelized: "list[str] - Subtasks that were run in parallel"
+      implementation_notes: "str - Notes about implementation decisions"
+
+    # Rule domains
+    rule_domains:
+      - code_generation
+      - testing
+      - documentation
+      - security
+      - performance
+      - parallelization
+
+  # ============================================================================
+  # ERROR_ANALYSIS TEMPLATE (PENDING)
+  # ============================================================================
+
+  error_analysis:
+    enabled: false
+    migrated_date: null
+    description: "Error analysis and fix generation"
+
+    metadata_schema:
+      prompt_type: "error_analysis"
+      error_type: "str - Type of error (e.g., RuntimeError)"
+      error_message: "str - Error message"
+      context:
+        file: "str - File where error occurred"
+        line: "int - Line number"
+        code: "str - Code snippet"
+      previous_attempts: "list[str] - Previous unsuccessful fix attempts"
+
+    response_schema:
+      root_cause: "str - What caused the error"
+      recommended_fix: "str - Specific code changes"
+      prevention_strategies: "list[str] - How to avoid in future"
+
+    rule_domains:
+      - error_handling
+      - performance
+
+  # ============================================================================
+  # DECISION TEMPLATE (PENDING)
+  # ============================================================================
+
+  decision:
+    enabled: false
+    migrated_date: null
+    description: "Orchestration decision making"
+
+    metadata_schema:
+      prompt_type: "decision"
+      task_id: "int - Task identifier"
+      current_state: "str - Current task state"
+      validation_result: "dict - Validation outcome"
+      quality_score: "float - Quality score (0.0-1.0)"
+      confidence_score: "float - Confidence score (0.0-1.0)"
+      retry_count: "int - Number of retries so far"
+      options: "list[str] - Available decision options"
+
+    response_schema:
+      decision: "str - proceed|retry|clarify|escalate"
+      confidence: "float - Decision confidence (0.0-1.0)"
+      reasoning: "str - Why this decision was made"
+      next_steps: "list[str] - Recommended next steps"
+
+    rule_domains:
+      - decision_making
+
+  # ============================================================================
+  # PLANNING TEMPLATE (PENDING)
+  # ============================================================================
+
+  planning:
+    enabled: false
+    migrated_date: null
+    description: "Task planning and work breakdown"
+
+    metadata_schema:
+      prompt_type: "planning"
+      task_description: "str - High-level task description"
+      project_context: "dict - Project information"
+      constraints: "list[str] - Task constraints"
+
+    response_schema:
+      subtasks: "list[dict] - Breakdown of task into subtasks"
+      dependencies: "dict - Dependency graph"
+      estimated_duration: "int - Estimated time in minutes"
+      parallelization_opportunities: "list[dict] - Tasks that can run in parallel"
+
+    rule_domains:
+      - planning
+      - parallelization
+
+# ============================================================================
+# MIGRATION GUIDELINES
+# ============================================================================
+
+migration_guidelines:
+  description: "Guidelines for migrating templates to structured format"
+
+  steps:
+    - step: 1
+      action: "Identify template to migrate"
+      notes: "Start with templates that already use JSON responses (easiest)"
+
+    - step: 2
+      action: "Define metadata schema"
+      notes: "Document all metadata fields and their types"
+
+    - step: 3
+      action: "Define response schema"
+      notes: "Specify expected JSON response structure"
+
+    - step: 4
+      action: "Update StructuredPromptBuilder"
+      notes: "Add build_*_prompt() method if not exists"
+
+    - step: 5
+      action: "Update PromptGenerator"
+      notes: "Ensure _is_structured_mode() branch calls StructuredPromptBuilder"
+
+    - step: 6
+      action: "Update template_modes in this file"
+      notes: "Change from 'unstructured' to 'structured'"
+
+    - step: 7
+      action: "Run A/B tests"
+      notes: "Compare structured vs unstructured performance (TASK_6.3)"
+
+    - step: 8
+      action: "Update documentation"
+      notes: "Document the migration in ADR and README"
+
+  best_practices:
+    - "Maintain backward compatibility during migration"
+    - "Use hybrid format (JSON metadata + NL instructions)"
+    - "Include clear response schema specifications"
+    - "Test both modes before switching default"
+    - "Document migration status in this file"
+
+# ============================================================================
+# USAGE NOTES
+# ============================================================================
+
+usage_notes:
+  - "PromptGenerator checks this file to determine which templates use structured mode"
+  - "Set template_modes.<template_name> to 'structured' to enable hybrid format"
+  - "StructuredPromptBuilder generates prompts programmatically (not from templates)"
+  - "Hybrid format = JSON <METADATA> + natural language <INSTRUCTION>"
+  - "Response parsing handled by StructuredResponseParser (PHASE_5 integration)"
+  - "See docs/hybrid_prompt_templates/ for example templates"
+
+# ============================================================================
+# SUCCESS CRITERIA (TASK_6.1)
+# ============================================================================
+
+task_6_1_success_criteria:
+  - criterion: "validation_hybrid template uses structured format"
+    status: "✅ COMPLETE"
+    details: "validation: structured in template_modes"
+
+  - criterion: "Backward compatible with existing validation"
+    status: "✅ COMPLETE"
+    details: "default_mode: unstructured, can be overridden per-template"
+
+  - criterion: "Response parsing uses StructuredResponseParser"
+    status: "✅ COMPLETE (PHASE_5)"
+    details: "QualityController already uses StructuredResponseParser"

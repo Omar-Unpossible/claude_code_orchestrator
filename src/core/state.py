@@ -15,15 +15,17 @@ import logging
 from contextlib import contextmanager
 from threading import RLock
 from typing import Optional, List, Dict, Any
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 
-from sqlalchemy import create_engine, desc
+from sqlalchemy import create_engine, desc, func, case
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.models import (
     Base, ProjectState, Task, Interaction, Checkpoint,
     BreakpointEvent, UsageTracking, FileState, PatternLearning,
+    ParameterEffectiveness, PromptRuleViolation, ComplexityEstimate,
+    ParallelAgentAttempt,
     TaskStatus, TaskAssignee, InteractionSource, BreakpointSeverity,
     ProjectStatus
 )
@@ -550,6 +552,171 @@ class StateManager:
         """
         return self.list_tasks(project_id=project_id, status=status)
 
+    # M9: Task Dependency Management
+
+    def add_task_dependency(
+        self,
+        task_id: int,
+        depends_on: int
+    ) -> Task:
+        """Add a dependency to a task (M9).
+
+        Args:
+            task_id: Task that will depend on another
+            depends_on: Task ID that will be depended on
+
+        Returns:
+            Updated task
+
+        Raises:
+            StateManagerException: If operation fails
+
+        Example:
+            >>> # Task 5 depends on task 3
+            >>> task = state_manager.add_task_dependency(5, 3)
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    task = self.get_task(task_id)
+                    if not task:
+                        raise StateManagerException(
+                            operation='add_task_dependency',
+                            details=f'Task {task_id} not found'
+                        )
+
+                    task.add_dependency(depends_on)
+                    session = self._get_session()
+                    session.flush()
+
+                    logger.debug(f"Added dependency: task {task_id} depends on {depends_on}")
+                    return task
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='add_task_dependency',
+                    details=str(e)
+                ) from e
+
+    def remove_task_dependency(
+        self,
+        task_id: int,
+        depends_on: int
+    ) -> Task:
+        """Remove a dependency from a task (M9).
+
+        Args:
+            task_id: Task ID
+            depends_on: Dependency task ID to remove
+
+        Returns:
+            Updated task
+
+        Example:
+            >>> task = state_manager.remove_task_dependency(5, 3)
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    task = self.get_task(task_id)
+                    if not task:
+                        raise StateManagerException(
+                            operation='remove_task_dependency',
+                            details=f'Task {task_id} not found'
+                        )
+
+                    task.remove_dependency(depends_on)
+                    session = self._get_session()
+                    session.flush()
+
+                    logger.debug(f"Removed dependency: task {task_id} no longer depends on {depends_on}")
+                    return task
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='remove_task_dependency',
+                    details=str(e)
+                ) from e
+
+    def get_task_dependencies(
+        self,
+        task_id: int
+    ) -> List[Task]:
+        """Get all tasks that a task depends on (M9).
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            List of Task objects this task depends on
+
+        Example:
+            >>> deps = state_manager.get_task_dependencies(5)
+            >>> print(f"Task 5 depends on {len(deps)} tasks")
+        """
+        with self._lock:
+            task = self.get_task(task_id)
+            if not task:
+                return []
+
+            dep_ids = task.get_dependencies()
+            if not dep_ids:
+                return []
+
+            # Fetch all dependency tasks
+            session = self._get_session()
+            return session.query(Task).filter(Task.id.in_(dep_ids)).all()
+
+    def get_dependent_tasks(
+        self,
+        task_id: int
+    ) -> List[Task]:
+        """Get all tasks that depend on this task (M9).
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            List of tasks that depend on this task
+
+        Example:
+            >>> dependents = state_manager.get_dependent_tasks(3)
+            >>> print(f"{len(dependents)} tasks depend on task 3")
+        """
+        with self._lock:
+            task = self.get_task(task_id)
+            if not task:
+                return []
+
+            # Find all tasks in same project that have this task in their dependencies
+            session = self._get_session()
+            all_tasks = session.query(Task).filter(
+                Task.project_id == task.project_id,
+                Task.is_deleted == False  # noqa: E712
+            ).all()
+
+            dependents = []
+            for t in all_tasks:
+                if task_id in t.get_dependencies():
+                    dependents.append(t)
+
+            return dependents
+
+    def get_tasks_by_project(
+        self,
+        project_id: int
+    ) -> List[Task]:
+        """Get all tasks for a project (M9 - alias for dependency resolver).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of all tasks in project
+
+        Example:
+            >>> tasks = state_manager.get_tasks_by_project(1)
+        """
+        return self.get_project_tasks(project_id)
+
     # Interaction Management
 
     def record_interaction(
@@ -867,6 +1034,538 @@ class StateManager:
                 query = query.filter(FileState.created_at >= since)
 
             return query.order_by(desc(FileState.created_at)).all()
+
+    # Parameter Effectiveness Tracking (TASK_2.1.3)
+
+    def log_parameter_usage(
+        self,
+        template_name: str,
+        parameter_name: str,
+        was_included: bool,
+        token_count: int,
+        task_id: Optional[int] = None,
+        prompt_token_count: Optional[int] = None
+    ) -> None:
+        """Log parameter usage for effectiveness tracking.
+
+        Args:
+            template_name: Template used (e.g., 'validation')
+            parameter_name: Parameter name (e.g., 'file_changes')
+            was_included: Whether parameter fit in token budget
+            token_count: Tokens used by this parameter
+            task_id: Associated task ID
+            prompt_token_count: Total prompt tokens
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                record = ParameterEffectiveness(
+                    template_name=template_name,
+                    parameter_name=parameter_name,
+                    was_included=was_included,
+                    task_id=task_id,
+                    parameter_token_count=token_count,
+                    prompt_token_count=prompt_token_count,
+                    validation_accurate=None  # Set later via update
+                )
+                session.add(record)
+                session.commit()
+                logger.debug(
+                    f"Logged parameter usage: {template_name}.{parameter_name} "
+                    f"(included={was_included}, tokens={token_count})"
+                )
+            except SQLAlchemyError as e:
+                session.rollback()
+                logger.error(f"Failed to log parameter usage: {e}")
+                raise DatabaseException(
+                    operation='log_parameter_usage',
+                    details=str(e)
+                ) from e
+
+    def update_validation_accuracy(
+        self,
+        task_id: int,
+        was_accurate: bool,
+        window_minutes: int = 60
+    ) -> int:
+        """Update validation accuracy for recent parameter usage.
+
+        When we learn whether a validation was accurate (from human review
+        or test results), update all parameter usage records for that task
+        within the time window.
+
+        Args:
+            task_id: Task ID
+            was_accurate: Whether validation was accurate
+            window_minutes: Time window to update (default 60 min)
+
+        Returns:
+            Number of records updated
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
+
+                updated = session.query(ParameterEffectiveness).filter(
+                    ParameterEffectiveness.task_id == task_id,
+                    ParameterEffectiveness.timestamp >= cutoff,
+                    ParameterEffectiveness.validation_accurate.is_(None)
+                ).update(
+                    {'validation_accurate': was_accurate},
+                    synchronize_session=False
+                )
+
+                session.commit()
+                logger.info(
+                    f"Updated {updated} parameter usage records for task {task_id} "
+                    f"(accurate={was_accurate})"
+                )
+                return updated
+            except SQLAlchemyError as e:
+                session.rollback()
+                logger.error(f"Failed to update validation accuracy: {e}")
+                raise DatabaseException(
+                    operation='update_validation_accuracy',
+                    details=str(e)
+                ) from e
+
+    def get_parameter_effectiveness(
+        self,
+        template_name: str,
+        min_samples: int = 20
+    ) -> Dict[str, Dict[str, Any]]:
+        """Analyze which parameters correlate with accurate validation.
+
+        Args:
+            template_name: Template to analyze (e.g., 'validation')
+            min_samples: Minimum samples required per parameter
+
+        Returns:
+            Dict mapping parameter names to effectiveness metrics:
+            {
+                'param_name': {
+                    'accuracy_when_included': 0.85,
+                    'accuracy_when_excluded': 0.70,
+                    'sample_count': 50,
+                    'impact_score': 0.15  # Difference in accuracy
+                }
+            }
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+
+                # Get accuracy when parameter is included
+                included = session.query(
+                    ParameterEffectiveness.parameter_name,
+                    func.avg(
+                        case((ParameterEffectiveness.validation_accurate == True, 1.0), else_=0.0)
+                    ).label('accuracy'),
+                    func.count(ParameterEffectiveness.id).label('count')
+                ).filter(
+                    ParameterEffectiveness.template_name == template_name,
+                    ParameterEffectiveness.was_included == True,
+                    ParameterEffectiveness.validation_accurate.isnot(None)
+                ).group_by(
+                    ParameterEffectiveness.parameter_name
+                ).having(
+                    func.count(ParameterEffectiveness.id) >= min_samples
+                ).all()
+
+                # Get accuracy when parameter is excluded
+                excluded = session.query(
+                    ParameterEffectiveness.parameter_name,
+                    func.avg(
+                        case((ParameterEffectiveness.validation_accurate == True, 1.0), else_=0.0)
+                    ).label('accuracy')
+                ).filter(
+                    ParameterEffectiveness.template_name == template_name,
+                    ParameterEffectiveness.was_included == False,
+                    ParameterEffectiveness.validation_accurate.isnot(None)
+                ).group_by(
+                    ParameterEffectiveness.parameter_name
+                ).all()
+
+                excluded_dict = {param: acc for param, acc in excluded}
+
+                # Build result
+                result = {}
+                for param, accuracy_included, count in included:
+                    accuracy_excluded = excluded_dict.get(param, 0.0)
+                    result[param] = {
+                        'accuracy_when_included': float(accuracy_included),
+                        'accuracy_when_excluded': float(accuracy_excluded),
+                        'sample_count': count,
+                        'impact_score': float(accuracy_included - accuracy_excluded)
+                    }
+
+                return result
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get parameter effectiveness: {e}")
+                raise DatabaseException(
+                    operation='get_parameter_effectiveness',
+                    details=str(e)
+                ) from e
+
+    # ========================================================================
+    # Prompt Rule Violation Methods (LLM-First Framework)
+    # ========================================================================
+
+    def log_rule_violation(
+        self,
+        task_id: int,
+        rule_data: Dict[str, Any]
+    ) -> PromptRuleViolation:
+        """Log a prompt rule violation.
+
+        Args:
+            task_id: Task ID where violation occurred
+            rule_data: Rule violation data with keys:
+                - rule_id (required): str - e.g., "CODE_001"
+                - rule_name (required): str
+                - rule_domain (required): str - e.g., "code_generation"
+                - violation_details (required): dict - Context and specifics
+                - severity (required): str - "critical", "high", "medium", "low"
+                - resolution_notes (optional): str
+
+        Returns:
+            Created PromptRuleViolation
+
+        Raises:
+            DatabaseException: If database operation fails
+
+        Example:
+            >>> violation = state_manager.log_rule_violation(
+            ...     task_id=123,
+            ...     rule_data={
+            ...         'rule_id': 'CODE_001',
+            ...         'rule_name': 'NO_STUBS',
+            ...         'rule_domain': 'code_generation',
+            ...         'violation_details': {
+            ...             'file': '/path/to/file.py',
+            ...             'function': 'my_function',
+            ...             'line': 42,
+            ...             'issue': 'Function contains only pass statement'
+            ...         },
+            ...         'severity': 'critical'
+            ...     }
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    violation = PromptRuleViolation(
+                        task_id=task_id,
+                        rule_id=rule_data['rule_id'],
+                        rule_name=rule_data['rule_name'],
+                        rule_domain=rule_data['rule_domain'],
+                        violation_details=rule_data['violation_details'],
+                        severity=rule_data['severity'],
+                        resolution_notes=rule_data.get('resolution_notes')
+                    )
+                    session = self._get_session()
+                    session.add(violation)
+                    session.flush()
+                    logger.warning(
+                        f"Rule violation logged: {violation.rule_id} "
+                        f"({violation.severity}) in task {task_id}"
+                    )
+                    return violation
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='log_rule_violation',
+                    details=str(e)
+                ) from e
+
+    def get_rule_violations(
+        self,
+        task_id: Optional[int] = None,
+        rule_id: Optional[str] = None,
+        severity: Optional[str] = None,
+        resolved: Optional[bool] = None
+    ) -> List[PromptRuleViolation]:
+        """Get rule violations with optional filters.
+
+        Args:
+            task_id: Filter by task ID (optional)
+            rule_id: Filter by rule ID (optional)
+            severity: Filter by severity (optional)
+            resolved: Filter by resolution status (optional)
+
+        Returns:
+            List of PromptRuleViolation records
+
+        Example:
+            >>> # Get all unresolved critical violations
+            >>> violations = state_manager.get_rule_violations(
+            ...     severity='critical',
+            ...     resolved=False
+            ... )
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                query = session.query(PromptRuleViolation)
+
+                if task_id is not None:
+                    query = query.filter(PromptRuleViolation.task_id == task_id)
+                if rule_id is not None:
+                    query = query.filter(PromptRuleViolation.rule_id == rule_id)
+                if severity is not None:
+                    query = query.filter(PromptRuleViolation.severity == severity)
+                if resolved is not None:
+                    query = query.filter(PromptRuleViolation.resolved == resolved)
+
+                return query.order_by(desc(PromptRuleViolation.created_at)).all()
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get rule violations: {e}")
+                raise DatabaseException(
+                    operation='get_rule_violations',
+                    details=str(e)
+                ) from e
+
+    # ========================================================================
+    # Complexity Estimate Methods (LLM-First Framework)
+    # ========================================================================
+
+    def log_complexity_estimate(
+        self,
+        task_id: int,
+        estimate_data: Dict[str, Any]
+    ) -> ComplexityEstimate:
+        """Log a task complexity estimate.
+
+        Args:
+            task_id: Task ID
+            estimate_data: Complexity estimate data with keys:
+                - estimated_tokens (required): int
+                - estimated_loc (required): int
+                - estimated_files (required): int
+                - estimated_duration_minutes (required): int
+                - overall_complexity_score (required): int (0-100)
+                - heuristic_score (required): int (0-100)
+                - llm_adjusted_score (optional): int (0-100)
+                - should_decompose (required): bool
+                - decomposition_reason (optional): str
+                - estimation_factors (optional): dict
+                - confidence (optional): float (0.0-1.0, default 0.5)
+
+        Returns:
+            Created ComplexityEstimate
+
+        Raises:
+            DatabaseException: If database operation fails
+
+        Example:
+            >>> estimate = state_manager.log_complexity_estimate(
+            ...     task_id=123,
+            ...     estimate_data={
+            ...         'estimated_tokens': 5000,
+            ...         'estimated_loc': 250,
+            ...         'estimated_files': 3,
+            ...         'estimated_duration_minutes': 120,
+            ...         'overall_complexity_score': 75,
+            ...         'heuristic_score': 70,
+            ...         'llm_adjusted_score': 75,
+            ...         'should_decompose': True,
+            ...         'decomposition_reason': 'Exceeds max_files threshold',
+            ...         'confidence': 0.8
+            ...     }
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    estimate = ComplexityEstimate(
+                        task_id=task_id,
+                        estimated_tokens=estimate_data['estimated_tokens'],
+                        estimated_loc=estimate_data['estimated_loc'],
+                        estimated_files=estimate_data['estimated_files'],
+                        estimated_duration_minutes=estimate_data['estimated_duration_minutes'],
+                        overall_complexity_score=estimate_data['overall_complexity_score'],
+                        heuristic_score=estimate_data['heuristic_score'],
+                        llm_adjusted_score=estimate_data.get('llm_adjusted_score'),
+                        should_decompose=estimate_data['should_decompose'],
+                        decomposition_reason=estimate_data.get('decomposition_reason'),
+                        estimation_factors=estimate_data.get('estimation_factors', {}),
+                        confidence=estimate_data.get('confidence', 0.5)
+                    )
+                    session = self._get_session()
+                    session.add(estimate)
+                    session.flush()
+                    logger.info(
+                        f"Complexity estimate logged for task {task_id}: "
+                        f"score={estimate.overall_complexity_score}, "
+                        f"decompose={estimate.should_decompose}"
+                    )
+                    return estimate
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='log_complexity_estimate',
+                    details=str(e)
+                ) from e
+
+    def get_complexity_estimate(self, task_id: int) -> Optional[ComplexityEstimate]:
+        """Get complexity estimate for a task.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            ComplexityEstimate or None if not found
+
+        Example:
+            >>> estimate = state_manager.get_complexity_estimate(task_id=123)
+            >>> if estimate and estimate.should_decompose:
+            ...     print(f"Task should be decomposed: {estimate.decomposition_reason}")
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                return session.query(ComplexityEstimate).filter(
+                    ComplexityEstimate.task_id == task_id
+                ).first()
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get complexity estimate for task {task_id}: {e}")
+                raise DatabaseException(
+                    operation='get_complexity_estimate',
+                    details=str(e)
+                ) from e
+
+    # ========================================================================
+    # Parallel Agent Attempt Methods (LLM-First Framework)
+    # ========================================================================
+
+    def log_parallel_attempt(
+        self,
+        task_id: int,
+        attempt_data: Dict[str, Any]
+    ) -> ParallelAgentAttempt:
+        """Log a parallel agent execution attempt.
+
+        Args:
+            task_id: Task ID
+            attempt_data: Parallel attempt data with keys:
+                - num_agents (required): int
+                - agent_ids (required): list of str/int
+                - subtask_ids (required): list of int
+                - success (required): bool
+                - failure_reason (optional): str
+                - conflict_detected (optional): bool (default False)
+                - conflict_details (optional): dict
+                - total_duration_seconds (required): float
+                - sequential_estimate_seconds (optional): float
+                - speedup_factor (optional): float
+                - max_concurrent_agents (required): int
+                - total_token_usage (optional): int
+                - failed_agent_count (optional): int (default 0)
+                - parallelization_strategy (required): str
+                - fallback_to_sequential (optional): bool (default False)
+                - execution_metadata (optional): dict
+                - started_at (required): datetime
+                - completed_at (required): datetime
+
+        Returns:
+            Created ParallelAgentAttempt
+
+        Raises:
+            DatabaseException: If database operation fails
+
+        Example:
+            >>> from datetime import datetime, UTC
+            >>> attempt = state_manager.log_parallel_attempt(
+            ...     task_id=123,
+            ...     attempt_data={
+            ...         'num_agents': 3,
+            ...         'agent_ids': ['agent_1', 'agent_2', 'agent_3'],
+            ...         'subtask_ids': [124, 125, 126],
+            ...         'success': True,
+            ...         'total_duration_seconds': 120.5,
+            ...         'sequential_estimate_seconds': 300.0,
+            ...         'speedup_factor': 2.49,
+            ...         'max_concurrent_agents': 3,
+            ...         'parallelization_strategy': 'file_based',
+            ...         'started_at': datetime.now(UTC),
+            ...         'completed_at': datetime.now(UTC)
+            ...     }
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    attempt = ParallelAgentAttempt(
+                        task_id=task_id,
+                        num_agents=attempt_data['num_agents'],
+                        agent_ids=attempt_data['agent_ids'],
+                        subtask_ids=attempt_data['subtask_ids'],
+                        success=attempt_data['success'],
+                        failure_reason=attempt_data.get('failure_reason'),
+                        conflict_detected=attempt_data.get('conflict_detected', False),
+                        conflict_details=attempt_data.get('conflict_details'),
+                        total_duration_seconds=attempt_data['total_duration_seconds'],
+                        sequential_estimate_seconds=attempt_data.get('sequential_estimate_seconds'),
+                        speedup_factor=attempt_data.get('speedup_factor'),
+                        max_concurrent_agents=attempt_data['max_concurrent_agents'],
+                        total_token_usage=attempt_data.get('total_token_usage'),
+                        failed_agent_count=attempt_data.get('failed_agent_count', 0),
+                        parallelization_strategy=attempt_data['parallelization_strategy'],
+                        fallback_to_sequential=attempt_data.get('fallback_to_sequential', False),
+                        execution_metadata=attempt_data.get('execution_metadata', {}),
+                        started_at=attempt_data['started_at'],
+                        completed_at=attempt_data['completed_at']
+                    )
+                    session = self._get_session()
+                    session.add(attempt)
+                    session.flush()
+                    logger.info(
+                        f"Parallel attempt logged for task {task_id}: "
+                        f"agents={attempt.num_agents}, success={attempt.success}, "
+                        f"speedup={attempt.speedup_factor}"
+                    )
+                    return attempt
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='log_parallel_attempt',
+                    details=str(e)
+                ) from e
+
+    def get_parallel_attempts(
+        self,
+        task_id: Optional[int] = None,
+        success: Optional[bool] = None
+    ) -> List[ParallelAgentAttempt]:
+        """Get parallel agent attempts with optional filters.
+
+        Args:
+            task_id: Filter by task ID (optional)
+            success: Filter by success status (optional)
+
+        Returns:
+            List of ParallelAgentAttempt records
+
+        Example:
+            >>> # Get all successful parallel attempts
+            >>> attempts = state_manager.get_parallel_attempts(success=True)
+            >>> avg_speedup = sum(a.speedup_factor for a in attempts) / len(attempts)
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                query = session.query(ParallelAgentAttempt)
+
+                if task_id is not None:
+                    query = query.filter(ParallelAgentAttempt.task_id == task_id)
+                if success is not None:
+                    query = query.filter(ParallelAgentAttempt.success == success)
+
+                return query.order_by(desc(ParallelAgentAttempt.created_at)).all()
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get parallel attempts: {e}")
+                raise DatabaseException(
+                    operation='get_parallel_attempts',
+                    details=str(e)
+                ) from e
 
     def close(self) -> None:
         """Close database session and connections.
