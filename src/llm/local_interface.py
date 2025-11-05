@@ -270,6 +270,28 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
             logger.error(f"Generation failed: {e}")
             raise
 
+    def send_prompt(self, prompt: str, **kwargs) -> str:
+        """Send prompt to LLM (wrapper for generate).
+
+        Provides compatibility with AgentPlugin interface that uses send_prompt().
+        This is a simple wrapper around generate() for API consistency.
+
+        Args:
+            prompt: Text prompt to send
+            **kwargs: Additional arguments passed to generate()
+
+        Returns:
+            Generated response text
+
+        Raises:
+            LLMException: If generation fails
+            LLMTimeoutException: If generation times out
+
+        Example:
+            >>> response = llm.send_prompt("Explain this code:")
+        """
+        return self.generate(prompt, **kwargs)
+
     def _make_cache_key(self, prompt: str, kwargs: dict) -> str:
         """Create cache key from prompt and kwargs.
 

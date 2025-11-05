@@ -74,7 +74,7 @@ database:
   url: sqlite:///orchestrator.db
 
 agent:
-  type: mock  # Options: mock, claude_code, aider
+  type: claude-code-local  # Options: claude-code-local, local, claude-code-ssh, ssh, claude-code-docker, docker, aider
   config:
     timeout: 300
     max_retries: 3

@@ -565,6 +565,220 @@ See `docs/architecture/data_flow.md` for detailed flow diagrams.
 13. ❌ **Don't create circular dependencies** (M9): DependencyResolver will reject cycles
 14. ❌ **Don't commit without checking git status** (M9): GitManager checks for uncommitted changes first
 15. ❌ **Don't assume profile exists** (M9): Always validate profile name before loading
+16. ❌ **Don't save documentation in wrong locations**: Never save docs in project root or /tmp
+    - ✅ **ALWAYS** save documentation in appropriate `docs/` subfolder
+    - ✅ Planning docs → `docs/development/` or `docs/design/`
+    - ✅ Architecture docs → `docs/architecture/`
+    - ✅ Decision records → `docs/decisions/`
+    - ✅ User guides → `docs/guides/`
+    - ❌ **NEVER** save workplans, planning docs, or analysis in `/tmp` (ephemeral storage)
+    - ❌ **NEVER** save documentation files (`.md`) in project root
+
+## Session Management Best Practices
+
+### When to Use Milestone Sessions
+
+✅ **Use milestone sessions for:**
+- Related tasks that build on each other
+- Multi-phase features (design → implement → test)
+- Iterative refinement workflows
+- Code reviews with multiple fixes
+
+❌ **Don't use milestone sessions for:**
+- Independent, unrelated tasks
+- Quick one-off operations
+- Tasks with completely different contexts
+- Experimental/exploratory work
+
+### Context Window Management
+
+**Monitor context window logs:**
+
+```bash
+# Normal operation
+CONTEXT_WINDOW: session_id=550e8400..., tracked=45,234 tokens
+
+# Warning threshold (70%)
+CONTEXT_WINDOW WARNING: session_id=550e8400...,
+  usage=70.5% (141,000/200,000) - approaching refresh threshold (80%)
+
+# Automatic refresh (80%)
+CONTEXT_WINDOW REFRESH: session_id=550e8400...,
+  usage=80.2% (160,400/200,000) - auto-refreshing
+SESSION REFRESH: new_session=7b3c9d12..., summary_chars=2,453
+
+# Emergency refresh (95%)
+CONTEXT_WINDOW CRITICAL: session_id=550e8400...,
+  usage=95.8% (191,600/200,000) - forcing refresh
+```
+
+**What to do:**
+- **WARNING**: No action needed, just awareness
+- **REFRESH**: Brief pause expected (~5-10s), normal behavior
+- **CRITICAL**: Consider lowering refresh threshold if this happens often
+
+**Tuning thresholds:**
+
+```yaml
+# Conservative (frequent refresh)
+context_window:
+  thresholds:
+    warning: 0.60   # Early warning
+    refresh: 0.70   # Refresh earlier
+    critical: 0.90  # More margin
+
+# Aggressive (maximize context)
+context_window:
+  thresholds:
+    warning: 0.80   # Late warning
+    refresh: 0.85   # Refresh later
+    critical: 0.98  # Maximum usage
+
+# Recommended (balanced)
+context_window:
+  thresholds:
+    warning: 0.70
+    refresh: 0.80
+    critical: 0.95
+```
+
+### Max Turns Guidelines
+
+**Task type defaults:**
+
+```yaml
+max_turns:
+  by_task_type:
+    validation: 5        # Quick checks
+    code_generation: 12  # Code writing needs iterations
+    refactoring: 15      # Code improvements + test cycles
+    debugging: 20        # Extensive investigation
+    error_analysis: 8    # Bounded analysis
+    planning: 5          # Mostly reading/thinking
+    documentation: 3     # Usually quick
+    testing: 8           # Test creation + fixes
+```
+
+**How to interpret MAX_TURNS logs:**
+
+```bash
+# Normal completion (under limit)
+MAX_TURNS: task_id=123, max_turns=12, reason=calculated
+TASK END: task_id=123, status=completed, iterations=7, max_iterations=12
+# ✓ Task completed in 7 turns (under 12 turn limit)
+
+# Exceeded with retry (recovered)
+ERROR_MAX_TURNS: task_id=123, turns_used=12, max_turns=12, attempt=1/2
+MAX_TURNS RETRY: task_id=123, attempt=2/2, max_turns=12 → 24 (multiplier=2x)
+TASK END: task_id=123, status=completed, iterations=18, max_iterations=24
+# ✓ Task needed 18 turns total (12 + 6 more after retry)
+
+# Exhausted retries (failed)
+ERROR_MAX_TURNS: task_id=123, turns_used=24, max_turns=24, attempt=2/2
+MAX_TURNS EXHAUSTED: task_id=123, attempts=2, final_max_turns=24
+# ❌ Task failed after 2 attempts (24 turns used)
+# → Consider breaking task into smaller pieces
+```
+
+**When to override max_turns:**
+
+```yaml
+# Override for specific task types
+max_turns:
+  by_task_type:
+    migration: 25        # Database migrations are complex
+    api_integration: 15  # API work needs many iterations
+    ui_component: 10     # UI components are medium complexity
+```
+
+**Retry behavior:**
+
+```yaml
+max_turns:
+  auto_retry: true           # Enable auto-retry on error_max_turns
+  max_retries: 1             # Retry once (2 attempts total)
+  retry_multiplier: 2        # Double max_turns on retry
+```
+
+### Extended Timeout Configuration
+
+**Timeout vs Max Turns:**
+- **Timeout**: Wall-clock limit (absolute deadline)
+- **Max Turns**: Iteration limit (number of attempts)
+- Both limits apply independently
+- Whichever hits first ends the task
+
+**Default configuration:**
+
+```yaml
+agent:
+  local:
+    response_timeout: 7200  # 2 hours (default)
+```
+
+**Alternative configurations:**
+
+```yaml
+# Quick tasks only (1 hour)
+response_timeout: 3600
+
+# Very complex tasks (4 hours, overnight)
+response_timeout: 14400
+
+# Production (30 minutes, aggressive)
+response_timeout: 1800
+```
+
+**Why 2 hours?**
+- Complex tasks may take 20+ turns at 3-5 minutes per turn
+- 20 turns × 5 min = 100 minutes (~2 hours)
+- Provides buffer for slower operations
+
+### Troubleshooting Common Issues
+
+**Problem: Context window exceeded errors**
+
+```yaml
+# Solution 1: Lower refresh threshold
+context_window:
+  thresholds:
+    refresh: 0.70  # Refresh at 70% instead of 80%
+
+# Solution 2: Verify limit matches Claude tier
+context_window:
+  limit: 200000  # Claude Pro: 200,000 tokens
+```
+
+**Problem: Tasks hitting max_turns too often**
+
+```yaml
+# Solution 1: Increase default
+max_turns:
+  default: 15  # Increase from 10
+
+# Solution 2: Add task-type overrides
+max_turns:
+  by_task_type:
+    code_generation: 18  # Increase for complex generation
+
+# Solution 3: Increase retry multiplier
+max_turns:
+  retry_multiplier: 3  # Triple instead of double
+```
+
+**Problem: Tasks timing out**
+
+```yaml
+# Solution: Increase timeout
+agent:
+  local:
+    response_timeout: 14400  # 4 hours (for overnight jobs)
+```
+
+**Further Reading:**
+- [Session Management Guide](docs/guides/SESSION_MANAGEMENT_GUIDE.md) - Complete user guide
+- [Headless Mode Implementation](docs/development/HEADLESS_MODE_IMPLEMENTATION.md) - Technical details
+- [ADR-007](docs/decisions/ADR-007-headless-mode-enhancements.md) - Architecture decisions
 
 ## Hardware & Environment
 

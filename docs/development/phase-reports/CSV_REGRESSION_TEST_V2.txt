@@ -1,0 +1,216 @@
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Max iterations (10) reached
+
+================================================================================
+CSV REGRESSION TEST - Task 4.3
+================================================================================
+
+✓ Created test environment: /tmp/csv_test
+✓ Created sample CSV: /tmp/csv_test/sample.csv
+
+CSV Content:
+name,age,city
+Alice,30,NYC
+Bob,25,SF
+Charlie,35,LA
+
+  Expected average age: 30.0
+
+✓ Loading config from: /home/omarwsl/projects/claude_code_orchestrator/config/config.yaml
+✓ Initializing StateManager: sqlite:///data/csv_test.db
+
+✓ Creating test project...
+  Project ID: 1
+
+✓ Creating task...
+  Task ID: 1
+  Description: 
+Read the CSV file at /tmp/csv_test/sample.csv and calculate the average age of all people.
+
+The CSV...
+
+✓ Initializing Orchestrator...
+  Agent: ClaudeCodeLocalAgent
+  LLM: LocalLLMInterface
+
+================================================================================
+EXECUTING CSV TASK
+================================================================================
+[34m[OBRA][0m Starting iteration 1/10
+[34m[OBRA][0m Built context (308 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (847 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.72 (PASS)
+[33m[QWEN][0m   Confidence: 0.62
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 2/10
+[34m[OBRA][0m Built context (355 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1117 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.72 (PASS)
+[33m[QWEN][0m   Confidence: 0.32
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 3/10
+[34m[OBRA][0m Built context (402 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1309 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.56 (FAIL)
+[33m[QWEN][0m   Confidence: 0.34
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 4/10
+[34m[OBRA][0m Built context (461 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1012 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.61
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 5/10
+[34m[OBRA][0m Built context (508 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (836 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.72 (PASS)
+[33m[QWEN][0m   Confidence: 0.62
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 6/10
+[34m[OBRA][0m Built context (555 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1201 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.66 (FAIL)
+[33m[QWEN][0m   Confidence: 0.64
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 7/10
+[34m[OBRA][0m Built context (614 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (722 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.62
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 8/10
+[34m[OBRA][0m Built context (661 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (716 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.72 (PASS)
+[33m[QWEN][0m   Confidence: 0.61
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 9/10
+[34m[OBRA][0m Built context (724 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1449 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.62 (FAIL)
+[33m[QWEN][0m   Confidence: 0.34
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 10/10
+[34m[OBRA][0m Built context (783 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (896 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.32
+[34m[OBRA][0m Decision: clarify
+
+================================================================================
+TASK EXECUTION COMPLETE
+================================================================================
+
+Result:
+  Status: max_iterations
+  Iterations: 10
+  Elapsed: 168.9s
+
+================================================================================
+VALIDATION
+================================================================================
+❌ Task status: TaskStatus.PENDING
+
+================================================================================
+TEST SUMMARY
+================================================================================
+❌ CSV regression test FAILED

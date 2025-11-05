@@ -24,7 +24,7 @@ from src.core.exceptions import (
     TaskDependencyException,
     TaskStateException
 )
-from src.core.models import Task
+from src.core.models import Task, TaskStatus
 from src.core.state import StateManager
 
 
@@ -69,26 +69,26 @@ class TaskScheduler:
         >>> scheduler.mark_complete(task.id, result)
     """
 
-    # Task state constants
-    STATE_PENDING = 'pending'
-    STATE_READY = 'ready'
-    STATE_RUNNING = 'running'
-    STATE_BLOCKED = 'blocked'
-    STATE_COMPLETED = 'completed'
-    STATE_FAILED = 'failed'
-    STATE_CANCELLED = 'cancelled'
-    STATE_RETRYING = 'retrying'
+    # Task state constants (use TaskStatus enum)
+    STATE_PENDING = TaskStatus.PENDING
+    STATE_READY = TaskStatus.READY
+    STATE_RUNNING = TaskStatus.RUNNING
+    STATE_BLOCKED = TaskStatus.BLOCKED
+    STATE_COMPLETED = TaskStatus.COMPLETED
+    STATE_FAILED = TaskStatus.FAILED
+    STATE_CANCELLED = TaskStatus.CANCELLED
+    STATE_RETRYING = TaskStatus.RETRYING
 
     # Valid state transitions
     VALID_TRANSITIONS = {
-        STATE_PENDING: {STATE_READY},
-        STATE_READY: {STATE_RUNNING},
-        STATE_RUNNING: {STATE_COMPLETED, STATE_FAILED, STATE_BLOCKED, STATE_CANCELLED},
-        STATE_FAILED: {STATE_RETRYING, STATE_CANCELLED},
-        STATE_RETRYING: {STATE_RUNNING},
-        STATE_BLOCKED: {STATE_READY, STATE_CANCELLED},
-        STATE_COMPLETED: set(),  # Terminal state
-        STATE_CANCELLED: set()   # Terminal state
+        TaskStatus.PENDING: {TaskStatus.READY},
+        TaskStatus.READY: {TaskStatus.RUNNING},
+        TaskStatus.RUNNING: {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.BLOCKED, TaskStatus.CANCELLED, TaskStatus.RETRYING},
+        TaskStatus.FAILED: {TaskStatus.RETRYING, TaskStatus.CANCELLED},
+        TaskStatus.RETRYING: {TaskStatus.RUNNING, TaskStatus.READY},
+        TaskStatus.BLOCKED: {TaskStatus.READY, TaskStatus.CANCELLED},
+        TaskStatus.COMPLETED: set(),  # Terminal state
+        TaskStatus.CANCELLED: set()   # Terminal state
     }
 
     # Retry configuration
@@ -244,9 +244,8 @@ class TaskScheduler:
                 dep_task = self.state_manager.get_task(task_id)
                 if not dep_task:
                     raise TaskDependencyException(
-                        f"Dependency task {task_id} not found",
-                        context={'task_id': task.id, 'missing_dependency': task_id},
-                        recovery="Create missing dependency task or update dependencies"
+                        task_id=str(task.id),
+                        dependency_chain=[str(task.id), f"dependency {task_id} not found"]
                     )
                 dependency_tasks.append(dep_task)
 
@@ -270,11 +269,11 @@ class TaskScheduler:
 
             self._transition_state(task, self.STATE_COMPLETED)
 
-            # Update task metadata
+            # Update task metadata (completed_at is automatically set by StateManager)
             self.state_manager.update_task_status(
                 task_id=task_id,
                 status=self.STATE_COMPLETED,
-                metadata={'result': result, 'completed_at': datetime.now(UTC).isoformat()}
+                metadata={'result': result}
             )
 
             # Check if any pending tasks can now be ready
@@ -301,7 +300,7 @@ class TaskScheduler:
                 )
 
             # Check retry eligibility
-            retry_count = task.metadata.get('retry_count', 0) if task.metadata else 0
+            retry_count = task.retry_count if task.retry_count is not None else 0
             should_retry = self._should_retry(error, retry_count)
 
             if should_retry:
@@ -366,7 +365,7 @@ class TaskScheduler:
                 )
 
             # Check if retry delay has elapsed
-            retry_at_str = task.metadata.get('retry_at') if task.metadata else None
+            retry_at_str = task.task_metadata.get('retry_at') if task.task_metadata else None
             if retry_at_str:
                 retry_at = datetime.fromisoformat(retry_at_str)
                 if datetime.now(UTC) < retry_at:
@@ -528,21 +527,29 @@ class TaskScheduler:
 
     # Private helper methods
 
-    def _transition_state(self, task: Task, new_state: str) -> None:
+    def _transition_state(self, task: Task, new_state: TaskStatus) -> None:
         """Transition task to new state.
 
         Args:
             task: Task to transition
-            new_state: Target state
+            new_state: Target state (TaskStatus enum)
 
         Raises:
             TaskStateException: If transition is invalid
         """
         current_state = task.status
 
+        # Convert string status to enum if needed (for tasks loaded from DB)
+        if isinstance(current_state, str):
+            current_state = TaskStatus(current_state)
+
         # Allow initial state setting
         if current_state is None:
             task.status = new_state
+            return
+
+        # Idempotent: if already in target state, do nothing
+        if current_state == new_state:
             return
 
         # Check valid transition
@@ -558,7 +565,7 @@ class TaskScheduler:
         logger.debug(f"Task {task.id} transitioned: {current_state} → {new_state}")
 
     def _parse_dependencies(self, task: Task) -> List[int]:
-        """Parse task dependencies from metadata.
+        """Parse task dependencies from dependencies Column.
 
         Args:
             task: Task to parse dependencies for
@@ -566,18 +573,14 @@ class TaskScheduler:
         Returns:
             List of dependency task IDs
         """
-        if not task.metadata:
+        if not task.dependencies:
             return []
 
-        dependencies_str = task.metadata.get('dependencies', '')
-        if not dependencies_str:
-            return []
-
-        # Parse comma-separated IDs
+        # Dependencies is a JSON list of task IDs
         try:
-            return [int(dep_id.strip()) for dep_id in dependencies_str.split(',') if dep_id.strip()]
-        except ValueError as e:
-            logger.warning(f"Invalid dependency format for task {task.id}: {dependencies_str}")
+            return [int(dep_id) for dep_id in task.dependencies if dep_id]
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid dependency format for task {task.id}: {task.dependencies}")
             return []
 
     def _check_dependencies_satisfied(self, project_id: int, dependency_ids: List[int]) -> bool:
@@ -622,8 +625,9 @@ class TaskScheduler:
             boost = 0
 
             # Deadline approaching boost
-            if task.deadline:
-                time_until_deadline = task.deadline - datetime.now(UTC)
+            deadline = getattr(task, 'deadline', None) or task.task_metadata.get('deadline') if task.task_metadata else None
+            if deadline:
+                time_until_deadline = deadline - datetime.now(UTC)
                 if time_until_deadline.total_seconds() < 3600:  # Within 1 hour
                     boost += self.DEADLINE_BOOST
 
@@ -668,7 +672,9 @@ class TaskScheduler:
         all_tasks = self.state_manager.get_tasks_by_project(project_id)
 
         for task in all_tasks:
-            graph[task.id] = []  # Ensure all tasks in graph
+            # Initialize task.id in graph if not already present (don't reset!)
+            if task.id not in graph:
+                graph[task.id] = []
             dependencies = self._parse_dependencies(task)
             for dep_id in dependencies:
                 graph[dep_id].append(task.id)  # dep_id → task.id edge

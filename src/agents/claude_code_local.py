@@ -5,6 +5,7 @@ using headless --print mode for reliable, stateless operation.
 """
 
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -53,7 +54,9 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         self.claude_command: str = 'claude'
         self.workspace_path: Optional[Path] = None
         self.session_id: Optional[str] = None
-        self.response_timeout: int = 60
+        # 2-hour timeout (7200s) allows complex workflows to complete without interruption
+        # For shorter tasks, override via config.yaml: agent.local.response_timeout
+        self.response_timeout: int = 7200
         self.environment_vars: Dict[str, str] = {}
 
         # Session management
@@ -67,6 +70,9 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         # Dangerous mode (bypass permissions for automated orchestration)
         self.bypass_permissions: bool = True  # Enabled by default for Obra
 
+        # JSON metadata from last response (Phase 1, Task 1.3)
+        self.last_metadata: Optional[Dict[str, Any]] = None
+
         logger.info('ClaudeCodeLocalAgent initialized (headless mode)')
 
     def initialize(self, config: Dict[str, Any]) -> None:
@@ -76,7 +82,7 @@ class ClaudeCodeLocalAgent(AgentPlugin):
             config: Configuration dict containing:
                 - workspace_path or workspace_dir: Path to workspace directory (required)
                 - claude_command or command: Command to run (default: 'claude')
-                - response_timeout or timeout_response: Seconds to wait (default: 60)
+                - response_timeout or timeout_response: Seconds to wait (default: 7200 = 2 hours)
                 - use_session_persistence: Reuse session ID (default: False)
                 - bypass_permissions: Enable dangerous mode (default: True)
                 Can also accept nested 'local' dict with these keys.
@@ -103,9 +109,10 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         self.claude_command = config.get('claude_command') or config.get('command', 'claude')
 
         # Extract timeout (support both response_timeout and timeout_response)
+        # Default is 7200s (2 hours) to support complex workflows
         self.response_timeout = (
             config.get('response_timeout') or
-            config.get('timeout_response', 60)
+            config.get('timeout_response', 7200)
         )
 
         # Extract session persistence preference
@@ -221,15 +228,35 @@ class ClaudeCodeLocalAgent(AgentPlugin):
                 recovery='Call initialize() before sending prompts'
             )
 
-        # Generate session ID (fresh or persistent)
-        if self.use_session_persistence and self.session_id:
-            session_id = self.session_id  # Reuse session
+        # Generate session ID (prefer explicitly set, otherwise fresh)
+        # BUG-PHASE4-005 FIX: Always use session_id if explicitly set (by orchestrator)
+        if self.session_id:
+            # Explicitly set session_id (e.g., by orchestrator for tracking)
+            session_id = self.session_id
+            logger.debug(f'SESSION ASSIGNED: session_id={session_id[:8]}... (externally set)')
         else:
-            session_id = str(uuid.uuid4())  # Fresh session per call
-            logger.debug(f'Using fresh session: {session_id}')
+            # Generate fresh session ID
+            session_id = str(uuid.uuid4())
+            if self.use_session_persistence:
+                # Save for next call if persistence enabled
+                self.session_id = session_id
+                logger.debug(f'SESSION FRESH_PERSIST: session_id={session_id[:8]}...')
+            else:
+                logger.debug(f'SESSION FRESH: session_id={session_id[:8]}...')
 
-        # Build arguments for --print mode with session
-        args = ['--print', '--session-id', session_id]
+        # Build arguments for --print mode with session and JSON output
+        args = [
+            '--print',
+            '--session-id', session_id,
+            '--output-format', 'json'  # Phase 1, Task 1.3: Enable JSON responses
+        ]
+
+        # Add max_turns if provided in context (Phase 4, Task 4.2)
+        max_turns = None
+        if context and 'max_turns' in context:
+            max_turns = context['max_turns']
+            args.extend(['--max-turns', str(max_turns)])
+            logger.info(f'CLAUDE_ARGS: max_turns={max_turns} (from context)')
 
         # Add dangerous mode flag if enabled
         if self.bypass_permissions:
@@ -239,9 +266,10 @@ class ClaudeCodeLocalAgent(AgentPlugin):
         args.append(prompt)
 
         logger.info(
-            f'Sending prompt ({len(prompt)} chars) with session {session_id[:8]}...'
+            f'CLAUDE_SEND: prompt_chars={len(prompt):,}, '
+            f'session={session_id[:8]}..., max_turns={max_turns or "default"}'
         )
-        logger.debug(f'Prompt: {prompt[:100]}...')
+        logger.debug(f'CLAUDE_PROMPT: {prompt[:100]}...')
 
         # Retry logic for session-in-use errors
         retry_delay = self.retry_initial_delay
@@ -252,45 +280,113 @@ class ClaudeCodeLocalAgent(AgentPlugin):
 
             # Check result
             if result.returncode == 0:
-                # Success!
-                response = result.stdout.strip()
+                # Success! Parse JSON response (Phase 1, Task 1.3)
+                raw_response = result.stdout.strip()
 
-                if attempt > 0:
+                try:
+                    # Parse JSON response
+                    json_response = json.loads(raw_response)
+
+                    # Extract the actual result text
+                    result_text = json_response.get('result', '')
+
+                    # Extract and store metadata
+                    self.last_metadata = self._extract_metadata(json_response)
+
+                    # Phase 4, Task 4.2: Check for error_max_turns
+                    if self.last_metadata.get('subtype') == 'error_max_turns':
+                        num_turns = self.last_metadata.get('num_turns', 0)
+                        max_turns_limit = context.get('max_turns') if context else None
+
+                        logger.error(
+                            f'CLAUDE_ERROR_MAX_TURNS: session_id={session_id[:8]}..., '
+                            f'turns_used={num_turns}, max_turns_limit={max_turns_limit}'
+                        )
+
+                        raise AgentException(
+                            f'Task exceeded max_turns limit ({num_turns}/{max_turns_limit})',
+                            context={
+                                'subtype': 'error_max_turns',
+                                'num_turns': num_turns,
+                                'max_turns': max_turns_limit,
+                                'session_id': session_id,
+                                'result_text': result_text[:500]  # Truncated error message
+                            },
+                            recovery='Retry with increased max_turns or break task into smaller pieces'
+                        )
+
+                    # Log detailed metadata
+                    total_tokens = self.last_metadata.get("total_tokens", 0)
+                    num_turns = self.last_metadata.get("num_turns", 0)
+                    duration_ms = self.last_metadata.get("duration_ms", 0)
+                    cache_hit_rate = self.last_metadata.get("cache_hit_rate", 0.0)
+                    input_tokens = self.last_metadata.get("input_tokens", 0)
+                    cache_read_tokens = self.last_metadata.get("cache_read_tokens", 0)
+                    output_tokens = self.last_metadata.get("output_tokens", 0)
+
                     logger.info(
-                        f'Received response ({len(response)} chars) '
-                        f'after {attempt + 1} attempts'
+                        f'CLAUDE_RESPONSE: session_id={session_id[:8]}..., '
+                        f'result_chars={len(result_text):,}, '
+                        f'attempt={attempt + 1}/{self.max_retries}'
                     )
-                else:
-                    logger.info(f'Received response ({len(response)} chars)')
 
-                logger.debug(f'Response: {response[:100]}...')
-                return response
+                    logger.info(
+                        f'CLAUDE_JSON_METADATA: '
+                        f'tokens={total_tokens:,} '
+                        f'(input={input_tokens:,}, cache_read={cache_read_tokens:,}, output={output_tokens:,}), '
+                        f'turns={num_turns}, duration={duration_ms}ms, '
+                        f'cache_efficiency={cache_hit_rate:.1%}'
+                    )
+
+                    logger.debug(f'CLAUDE_RESPONSE_TEXT: {result_text[:100]}...')
+                    logger.debug(f'CLAUDE_FULL_METADATA: {self.last_metadata}')
+
+                    return result_text
+
+                except json.JSONDecodeError as e:
+                    # JSON parsing failed - log warning but don't fail
+                    # (fallback to plain text for backward compatibility)
+                    logger.warning(f'CLAUDE_JSON_PARSE_FAILED: {e}')
+                    logger.warning(f'CLAUDE_RAW_RESPONSE: {raw_response[:200]}...')
+                    self.last_metadata = None
+                    return raw_response
 
             # Check if it's a session-in-use error
             if 'already in use' in result.stderr.lower():
                 if attempt < self.max_retries - 1:
                     logger.warning(
-                        f'Session {self.session_id} in use, '
-                        f'retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{self.max_retries})'
+                        f'CLAUDE_SESSION_IN_USE: session_id={session_id[:8]}..., '
+                        f'attempt={attempt + 1}/{self.max_retries}, '
+                        f'retry_delay={retry_delay:.1f}s'
                     )
                     time.sleep(retry_delay)
                     retry_delay *= self.retry_backoff  # Exponential backoff
                     continue
                 else:
+                    total_wait_time = sum(
+                        self.retry_initial_delay * (self.retry_backoff ** i)
+                        for i in range(self.max_retries - 1)
+                    )
+                    logger.error(
+                        f'CLAUDE_SESSION_LOCKED: session_id={session_id[:8]}..., '
+                        f'max_retries={self.max_retries} exhausted, '
+                        f'total_wait_time={total_wait_time:.1f}s'
+                    )
                     raise AgentException(
                         f'Session still in use after {self.max_retries} retries',
                         context={
                             'session_id': self.session_id,
                             'stderr': result.stderr,
-                            'total_wait_time': sum(
-                                self.retry_initial_delay * (self.retry_backoff ** i)
-                                for i in range(self.max_retries - 1)
-                            )
+                            'total_wait_time': total_wait_time
                         },
                         recovery='Wait longer between calls or use fresh sessions'
                     )
 
             # Other error - fail immediately
+            logger.error(
+                f'CLAUDE_COMMAND_FAILED: exit_code={result.returncode}, '
+                f'session_id={session_id[:8]}..., stderr={result.stderr[:200]}'
+            )
             raise AgentException(
                 f'Claude failed with exit code {result.returncode}',
                 context={
@@ -303,6 +399,90 @@ class ClaudeCodeLocalAgent(AgentPlugin):
 
         # Should never reach here, but just in case
         raise AgentException('Unexpected error in send_prompt retry loop')
+
+    def _extract_metadata(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract metadata from Claude Code JSON response.
+
+        Args:
+            response: JSON response from Claude Code
+
+        Returns:
+            Dict with normalized metadata fields
+
+        Note:
+            This is based on the JSON schema documented in:
+            docs/research/claude-code-json-response-schema.md
+        """
+        usage = response.get('usage', {})
+        model_usage = response.get('modelUsage', {})
+
+        # Calculate total tokens (input + cache_creation + cache_read + output)
+        total_tokens = (
+            usage.get('input_tokens', 0) +
+            usage.get('cache_creation_input_tokens', 0) +
+            usage.get('cache_read_input_tokens', 0) +
+            usage.get('output_tokens', 0)
+        )
+
+        # Calculate cache hit rate (for efficiency tracking)
+        cache_denominator = (
+            usage.get('input_tokens', 0) +
+            usage.get('cache_creation_input_tokens', 0) +
+            usage.get('cache_read_input_tokens', 0)
+        )
+        cache_hit_rate = (
+            usage.get('cache_read_input_tokens', 0) / cache_denominator
+            if cache_denominator > 0 else 0.0
+        )
+
+        return {
+            # Response status
+            'type': response.get('type'),  # "result"
+            'subtype': response.get('subtype'),  # "success", "error_max_turns", etc.
+            'is_error': response.get('is_error', False),
+
+            # Session info
+            'session_id': response.get('session_id'),
+            'uuid': response.get('uuid'),
+
+            # Token usage
+            'input_tokens': usage.get('input_tokens', 0),
+            'cache_creation_tokens': usage.get('cache_creation_input_tokens', 0),
+            'cache_read_tokens': usage.get('cache_read_input_tokens', 0),
+            'output_tokens': usage.get('output_tokens', 0),
+            'total_tokens': total_tokens,
+            'cache_hit_rate': cache_hit_rate,
+
+            # Performance metrics
+            'duration_ms': response.get('duration_ms', 0),
+            'duration_api_ms': response.get('duration_api_ms', 0),
+            'num_turns': response.get('num_turns', 0),
+
+            # Cost tracking
+            'cost_usd': response.get('total_cost_usd', 0.0),
+
+            # Error handling
+            'error_subtype': response.get('subtype') if response.get('subtype') != 'success' else None,
+            'permission_denials': response.get('permission_denials', []),
+            'errors': response.get('errors', []),
+
+            # Model usage (per-model breakdown)
+            'model_usage': model_usage,
+        }
+
+    def get_last_metadata(self) -> Optional[Dict[str, Any]]:
+        """Get metadata from the last send_prompt() call.
+
+        Returns:
+            Dict with metadata fields, or None if no metadata available
+
+        Example:
+            >>> response = agent.send_prompt("Task...")
+            >>> metadata = agent.get_last_metadata()
+            >>> print(f"Used {metadata['total_tokens']} tokens")
+            >>> print(f"Cache hit rate: {metadata['cache_hit_rate']:.1%}")
+        """
+        return self.last_metadata
 
     def is_healthy(self) -> bool:
         """Check if Claude Code is available and responsive.

@@ -1,0 +1,210 @@
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+CLAUDE_ERROR_MAX_TURNS: session_id=2fc7010b..., turns_used=10, max_turns_limit=10
+ERROR_MAX_TURNS: task_id=1, turns_used=10, max_turns=10, attempt=1/2
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+CLAUDE_ERROR_MAX_TURNS: session_id=9f498226..., turns_used=20, max_turns_limit=20
+ERROR_MAX_TURNS: task_id=1, turns_used=20, max_turns=20, attempt=2/2
+MAX_TURNS EXHAUSTED: task_id=1, attempts=2, final_max_turns=20, last_turns_used=20
+TASK ERROR: task_id=1, error=Task exceeded max_turns limit (20/20)
+Traceback (most recent call last):
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/orchestrator.py", line 693, in execute_task
+    result = self._execute_single_task(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/orchestrator.py", line 886, in _execute_single_task
+    response = self.agent.send_prompt(prompt, context=agent_context)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/agents/claude_code_local.py", line 306, in send_prompt
+    raise AgentException(
+src.plugins.exceptions.AgentException: Task exceeded max_turns limit (20/20)
+Traceback (most recent call last):
+  File "/tmp/csv_regression_test.py", line 112, in run_csv_test
+    result = orchestrator.execute_task(task.id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/orchestrator.py", line 693, in execute_task
+    result = self._execute_single_task(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/orchestrator.py", line 886, in _execute_single_task
+    response = self.agent.send_prompt(prompt, context=agent_context)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/agents/claude_code_local.py", line 306, in send_prompt
+    raise AgentException(
+src.plugins.exceptions.AgentException: Task exceeded max_turns limit (20/20)
+
+================================================================================
+CSV REGRESSION TEST - Task 4.3
+================================================================================
+
+✓ Created test environment: /tmp/csv_test
+✓ Created sample CSV: /tmp/csv_test/sample.csv
+
+CSV Content:
+name,age,city
+Alice,30,NYC
+Bob,25,SF
+Charlie,35,LA
+
+  Expected average age: 30.0
+
+✓ Loading config from: /home/omarwsl/projects/claude_code_orchestrator/config/config.yaml
+✓ Initializing StateManager: sqlite:///data/csv_test.db
+
+✓ Creating test project...
+  Project ID: 1
+
+✓ Creating task...
+  Task ID: 1
+  Description: 
+Read the CSV file at /tmp/csv_test/sample.csv and calculate the average age of all people.
+
+The CSV...
+
+✓ Initializing Orchestrator...
+  Agent: ClaudeCodeLocalAgent
+  LLM: LocalLLMInterface
+
+================================================================================
+EXECUTING CSV TASK
+================================================================================
+[34m[OBRA][0m Starting iteration 1/10
+[34m[OBRA][0m Built context (308 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (745 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.68 (FAIL)
+[33m[QWEN][0m   Confidence: 0.61
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 2/10
+[34m[OBRA][0m Built context (409 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (776 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.74 (PASS)
+[33m[QWEN][0m   Confidence: 0.31
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 3/10
+[34m[OBRA][0m Built context (472 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Starting iteration 1/10
+[34m[OBRA][0m Built context (308 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1199 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.59
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 2/10
+[34m[OBRA][0m Built context (355 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (630 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.68 (FAIL)
+[33m[QWEN][0m   Confidence: 0.61
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 3/10
+[34m[OBRA][0m Built context (456 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1033 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.72 (PASS)
+[33m[QWEN][0m   Confidence: 0.32
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 4/10
+[34m[OBRA][0m Built context (503 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1504 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.34
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 5/10
+[34m[OBRA][0m Built context (550 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (879 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.74 (PASS)
+[33m[QWEN][0m   Confidence: 0.63
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 6/10
+[34m[OBRA][0m Built context (613 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (964 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.32
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 7/10
+[34m[OBRA][0m Built context (660 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+
+================================================================================
+TASK EXECUTION FAILED
+================================================================================
+Error: Task exceeded max_turns limit (20/20)
+Elapsed: 309.2s
+
+================================================================================
+TEST SUMMARY
+================================================================================
+❌ CSV regression test FAILED

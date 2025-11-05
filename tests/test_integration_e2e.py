@@ -42,11 +42,11 @@ class TestEndToEndWorkflow:
     def test_complete_task_lifecycle(self, test_config, state_manager, fast_time):
         """Test complete task lifecycle from creation to completion."""
         # 1. Create project
-        project = state_manager.create_project({
-            'name': 'E2E Test Project',
-            'description': 'Integration test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'E2E Test Project',
+            'Integration test',
+            '/tmp/test'
+        )
 
         assert project.id is not None
         assert project.status == 'active'
@@ -93,10 +93,11 @@ assert add(2, 3) == 5
     def test_multi_task_workflow(self, test_config, state_manager, fast_time):
         """Test workflow with multiple tasks."""
         # Create project
-        project = state_manager.create_project({
-            'name': 'Multi-Task Project',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Multi-Task Project',
+            'Integration test',
+            '/tmp/test'
+        )
 
         # Create multiple tasks
         task1 = state_manager.create_task(project.id, {
@@ -132,10 +133,11 @@ assert add(2, 3) == 5
 
     def test_error_recovery_workflow(self, test_config, state_manager, fast_time):
         """Test error recovery in complete workflow."""
-        project = state_manager.create_project({
-            'name': 'Error Test Project',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Error Test Project',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Error-prone task',
@@ -167,10 +169,11 @@ assert add(2, 3) == 5
 
     def test_confidence_based_escalation(self, test_config, state_manager, fast_time):
         """Test escalation based on low confidence."""
-        project = state_manager.create_project({
-            'name': 'Confidence Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Confidence Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Complex task',
@@ -197,10 +200,11 @@ class TestComponentIntegration:
 
     def test_context_manager_integration(self, test_config, state_manager, fast_time):
         """Test ContextManager integration in workflow."""
-        project = state_manager.create_project({
-            'name': 'Context Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Context Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Test task',
@@ -226,10 +230,11 @@ class TestComponentIntegration:
 
     def test_quality_controller_integration(self, test_config, state_manager, fast_time):
         """Test QualityController integration."""
-        project = state_manager.create_project({
-            'name': 'Quality Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Quality Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Quality task',
@@ -254,10 +259,11 @@ class TestComponentIntegration:
 
     def test_decision_engine_integration(self, test_config, state_manager, fast_time):
         """Test DecisionEngine integration."""
-        project = state_manager.create_project({
-            'name': 'Decision Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Decision Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Decision task',
@@ -286,13 +292,15 @@ class TestStateManagement:
 
     def test_state_persistence(self, test_config, state_manager, fast_time):
         """Test state persists across orchestrator restarts."""
-        project = state_manager.create_project({
-            'name': 'Persistence Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Persistence Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Persistent task',
+            'description': 'Integration test task',
             'status': 'pending'
         })
 
@@ -316,13 +324,14 @@ class TestStateManagement:
 
     def test_project_task_relationship(self, test_config, state_manager):
         """Test project-task relationships persist."""
-        project = state_manager.create_project({
-            'name': 'Relationship Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Relationship Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
-        task1 = state_manager.create_task(project.id, {'title': 'Task 1', 'status': 'pending'})
-        task2 = state_manager.create_task(project.id, {'title': 'Task 2', 'status': 'pending'})
+        task1 = state_manager.create_task(project.id, {'title': 'Task 1', 'description': 'First task', 'status': 'pending'})
+        task2 = state_manager.create_task(project.id, {'title': 'Task 2', 'description': 'Second task', 'status': 'pending'})
 
         # Verify relationship
         project_tasks = state_manager.get_project_tasks(project.id)
@@ -349,13 +358,15 @@ class TestPerformance:
 
     def test_task_execution_performance(self, test_config, state_manager, fast_time):
         """Test task executes in reasonable time."""
-        project = state_manager.create_project({
-            'name': 'Performance Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Performance Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Fast task',
+            'description': 'Integration test task',
             'status': 'pending'
         })
 
@@ -391,23 +402,26 @@ class TestErrorScenarios:
         # Create task with non-existent project
         # This should be prevented by database constraints
 
-        project = state_manager.create_project({
-            'name': 'Temp Project',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Temp Project',
+            'Integration test',
+            '/tmp/test'
+        )
 
         # Verify project exists
         assert state_manager.get_project(project.id) is not None
 
     def test_agent_failure(self, test_config, state_manager, fast_time):
         """Test handling complete agent failure."""
-        project = state_manager.create_project({
-            'name': 'Failure Test',
-            'working_dir': '/tmp/test'
-        })
+        project = state_manager.create_project(
+            'Failure Test',
+            'Integration test',
+            '/tmp/test'
+        )
 
         task = state_manager.create_task(project.id, {
             'title': 'Failing task',
+            'description': 'Integration test task',
             'status': 'pending'
         })
 

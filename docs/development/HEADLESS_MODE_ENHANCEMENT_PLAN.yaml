@@ -1,0 +1,2033 @@
+# Headless Mode Enhancement Implementation Plan
+# Project: Obra (Claude Code Orchestrator)
+# Version: v1.3-headless-enhancements
+# Created: 2025-11-03
+# Status: APPROVED - Ready for Implementation
+
+metadata:
+  plan_version: "1.0"
+  project_version: "v1.2 → v1.3"
+  scope: "Claude Code headless mode enhancements"
+  estimated_effort: "4-5 weeks"
+  priority: "HIGH - Blocks production session persistence"
+
+  dependencies:
+    - "v1.2.0-llm-first-framework (COMPLETE)"
+    - "M8 Local Agent (COMPLETE)"
+    - "StateManager (COMPLETE)"
+
+  references:
+    - "docs/research/claude-code-headless-guide.md"
+    - "docs/research/claude-code-max-turns-guide.md"
+    - "docs/development/HEADLESS_MODE_GAP_ANALYSIS.md"
+    - "src/agents/claude_code_local.py"
+    - "src/orchestrator.py"
+
+# ============================================================================
+# OVERVIEW
+# ============================================================================
+
+overview:
+  description: |
+    Enhance Obra's Claude Code integration with production-ready session
+    management, context window handling, and intelligent max_turns control.
+
+    Key Goals:
+    1. JSON output mode for structured responses
+    2. Milestone-based session management
+    3. Context window tracking and auto-refresh
+    4. Dynamic max_turns calculation
+    5. Extended timeouts for complex work
+
+  success_criteria:
+    - "JSON parsing works for all Claude Code responses"
+    - "Session persistence enabled without crashes"
+    - "Context window never exceeds limit unexpectedly"
+    - "Tasks complete successfully with appropriate turn limits"
+    - "2-hour timeout supports complex workflows"
+    - "All tests pass with >85% coverage"
+
+# ============================================================================
+# PHASE 1: FOUNDATION - JSON OUTPUT & TESTING
+# ============================================================================
+
+phase_1:
+  name: "Foundation - JSON Output & Testing"
+  duration: "Week 1 (5-6 days)"
+  estimated_effort: "24-30 hours"
+  priority: "CRITICAL"
+
+  description: |
+    Implement JSON output mode and discover what context window information
+    Claude Code provides. This is foundational for all other phases.
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # TASK 1.1: Test Claude Code JSON Response Structure
+    # -------------------------------------------------------------------------
+    task_1_1:
+      name: "Test Claude Code JSON response structure"
+      description: |
+        Execute real Claude Code commands with --output-format json to
+        discover available fields, especially context window information.
+
+      deliverables:
+        - file: "docs/research/claude-code-json-response-schema.md"
+          description: "Document all available JSON fields"
+          content:
+            - "Complete field reference"
+            - "Example responses for different scenarios"
+            - "Context window fields (if available)"
+            - "Error response formats"
+            - "Session-related fields"
+
+        - file: "tests/fixtures/claude_code_responses.json"
+          description: "Sample responses for testing"
+          content:
+            - "Success response"
+            - "error_max_turns response"
+            - "error_permission_denied response"
+            - "error_timeout response"
+            - "Partial completion response"
+
+      test_commands: |
+        # Test 1: Basic JSON output
+        claude -p "List files" --output-format json --session-id test-001
+
+        # Test 2: With session persistence
+        claude -p "Read README.md" --output-format json --session-id test-002
+        claude --resume test-002 -p "Summarize it" --output-format json
+
+        # Test 3: Max turns limit
+        claude -p "Complex task" --output-format json --max-turns 3
+
+        # Test 4: Different permission modes
+        claude -p "Task" --output-format json --permission-mode acceptEdits
+
+        # Document ALL fields in responses
+
+      acceptance_criteria:
+        - "Documented all JSON response fields"
+        - "Identified context window tracking fields (if exist)"
+        - "Documented error response formats"
+        - "Created fixture files for testing"
+        - "Answered: Does Claude provide context window %?"
+
+      output_decision:
+        if_context_provided: "Skip manual token tracking in Phase 3"
+        if_not_provided: "Implement manual tracking in Phase 3"
+
+    # -------------------------------------------------------------------------
+    # TASK 1.2: Update AgentResponse Model
+    # -------------------------------------------------------------------------
+    task_1_2:
+      name: "Update AgentResponse model with JSON metadata"
+      description: |
+        Add fields to AgentResponse for token usage, performance metrics,
+        and session information from JSON responses.
+
+      files_to_modify:
+        - path: "src/core/models.py"
+          changes:
+            - "Add token usage fields (input, cache_creation, cache_read, output)"
+            - "Add performance metrics (duration_ms, duration_api_ms, num_turns)"
+            - "Add session fields (session_id)"
+            - "Add cost tracking (cost_usd - optional)"
+            - "Add error subtype field"
+
+          example: |
+            @dataclass
+            class AgentResponse:
+                task_id: int
+                content: str
+                status: str = 'success'
+                metadata: Optional[Dict[str, Any]] = None
+
+                # Token usage (from Claude Code JSON)
+                input_tokens: int = 0
+                cache_creation_tokens: int = 0
+                cache_read_tokens: int = 0
+                output_tokens: int = 0
+                total_tokens: int = 0
+
+                # Context window (if provided by Claude)
+                context_window_used: Optional[int] = None
+                context_window_limit: Optional[int] = None
+                context_window_pct: Optional[float] = None
+
+                # Performance metrics
+                duration_ms: int = 0
+                duration_api_ms: int = 0
+                num_turns: int = 0
+
+                # Session info
+                session_id: Optional[str] = None
+
+                # Error handling
+                error_subtype: Optional[str] = None  # error_max_turns, etc.
+
+                # Cost tracking (optional)
+                cost_usd: float = 0.0
+
+                # Timestamps
+                created_at: Optional[datetime] = None
+                completed_at: Optional[datetime] = None
+
+      files_to_create:
+        - path: "alembic/versions/xxx_add_agent_response_json_fields.py"
+          description: "Database migration for new AgentResponse fields"
+          sql_preview: |
+            ALTER TABLE agent_responses
+            ADD COLUMN input_tokens INTEGER DEFAULT 0,
+            ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0,
+            ADD COLUMN cache_read_tokens INTEGER DEFAULT 0,
+            ADD COLUMN output_tokens INTEGER DEFAULT 0,
+            ADD COLUMN total_tokens INTEGER DEFAULT 0,
+            ADD COLUMN context_window_used INTEGER,
+            ADD COLUMN context_window_limit INTEGER,
+            ADD COLUMN context_window_pct REAL,
+            ADD COLUMN duration_ms INTEGER DEFAULT 0,
+            ADD COLUMN duration_api_ms INTEGER DEFAULT 0,
+            ADD COLUMN num_turns INTEGER DEFAULT 0,
+            ADD COLUMN session_id TEXT,
+            ADD COLUMN error_subtype TEXT,
+            ADD COLUMN cost_usd REAL DEFAULT 0.0;
+
+      acceptance_criteria:
+        - "AgentResponse has all JSON metadata fields"
+        - "Database migration created and tested"
+        - "Fields properly typed with defaults"
+        - "Backward compatible (existing code doesn't break)"
+
+    # -------------------------------------------------------------------------
+    # TASK 1.3: Implement JSON Parsing in ClaudeCodeLocalAgent
+    # -------------------------------------------------------------------------
+    task_1_3:
+      name: "Implement JSON parsing in ClaudeCodeLocalAgent"
+      description: |
+        Update send_prompt() to use --output-format json and parse responses.
+        Extract metadata and populate AgentResponse fields.
+
+      files_to_modify:
+        - path: "src/agents/claude_code_local.py"
+          methods:
+            - name: "send_prompt()"
+              changes:
+                - "Add --output-format json to command args"
+                - "Parse JSON response instead of plain text"
+                - "Extract metadata (tokens, session_id, errors)"
+                - "Handle error responses with subtypes"
+                - "Store metadata in instance variable for execute_task()"
+
+              implementation: |
+                def send_prompt(self, prompt: str, context: Optional[Dict] = None,
+                               max_turns: Optional[int] = None) -> str:
+                    """Send prompt and parse JSON response."""
+                    # Build args with JSON output
+                    args = [
+                        '--print',
+                        '--session-id', session_id,
+                        '--output-format', 'json'
+                    ]
+
+                    if self.bypass_permissions:
+                        args.append('--dangerously-skip-permissions')
+
+                    if max_turns:
+                        args.extend(['--max-turns', str(max_turns)])
+
+                    args.append(prompt)
+
+                    # Execute command
+                    result = self._run_command(args)
+
+                    # Parse JSON
+                    try:
+                        response = json.loads(result.stdout)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON: {e}")
+                        logger.debug(f"Raw output: {result.stdout[:500]}")
+                        raise AgentException(
+                            "Claude Code returned invalid JSON",
+                            context={'raw': result.stdout[:500], 'error': str(e)}
+                        )
+
+                    # Check for errors
+                    if response.get('is_error') or response.get('subtype', '').startswith('error'):
+                        subtype = response.get('subtype', 'unknown')
+                        message = response.get('error_message', 'Unknown error')
+
+                        # Store metadata even on error
+                        self._last_response_metadata = self._extract_metadata(response)
+
+                        raise AgentException(
+                            f"Claude Code failed: {message}",
+                            context={
+                                'subtype': subtype,
+                                'response': response,
+                                'num_turns': response.get('num_turns')
+                            }
+                        )
+
+                    # Extract content
+                    content = response['result']['content'][0]['text']
+
+                    # Store metadata
+                    self._last_response_metadata = self._extract_metadata(response)
+
+                    return content
+
+                def _extract_metadata(self, response: Dict[str, Any]) -> Dict[str, Any]:
+                    """Extract metadata from JSON response."""
+                    usage = response.get('usage', {})
+
+                    return {
+                        'session_id': response.get('session_id'),
+                        'num_turns': response.get('num_turns', 0),
+                        'duration_ms': response.get('duration_ms', 0),
+                        'duration_api_ms': response.get('duration_api_ms', 0),
+                        'cost_usd': response.get('total_cost_usd', 0.0),
+                        'error_subtype': response.get('subtype') if response.get('is_error') else None,
+
+                        # Token usage
+                        'input_tokens': usage.get('input_tokens', 0),
+                        'cache_creation_tokens': usage.get('cache_creation_input_tokens', 0),
+                        'cache_read_tokens': usage.get('cache_read_input_tokens', 0),
+                        'output_tokens': usage.get('output_tokens', 0),
+                        'total_tokens': (
+                            usage.get('input_tokens', 0) +
+                            usage.get('cache_creation_input_tokens', 0) +
+                            usage.get('cache_read_input_tokens', 0) +
+                            usage.get('output_tokens', 0)
+                        ),
+
+                        # Context window (if provided - TEST RESULT DEPENDENT)
+                        'context_window_used': usage.get('context_window_used'),
+                        'context_window_limit': usage.get('context_window_limit'),
+                        'context_window_pct': usage.get('context_window_pct'),
+                    }
+
+            - name: "execute_task()"
+              changes:
+                - "Pass metadata to AgentResponse constructor"
+                - "Populate all new fields from _last_response_metadata"
+
+              implementation: |
+                def execute_task(self, task_id: int, task: Dict[str, Any],
+                                context: Optional[Dict] = None) -> AgentResponse:
+                    """Execute task and return response with metadata."""
+                    # ... existing prompt generation ...
+
+                    # Send prompt (stores metadata in self._last_response_metadata)
+                    max_turns = context.get('max_turns') if context else None
+                    response_text = self.send_prompt(prompt, context, max_turns)
+
+                    # Build AgentResponse with metadata
+                    metadata = self._last_response_metadata or {}
+
+                    return AgentResponse(
+                        task_id=task_id,
+                        content=response_text,
+                        status='success',
+                        metadata=metadata,
+
+                        # Populate new fields
+                        input_tokens=metadata.get('input_tokens', 0),
+                        cache_creation_tokens=metadata.get('cache_creation_tokens', 0),
+                        cache_read_tokens=metadata.get('cache_read_tokens', 0),
+                        output_tokens=metadata.get('output_tokens', 0),
+                        total_tokens=metadata.get('total_tokens', 0),
+
+                        context_window_used=metadata.get('context_window_used'),
+                        context_window_limit=metadata.get('context_window_limit'),
+                        context_window_pct=metadata.get('context_window_pct'),
+
+                        duration_ms=metadata.get('duration_ms', 0),
+                        duration_api_ms=metadata.get('duration_api_ms', 0),
+                        num_turns=metadata.get('num_turns', 0),
+
+                        session_id=metadata.get('session_id'),
+                        error_subtype=metadata.get('error_subtype'),
+                        cost_usd=metadata.get('cost_usd', 0.0),
+
+                        created_at=datetime.now(),
+                        completed_at=datetime.now()
+                    )
+
+      acceptance_criteria:
+        - "send_prompt() uses --output-format json"
+        - "JSON responses parsed correctly"
+        - "Metadata extracted and stored"
+        - "Error responses handled with subtypes"
+        - "AgentResponse populated with all fields"
+        - "Backward compatible (graceful degradation if JSON parse fails)"
+
+    # -------------------------------------------------------------------------
+    # TASK 1.4: Testing
+    # -------------------------------------------------------------------------
+    task_1_4:
+      name: "Comprehensive testing for JSON parsing"
+      description: "Test all JSON parsing scenarios"
+
+      test_files:
+        - path: "tests/agents/test_claude_code_local_json.py"
+          test_cases:
+            - "test_json_output_success_response"
+            - "test_json_output_with_metadata"
+            - "test_json_error_max_turns"
+            - "test_json_error_permission_denied"
+            - "test_json_parse_failure_fallback"
+            - "test_metadata_extraction"
+            - "test_context_window_fields_if_present"
+            - "test_agent_response_population"
+
+      acceptance_criteria:
+        - "All tests pass"
+        - "Coverage >90% for modified code"
+        - "Tests use fixture responses from TASK 1.1"
+        - "Edge cases covered (malformed JSON, missing fields)"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 1 DELIVERABLES
+  # ---------------------------------------------------------------------------
+
+  deliverables:
+    files_created:
+      - "docs/research/claude-code-json-response-schema.md"
+      - "tests/fixtures/claude_code_responses.json"
+      - "alembic/versions/xxx_add_agent_response_json_fields.py"
+      - "tests/agents/test_claude_code_local_json.py"
+
+    files_modified:
+      - "src/core/models.py (AgentResponse fields)"
+      - "src/agents/claude_code_local.py (JSON parsing)"
+
+    documentation:
+      - "Complete JSON field reference"
+      - "Context window availability decision"
+
+    decision_made:
+      question: "Does Claude Code provide context window % in JSON?"
+      impacts: "Phase 3 implementation (manual tracking vs reading from Claude)"
+
+# ============================================================================
+# PHASE 2: SESSION MANAGEMENT
+# ============================================================================
+
+phase_2:
+  name: "Session Management - Milestone-Based"
+  duration: "Week 2 (5-6 days)"
+  estimated_effort: "24-30 hours"
+  priority: "HIGH"
+  dependencies:
+    - "PHASE_1 (JSON parsing working)"
+
+  description: |
+    Implement milestone-based session lifecycle with workplan context injection
+    and session summary generation for milestone transitions.
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # TASK 2.1: Session Lifecycle in Orchestrator
+    # -------------------------------------------------------------------------
+    task_2_1:
+      name: "Implement milestone-based session lifecycle"
+      description: |
+        Add session management to Orchestrator for milestone boundaries.
+        Start new session at milestone start, maintain through tasks, reset at end.
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "_start_milestone_session()"
+              description: "Initialize session for milestone"
+              implementation: |
+                def _start_milestone_session(self, milestone_id: int) -> str:
+                    """Start new session for milestone execution.
+
+                    Returns:
+                        str: New session_id
+                    """
+                    # Generate new session
+                    session_id = str(uuid.uuid4())
+
+                    # Update agent
+                    self.agent.session_id = session_id
+                    self.agent.use_session_persistence = True
+
+                    # Log session start
+                    logger.info(
+                        f"Started session {session_id[:8]}... for milestone {milestone_id}"
+                    )
+
+                    # Store in state for tracking
+                    self.state_manager.create_session_record(
+                        session_id=session_id,
+                        milestone_id=milestone_id,
+                        started_at=datetime.now()
+                    )
+
+                    return session_id
+
+            - name: "_end_milestone_session()"
+              description: "Clean up session at milestone end"
+              implementation: |
+                def _end_milestone_session(self, session_id: str, milestone_id: int) -> None:
+                    """End session and save summary."""
+                    # Generate session summary
+                    summary = self._generate_session_summary(session_id, milestone_id)
+
+                    # Store summary
+                    self.state_manager.save_session_summary(
+                        session_id=session_id,
+                        summary=summary
+                    )
+
+                    # Update session record
+                    self.state_manager.complete_session_record(
+                        session_id=session_id,
+                        ended_at=datetime.now()
+                    )
+
+                    logger.info(f"Ended session {session_id[:8]}... for milestone {milestone_id}")
+
+            - name: "_build_milestone_context()"
+              description: "Build context for milestone including workplan"
+              implementation: |
+                def _build_milestone_context(self, milestone_id: int) -> str:
+                    """Build context for milestone start.
+
+                    Includes:
+                    - Full milestone workplan
+                    - Summary of previous milestone (if exists)
+                    - Project context
+                    """
+                    milestone = self.state_manager.get_milestone(milestone_id)
+
+                    context_parts = []
+
+                    # Project context
+                    project = self.state_manager.get_project(milestone.project_id)
+                    context_parts.append(f"Project: {project.name}")
+                    context_parts.append(f"Description: {project.description}")
+
+                    # Previous milestone summary
+                    if milestone_id > 1:
+                        prev_session = self.state_manager.get_latest_session_for_milestone(
+                            milestone_id - 1
+                        )
+                        if prev_session and prev_session.summary:
+                            context_parts.append("\n[PREVIOUS MILESTONE SUMMARY]")
+                            context_parts.append(prev_session.summary)
+
+                    # Current milestone workplan
+                    context_parts.append(f"\n[MILESTONE {milestone_id} WORKPLAN]")
+                    context_parts.append(milestone.workplan or "No workplan provided")
+
+                    # Tasks in this milestone
+                    tasks = self.state_manager.get_tasks_for_milestone(milestone_id)
+                    context_parts.append(f"\nTasks to complete ({len(tasks)} total):")
+                    for i, task in enumerate(tasks, 1):
+                        context_parts.append(f"{i}. {task.title}")
+
+                    return "\n".join(context_parts)
+
+            - name: "execute_milestone()"
+              description: "Execute all tasks in milestone with session management"
+              implementation: |
+                def execute_milestone(self, milestone_id: int,
+                                     max_iterations_per_task: int = 10) -> Dict[str, Any]:
+                    """Execute milestone with session management.
+
+                    Session lifecycle:
+                    1. Start new session
+                    2. Build milestone context (workplan + previous summary)
+                    3. Execute all tasks in session
+                    4. End session and generate summary
+                    """
+                    milestone = self.state_manager.get_milestone(milestone_id)
+
+                    # Start session
+                    session_id = self._start_milestone_session(milestone_id)
+
+                    # Build context
+                    milestone_context = self._build_milestone_context(milestone_id)
+
+                    # Store context for later use
+                    self._current_milestone_context = milestone_context
+
+                    # Get all tasks
+                    tasks = self.state_manager.get_tasks_for_milestone(milestone_id)
+
+                    results = []
+                    for task in tasks:
+                        try:
+                            # Execute task (session persists across tasks)
+                            result = self.execute_task(
+                                task.id,
+                                max_iterations=max_iterations_per_task
+                            )
+                            results.append(result)
+                        except Exception as e:
+                            logger.error(f"Task {task.id} failed: {e}")
+                            results.append({'error': str(e), 'task_id': task.id})
+
+                    # End session
+                    self._end_milestone_session(session_id, milestone_id)
+
+                    return {
+                        'milestone_id': milestone_id,
+                        'session_id': session_id,
+                        'tasks_completed': len([r for r in results if not r.get('error')]),
+                        'tasks_failed': len([r for r in results if r.get('error')]),
+                        'results': results
+                    }
+
+      acceptance_criteria:
+        - "execute_milestone() manages session lifecycle"
+        - "Workplan context injected at milestone start"
+        - "Previous milestone summary included"
+        - "Session persists across all milestone tasks"
+        - "Session cleaned up at milestone end"
+
+    # -------------------------------------------------------------------------
+    # TASK 2.2: Session Summary Generation
+    # -------------------------------------------------------------------------
+    task_2_2:
+      name: "Implement session summary generation"
+      description: |
+        Use Qwen (local LLM) to generate concise summaries of session context
+        for milestone transitions and session refreshes.
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "_generate_session_summary()"
+              implementation: |
+                def _generate_session_summary(self, session_id: str,
+                                              milestone_id: int) -> str:
+                    """Generate summary of session using Qwen.
+
+                    Args:
+                        session_id: Session to summarize
+                        milestone_id: Milestone that was executed
+
+                    Returns:
+                        str: Concise summary (target <5000 tokens)
+                    """
+                    # Get all responses from this session
+                    responses = self.state_manager.get_responses_for_session(session_id)
+
+                    # Get milestone info
+                    milestone = self.state_manager.get_milestone(milestone_id)
+                    tasks = self.state_manager.get_tasks_for_milestone(milestone_id)
+
+                    # Build context for summarization
+                    context = []
+                    context.append(f"Milestone: {milestone.title}")
+                    context.append(f"Workplan: {milestone.workplan}")
+                    context.append(f"\nTasks Executed ({len(tasks)}):")
+
+                    for task in tasks:
+                        task_responses = [r for r in responses if r.task_id == task.id]
+                        context.append(f"\n- {task.title}")
+                        if task_responses:
+                            latest = task_responses[-1]
+                            context.append(f"  Status: {latest.status}")
+                            context.append(f"  Output: {latest.content[:200]}...")
+
+                    context_text = "\n".join(context)
+
+                    # Summarize using Qwen
+                    summary_prompt = f'''
+                    Summarize the following milestone execution for continuation in future work.
+
+                    Focus on:
+                    - What was accomplished
+                    - Key implementation decisions
+                    - State of the codebase
+                    - Any issues encountered
+                    - Next steps or recommendations
+
+                    Keep summary concise but complete (max 1000 tokens).
+
+                    MILESTONE CONTEXT:
+                    {context_text}
+                    '''
+
+                    summary = self.llm.send_prompt(summary_prompt)
+
+                    logger.debug(f"Generated summary: {len(summary)} chars")
+                    return summary
+
+      acceptance_criteria:
+        - "Summaries generated using Qwen"
+        - "Summaries include key accomplishments"
+        - "Summaries stay within token limit"
+        - "Summaries stored in database"
+
+    # -------------------------------------------------------------------------
+    # TASK 2.3: Database Schema for Sessions
+    # -------------------------------------------------------------------------
+    task_2_3:
+      name: "Add session tracking tables"
+      description: "Database schema for session lifecycle and summaries"
+
+      files_to_create:
+        - path: "alembic/versions/xxx_add_session_management.py"
+          sql: |
+            -- Session records table
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT UNIQUE NOT NULL,
+                milestone_id INTEGER,
+                started_at DATETIME NOT NULL,
+                ended_at DATETIME,
+                summary TEXT,
+                status TEXT DEFAULT 'active',
+                FOREIGN KEY (milestone_id) REFERENCES milestones(id)
+            );
+
+            CREATE INDEX idx_sessions_milestone ON sessions(milestone_id);
+            CREATE INDEX idx_sessions_session_id ON sessions(session_id);
+            CREATE INDEX idx_sessions_status ON sessions(status);
+
+      files_to_modify:
+        - path: "src/core/models.py"
+          changes:
+            - "Add Session model"
+
+          implementation: |
+            @dataclass
+            class Session:
+                """Session tracking for milestone execution."""
+                id: Optional[int] = None
+                session_id: str = ''
+                milestone_id: Optional[int] = None
+                started_at: Optional[datetime] = None
+                ended_at: Optional[datetime] = None
+                summary: Optional[str] = None
+                status: str = 'active'  # active, completed, refreshed
+
+        - path: "src/core/state.py"
+          methods:
+            - "create_session_record()"
+            - "complete_session_record()"
+            - "save_session_summary()"
+            - "get_latest_session_for_milestone()"
+            - "get_responses_for_session()"
+
+      acceptance_criteria:
+        - "Database migration created"
+        - "Session model defined"
+        - "StateManager methods implemented"
+        - "All methods tested"
+
+    # -------------------------------------------------------------------------
+    # TASK 2.4: Update execute_task() for Session Context
+    # -------------------------------------------------------------------------
+    task_2_4:
+      name: "Inject milestone context into task execution"
+      description: |
+        Update execute_task() to prepend milestone context to prompts
+        when executing within a milestone session.
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "execute_task()"
+              changes:
+                - "Check if executing within milestone session"
+                - "Prepend milestone context to first task prompt"
+                - "Pass session_id through to agent"
+
+              implementation: |
+                def execute_task(self, task_id: int, max_iterations: int = 10) -> Dict[str, Any]:
+                    """Execute task with optional milestone context."""
+                    task = self.state_manager.get_task(task_id)
+
+                    # Build base prompt
+                    prompt = self.prompt_generator.generate_task_prompt(
+                        task=task,
+                        context=self.context_manager.build_context()
+                    )
+
+                    # If executing in milestone session, prepend milestone context (first task only)
+                    if hasattr(self, '_current_milestone_context'):
+                        # Check if this is first task in milestone
+                        milestone_tasks = self.state_manager.get_tasks_for_milestone(task.milestone_id)
+                        if milestone_tasks and milestone_tasks[0].id == task_id:
+                            prompt = f'''
+                            [MILESTONE CONTEXT]
+                            {self._current_milestone_context}
+
+                            [CURRENT TASK]
+                            {prompt}
+                            '''
+                            logger.info("Injected milestone context into first task")
+
+                    # Execute with agent
+                    response = self.agent.execute_task(task_id, task.to_dict(), context)
+
+                    # ... rest of execution logic ...
+
+      acceptance_criteria:
+        - "Milestone context prepended to first task"
+        - "Subsequent tasks use session persistence (no re-injection)"
+        - "Works correctly without milestone context (backward compatible)"
+
+    # -------------------------------------------------------------------------
+    # TASK 2.5: Testing
+    # -------------------------------------------------------------------------
+    task_2_5:
+      name: "Session management testing"
+
+      test_files:
+        - path: "tests/integration/test_milestone_sessions.py"
+          test_cases:
+            - "test_milestone_session_lifecycle"
+            - "test_milestone_context_injection"
+            - "test_session_persistence_across_tasks"
+            - "test_session_summary_generation"
+            - "test_previous_milestone_summary_included"
+            - "test_session_cleanup_on_milestone_end"
+
+      acceptance_criteria:
+        - "All session lifecycle tests pass"
+        - "Coverage >85% for session management code"
+        - "Integration tests demonstrate full milestone flow"
+
+  deliverables:
+    files_created:
+      - "alembic/versions/xxx_add_session_management.py"
+      - "tests/integration/test_milestone_sessions.py"
+
+    files_modified:
+      - "src/core/models.py (Session model)"
+      - "src/core/state.py (session methods)"
+      - "src/orchestrator.py (session lifecycle, summary generation)"
+
+    features:
+      - "Milestone-based sessions working"
+      - "Workplan context injection"
+      - "Session summaries generated with Qwen"
+      - "Session persistence across tasks"
+
+# ============================================================================
+# PHASE 3: CONTEXT WINDOW MANAGEMENT
+# ============================================================================
+
+phase_3:
+  name: "Context Window Management"
+  duration: "Week 3 (5-6 days)"
+  estimated_effort: "30-36 hours"
+  priority: "CRITICAL"
+  dependencies:
+    - "PHASE_1 (JSON parsing - know if Claude provides context %)"
+    - "PHASE_2 (Session management working)"
+
+  description: |
+    Implement context window tracking and auto-refresh at thresholds.
+    Implementation depends on PHASE_1 findings (manual vs Claude-provided).
+
+  # TWO IMPLEMENTATION PATHS - CHOOSE BASED ON PHASE 1 RESULTS
+
+  implementation_path_a:
+    condition: "Claude Code provides context window % in JSON"
+    description: "Read context info directly from Claude responses"
+    effort: "12-16 hours (simpler)"
+
+    tasks:
+      task_3a_1:
+        name: "Extract context window info from JSON"
+        files_to_modify:
+          - path: "src/agents/claude_code_local.py"
+            changes:
+              - "Extract context_window_* fields in _extract_metadata()"
+              - "Already done in PHASE_1 if fields exist"
+
+        acceptance_criteria:
+          - "context_window_pct populated in AgentResponse"
+
+      task_3a_2:
+        name: "Implement threshold checks in Orchestrator"
+        files_to_modify:
+          - path: "src/orchestrator.py"
+            implementation: |
+              def _check_context_window_from_response(self, response: AgentResponse) -> Optional[str]:
+                  """Check context window from Claude's response.
+
+                  Returns:
+                      Optional[str]: Summary if session was refreshed, None otherwise
+                  """
+                  if not response.context_window_pct:
+                      return None
+
+                  config = self.config.get('session.context_window.thresholds', {})
+                  warning_threshold = config.get('warning', 0.70)
+                  refresh_threshold = config.get('refresh', 0.80)
+                  critical_threshold = config.get('critical', 0.95)
+
+                  pct = response.context_window_pct
+
+                  if pct >= critical_threshold:
+                      # CRITICAL: Emergency handling
+                      return self._handle_critical_context_window(response)
+
+                  elif pct >= refresh_threshold:
+                      # REFRESH: Auto-refresh session
+                      return self._refresh_session_with_summary()
+
+                  elif pct >= warning_threshold:
+                      # WARNING: Just log
+                      logger.warning(
+                          f"Context window at {pct:.1%} - approaching refresh threshold"
+                      )
+
+                  return None
+
+  implementation_path_b:
+    condition: "Claude Code does NOT provide context window %"
+    description: "Implement manual token tracking"
+    effort: "30-36 hours (more complex)"
+
+    tasks:
+      task_3b_1:
+        name: "Create ContextWindowUsage model and table"
+        files_to_create:
+          - path: "alembic/versions/xxx_add_context_window_tracking.py"
+            sql: |
+              CREATE TABLE context_window_usage (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id TEXT NOT NULL,
+                  task_id INTEGER,
+                  cumulative_tokens INTEGER NOT NULL,
+                  input_tokens INTEGER,
+                  cache_creation_tokens INTEGER,
+                  cache_read_tokens INTEGER,
+                  output_tokens INTEGER,
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  FOREIGN KEY (task_id) REFERENCES tasks(id)
+              );
+
+              CREATE INDEX idx_context_window_session ON context_window_usage(session_id, timestamp);
+
+        files_to_modify:
+          - path: "src/core/models.py"
+            implementation: |
+              @dataclass
+              class ContextWindowUsage:
+                  """Track cumulative token usage per session."""
+                  id: Optional[int] = None
+                  session_id: str = ''
+                  task_id: Optional[int] = None
+                  cumulative_tokens: int = 0
+                  input_tokens: int = 0
+                  cache_creation_tokens: int = 0
+                  cache_read_tokens: int = 0
+                  output_tokens: int = 0
+                  timestamp: Optional[datetime] = None
+
+      task_3b_2:
+        name: "Implement token tracking in StateManager"
+        files_to_modify:
+          - path: "src/core/state.py"
+            methods:
+              - name: "add_session_tokens()"
+                implementation: |
+                  def add_session_tokens(self, session_id: str, task_id: int,
+                                        tokens: Dict[str, int]) -> None:
+                      """Add tokens to session cumulative total."""
+                      with self._lock:
+                          # Get current total
+                          current = self.get_session_token_usage(session_id)
+
+                          # Calculate new cumulative
+                          new_cumulative = current + tokens['total_tokens']
+
+                          # Create usage record
+                          usage = ContextWindowUsage(
+                              session_id=session_id,
+                              task_id=task_id,
+                              cumulative_tokens=new_cumulative,
+                              input_tokens=tokens['input_tokens'],
+                              cache_creation_tokens=tokens['cache_creation_tokens'],
+                              cache_read_tokens=tokens['cache_read_tokens'],
+                              output_tokens=tokens['output_tokens'],
+                              timestamp=datetime.now()
+                          )
+
+                          self.session.add(usage)
+                          self.session.commit()
+
+                          logger.debug(
+                              f"Session {session_id[:8]}... tokens: "
+                              f"{new_cumulative:,} (+{tokens['total_tokens']:,})"
+                          )
+
+              - name: "get_session_token_usage()"
+                implementation: |
+                  def get_session_token_usage(self, session_id: str) -> int:
+                      """Get cumulative token usage for session."""
+                      with self._lock:
+                          latest = self.session.query(ContextWindowUsage)\
+                              .filter_by(session_id=session_id)\
+                              .order_by(ContextWindowUsage.timestamp.desc())\
+                              .first()
+
+                          return latest.cumulative_tokens if latest else 0
+
+              - name: "reset_session_tokens()"
+                implementation: |
+                  def reset_session_tokens(self, session_id: str) -> None:
+                      """Reset token tracking (new session starts fresh)."""
+                      # Don't delete history, just start fresh with new session_id
+                      pass
+
+      task_3b_3:
+        name: "Implement threshold checks with manual tracking"
+        files_to_modify:
+          - path: "src/orchestrator.py"
+            implementation: |
+              def _check_context_window_manual(self, session_id: str) -> Optional[str]:
+                  """Check context window using manual token tracking."""
+                  config = self.config.get('session.context_window', {})
+                  limit = config.get('limit', 200000)
+                  thresholds = config.get('thresholds', {})
+
+                  warning = thresholds.get('warning', 0.70)
+                  refresh = thresholds.get('refresh', 0.80)
+                  critical = thresholds.get('critical', 0.95)
+
+                  # Get current usage
+                  current_tokens = self.state_manager.get_session_token_usage(session_id)
+                  pct = current_tokens / limit
+
+                  if pct >= critical:
+                      return self._handle_critical_context_window_manual(current_tokens, limit)
+
+                  elif pct >= refresh:
+                      logger.info(
+                          f"Context window at {pct:.1%} ({current_tokens:,}/{limit:,}) "
+                          f"- auto-refreshing session"
+                      )
+                      return self._refresh_session_with_summary()
+
+                  elif pct >= warning:
+                      logger.warning(
+                          f"Context window at {pct:.1%} ({current_tokens:,}/{limit:,}) "
+                          f"- approaching refresh threshold"
+                      )
+
+                  return None
+
+  # COMMON TASKS (BOTH PATHS)
+
+  common_tasks:
+    task_3_1:
+      name: "Implement session refresh mechanism"
+      description: "Core logic for refreshing session with context summary"
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "_refresh_session_with_summary()"
+              implementation: |
+                def _refresh_session_with_summary(self) -> Tuple[str, str]:
+                    """Refresh session before hitting context limit.
+
+                    Returns:
+                        Tuple[str, str]: (new_session_id, context_summary)
+                    """
+                    old_session_id = self.agent.session_id
+
+                    # Generate summary of current session
+                    milestone_id = self._current_milestone_id  # Track in execute_milestone
+                    summary = self._generate_session_summary(old_session_id, milestone_id)
+
+                    # Create new session
+                    new_session_id = str(uuid.uuid4())
+
+                    # Update agent
+                    self.agent.session_id = new_session_id
+
+                    # Record session refresh in database
+                    self.state_manager.create_session_record(
+                        session_id=new_session_id,
+                        milestone_id=milestone_id,
+                        started_at=datetime.now()
+                    )
+
+                    # Mark old session as refreshed
+                    self.state_manager.mark_session_refreshed(
+                        session_id=old_session_id,
+                        refreshed_to=new_session_id,
+                        summary=summary
+                    )
+
+                    # Reset token tracking
+                    self.state_manager.reset_session_tokens(new_session_id)
+
+                    logger.info(
+                        f"Session refreshed: {old_session_id[:8]}... → {new_session_id[:8]}..."
+                    )
+
+                    return new_session_id, summary
+
+            - name: "_handle_critical_context_window()"
+              implementation: |
+                def _handle_critical_context_window(self, response: AgentResponse) -> str:
+                    """Handle critical context window (95%+) - emergency mode.
+
+                    Try to recover gracefully:
+                    1. Check if task can be decomposed
+                    2. If yes, ask Qwen to break it down
+                    3. If no, force session refresh
+
+                    Returns:
+                        str: Summary from refresh (for prepending to next prompt)
+                    """
+                    logger.error(
+                        f"Context window CRITICAL at {response.context_window_pct:.1%} - "
+                        f"emergency handling"
+                    )
+
+                    # Try to decompose current task
+                    current_task = self.state_manager.get_task(response.task_id)
+
+                    if self._can_decompose_task(current_task):
+                        logger.info("Attempting task decomposition to reduce context")
+
+                        decomposition_prompt = f'''
+                        The current task is too large for the remaining context window.
+                        Break it into 3-5 smaller independent subtasks that can each
+                        complete in under 40k tokens.
+
+                        Task: {current_task.description}
+
+                        Provide subtasks as a numbered list.
+                        '''
+
+                        decomposition = self.llm.send_prompt(decomposition_prompt)
+                        subtasks = self._parse_subtask_list(decomposition)
+
+                        # Create subtasks in database
+                        for subtask_desc in subtasks:
+                            self.state_manager.create_task(
+                                title=subtask_desc[:100],
+                                description=subtask_desc,
+                                project_id=current_task.project_id,
+                                milestone_id=current_task.milestone_id,
+                                parent_task_id=current_task.id
+                            )
+
+                        # Mark original task as decomposed
+                        self.state_manager.update_task_status(
+                            current_task.id,
+                            'decomposed'
+                        )
+
+                        logger.info(f"Created {len(subtasks)} subtasks")
+
+                        # Refresh session for subtasks
+                        new_session_id, summary = self._refresh_session_with_summary()
+                        return summary
+
+                    else:
+                        # Can't decompose - force refresh
+                        logger.warning("Cannot decompose - forcing emergency refresh")
+                        new_session_id, summary = self._refresh_session_with_summary()
+                        return summary
+
+    task_3_2:
+      name: "Integrate context window checks into task execution"
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "execute_task()"
+              changes:
+                - "Check context window before task execution"
+                - "Track tokens after execution (if manual tracking)"
+                - "Refresh session if needed"
+
+              implementation: |
+                def execute_task(self, task_id: int, max_iterations: int = 10) -> Dict[str, Any]:
+                    """Execute task with context window management."""
+                    task = self.state_manager.get_task(task_id)
+
+                    # CHECK CONTEXT WINDOW BEFORE EXECUTION
+                    if self.agent.use_session_persistence:
+                        session_id = self.agent.session_id
+
+                        if session_id:
+                            # Choose check method based on PHASE_1 results
+                            if self._using_claude_context_tracking:
+                                # Path A: Wait until after task to check response
+                                pass
+                            else:
+                                # Path B: Check before task using manual tracking
+                                context_summary = self._check_context_window_manual(session_id)
+
+                                if context_summary:
+                                    # Prepend summary to prompt
+                                    enhanced_prompt = f'''
+                                    [CONTEXT FROM PREVIOUS SESSION]
+                                    {context_summary}
+
+                                    [CURRENT TASK]
+                                    {prompt}
+                                    '''
+                                    prompt = enhanced_prompt
+
+                    # Execute task
+                    agent_response = self.agent.execute_task(task_id, task_dict, context)
+
+                    # CHECK CONTEXT WINDOW AFTER EXECUTION
+                    if self.agent.use_session_persistence:
+                        if self._using_claude_context_tracking:
+                            # Path A: Check response metadata
+                            context_summary = self._check_context_window_from_response(agent_response)
+                            if context_summary:
+                                # Store for next task
+                                self._pending_context_summary = context_summary
+                        else:
+                            # Path B: Track tokens manually
+                            if agent_response.total_tokens > 0:
+                                self.state_manager.add_session_tokens(
+                                    session_id=session_id,
+                                    task_id=task_id,
+                                    tokens={
+                                        'total_tokens': agent_response.total_tokens,
+                                        'input_tokens': agent_response.input_tokens,
+                                        'cache_creation_tokens': agent_response.cache_creation_tokens,
+                                        'cache_read_tokens': agent_response.cache_read_tokens,
+                                        'output_tokens': agent_response.output_tokens
+                                    }
+                                )
+
+                    # ... rest of execute_task ...
+
+    task_3_3:
+      name: "Configuration for context window management"
+
+      files_to_modify:
+        - path: "config/config.yaml"
+          additions: |
+            session:
+              context_window:
+                # Token limit (200k for Claude Pro default)
+                limit: 200000
+
+                # Tiered thresholds
+                thresholds:
+                  warning: 0.70   # 140k - log warning
+                  refresh: 0.80   # 160k - auto-refresh
+                  critical: 0.95  # 190k - emergency handling
+
+                # Refresh strategy
+                refresh_strategy:
+                  method: "summarize_and_continue"
+                  include_workplan: true
+                  max_summary_tokens: 5000
+
+                # Task decomposition (for emergency)
+                decomposition:
+                  enabled: true
+                  max_subtasks: 5
+                  target_tokens_per_subtask: 40000
+
+    task_3_4:
+      name: "Testing"
+
+      test_files:
+        - path: "tests/orchestration/test_context_window_management.py"
+          test_cases:
+            - "test_context_window_warning_threshold"
+            - "test_context_window_auto_refresh_at_80pct"
+            - "test_context_window_emergency_handling_at_95pct"
+            - "test_session_summary_generation_on_refresh"
+            - "test_task_decomposition_on_critical"
+            - "test_token_tracking_manual" (if Path B)
+            - "test_token_tracking_from_claude" (if Path A)
+
+      acceptance_criteria:
+        - "All threshold checks working"
+        - "Auto-refresh tested"
+        - "Emergency handling tested"
+        - "Coverage >85%"
+
+  deliverables:
+    decision_point:
+      question: "Which implementation path?"
+      path_a: "Claude provides context % (simpler, 12-16 hours)"
+      path_b: "Manual token tracking (complex, 30-36 hours)"
+
+    files_created:
+      path_b_only:
+        - "alembic/versions/xxx_add_context_window_tracking.py"
+        - "tests/orchestration/test_context_window_management.py"
+
+    files_modified:
+      - "src/orchestrator.py (threshold checks, refresh, emergency handling)"
+      - "src/core/state.py (token tracking methods - Path B only)"
+      - "config/config.yaml (context window config)"
+
+    features:
+      - "Context window tracking (Claude or manual)"
+      - "Tiered thresholds (70%, 80%, 95%)"
+      - "Auto-refresh at 80%"
+      - "Emergency handling at 95%"
+      - "Session summary on refresh"
+
+# ============================================================================
+# PHASE 4: DYNAMIC MAX TURNS
+# ============================================================================
+
+phase_4:
+  name: "Dynamic Max Turns Calculation"
+  duration: "Week 4 (4-5 days)"
+  estimated_effort: "20-24 hours"
+  priority: "MEDIUM-HIGH"
+  dependencies:
+    - "PHASE_1 (JSON parsing - error_max_turns handling)"
+
+  description: |
+    Implement adaptive max_turns calculation based on task complexity,
+    with auto-retry on error_max_turns.
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # TASK 4.1: Task Complexity Analysis
+    # -------------------------------------------------------------------------
+    task_4_1:
+      name: "Implement task complexity analyzer"
+      description: |
+        Analyze task description to estimate appropriate max_turns.
+        Based on claude-code-max-turns-guide.md recommendations.
+
+      files_to_create:
+        - path: "src/orchestration/max_turns_calculator.py"
+          implementation: |
+            """Adaptive max_turns calculation based on task complexity."""
+
+            import logging
+            from typing import Dict, List, Optional
+
+            logger = logging.getLogger(__name__)
+
+            class MaxTurnsCalculator:
+                """Calculate appropriate max_turns based on task complexity.
+
+                Based on Claude Code max-turns guide:
+                - Simple tasks: 3 turns (single file, specific fix)
+                - Medium tasks: 6 turns (small feature, module refactor)
+                - Complex tasks: 12 turns (complete feature, multi-file)
+                - Very complex: 20 turns (large refactor, migrations)
+                - Default: 10 turns (if unsure)
+                """
+
+                # Complexity indicators (from guide)
+                COMPLEX_WORDS = [
+                    'migrate', 'refactor', 'implement', 'debug', 'comprehensive',
+                    'entire', 'all', 'complete', 'full', 'across', 'multiple',
+                    'system', 'architecture', 'framework'
+                ]
+
+                SCOPE_INDICATORS = [
+                    'all files', 'entire codebase', 'multiple', 'across',
+                    'throughout', 'repository', 'project-wide', 'every'
+                ]
+
+                # Task type specific defaults (from guide)
+                TASK_TYPE_DEFAULTS = {
+                    'validation': 5,        # Focused validation checks
+                    'code_generation': 12,  # Code gen needs iterations
+                    'refactoring': 15,      # Refactoring needs test cycles
+                    'debugging': 20,        # Debugging can be extensive
+                    'error_analysis': 8,    # Analysis is bounded
+                    'planning': 5,          # Planning is mostly reading
+                    'documentation': 3,     # Docs are usually quick
+                    'testing': 8,           # Test creation is moderate
+                }
+
+                # Safety bounds (from guide)
+                MIN_TURNS = 3   # Never less than 3
+                MAX_TURNS = 30  # Never more than 30
+                DEFAULT_TURNS = 10  # Fallback
+
+                def __init__(self, config: Optional[Dict] = None):
+                    """Initialize calculator with optional config overrides."""
+                    self.config = config or {}
+
+                    # Allow config overrides
+                    self.task_type_defaults = self.config.get(
+                        'max_turns_by_type',
+                        self.TASK_TYPE_DEFAULTS
+                    )
+                    self.min_turns = self.config.get('min', self.MIN_TURNS)
+                    self.max_turns = self.config.get('max', self.MAX_TURNS)
+                    self.default_turns = self.config.get('default', self.DEFAULT_TURNS)
+
+                def calculate(self, task: Dict) -> int:
+                    """Calculate appropriate max_turns for task.
+
+                    Args:
+                        task: Task dict with description, type, metadata
+
+                    Returns:
+                        int: Recommended max_turns (bounded by min/max)
+                    """
+                    # Check for task type override first
+                    task_type = task.get('task_type')
+                    if task_type and task_type in self.task_type_defaults:
+                        turns = self.task_type_defaults[task_type]
+                        logger.debug(
+                            f"Using task type default for '{task_type}': {turns} turns"
+                        )
+                        return self._bound(turns)
+
+                    # Analyze task description
+                    description = task.get('description', '').lower()
+                    title = task.get('title', '').lower()
+                    combined_text = f"{title} {description}"
+
+                    # Count complexity indicators
+                    complexity = sum(
+                        1 for word in self.COMPLEX_WORDS
+                        if word in combined_text
+                    )
+
+                    scope = sum(
+                        1 for indicator in self.SCOPE_INDICATORS
+                        if indicator in combined_text
+                    )
+
+                    # Check task metadata (from ComplexityEstimate if available)
+                    estimated_files = task.get('estimated_files', 1)
+                    estimated_loc = task.get('estimated_loc', 0)
+
+                    # Decision logic (from guide)
+                    if complexity == 0 and scope == 0 and estimated_files <= 1:
+                        # Simple: Single file read, specific fix
+                        turns = 3
+                        reason = "simple (single file, no complexity indicators)"
+
+                    elif complexity <= 1 and scope == 0 and estimated_files <= 3:
+                        # Medium: Small feature, single module refactor
+                        turns = 6
+                        reason = "medium (small feature, <3 files)"
+
+                    elif complexity <= 2 or scope == 1 or estimated_files <= 8:
+                        # Complex: Complete feature, multi-file work
+                        turns = 12
+                        reason = "complex (feature, multiple files)"
+
+                    elif estimated_loc > 500 or scope >= 2:
+                        # Very Complex: Large refactor, migrations
+                        turns = 20
+                        reason = "very complex (large refactor, >500 LOC)"
+
+                    else:
+                        # Default for unknown complexity
+                        turns = self.default_turns
+                        reason = "default (complexity unknown)"
+
+                    logger.info(
+                        f"Calculated max_turns={turns} for task {task.get('id')} "
+                        f"({reason})"
+                    )
+
+                    return self._bound(turns)
+
+                def _bound(self, turns: int) -> int:
+                    """Ensure turns within configured bounds."""
+                    return max(self.min_turns, min(turns, self.max_turns))
+
+      acceptance_criteria:
+        - "MaxTurnsCalculator class implemented"
+        - "Follows guide recommendations"
+        - "Task type overrides work"
+        - "Complexity analysis works"
+        - "Bounds enforced"
+
+    # -------------------------------------------------------------------------
+    # TASK 4.2: Auto-Retry on error_max_turns
+    # -------------------------------------------------------------------------
+    task_4_2:
+      name: "Implement auto-retry on error_max_turns"
+      description: |
+        When task hits max_turns limit, automatically retry with doubled limit.
+        Use --continue flag to continue session.
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          methods:
+            - name: "execute_task()"
+              changes:
+                - "Calculate max_turns using MaxTurnsCalculator"
+                - "Catch error_max_turns exception"
+                - "Retry with doubled limit"
+                - "Use --continue flag to resume session"
+
+              implementation: |
+                def execute_task(self, task_id: int, max_iterations: int = 10) -> Dict[str, Any]:
+                    """Execute task with adaptive max_turns."""
+                    task = self.state_manager.get_task(task_id)
+
+                    # Calculate appropriate max_turns
+                    max_turns = self.max_turns_calculator.calculate(task.to_dict())
+
+                    logger.info(f"Executing task {task_id} with max_turns={max_turns}")
+
+                    # Track retry state
+                    retry_count = 0
+                    max_retries = self.config.get('orchestration.max_turns.max_retries', 1)
+
+                    while retry_count <= max_retries:
+                        try:
+                            # Execute task
+                            response = self.agent.execute_task(
+                                task_id,
+                                task.to_dict(),
+                                context={'max_turns': max_turns}
+                            )
+
+                            # Success - return
+                            return {'success': True, 'response': response}
+
+                        except AgentException as e:
+                            # Check if error_max_turns
+                            if e.context.get('subtype') == 'error_max_turns':
+                                num_turns = e.context.get('num_turns', max_turns)
+
+                                logger.warning(
+                                    f"Task {task_id} hit max_turns limit "
+                                    f"({num_turns}/{max_turns})"
+                                )
+
+                                if retry_count < max_retries:
+                                    # Retry with more turns
+                                    retry_count += 1
+                                    old_max_turns = max_turns
+                                    max_turns = max_turns * 2  # Double the limit
+
+                                    # Enforce upper bound
+                                    max_turns = min(max_turns, self.max_turns_calculator.max_turns)
+
+                                    logger.info(
+                                        f"Retrying task {task_id} (attempt {retry_count + 1}) "
+                                        f"with increased max_turns: {old_max_turns} → {max_turns}"
+                                    )
+
+                                    # Continue - next iteration of while loop
+                                    continue
+                                else:
+                                    # Max retries reached
+                                    logger.error(
+                                        f"Task {task_id} failed after {max_retries} retries "
+                                        f"(max_turns={max_turns})"
+                                    )
+                                    raise
+                            else:
+                                # Other error - don't retry
+                                raise
+
+                    # Should never reach here
+                    raise AgentException("Unexpected retry loop exit")
+
+        - path: "src/agents/claude_code_local.py"
+          methods:
+            - name: "execute_task()"
+              changes:
+                - "Pass max_turns from context to send_prompt()"
+
+              implementation: |
+                def execute_task(self, task_id: int, task: Dict[str, Any],
+                                context: Optional[Dict] = None) -> AgentResponse:
+                    """Execute task with optional max_turns."""
+                    # ... build prompt ...
+
+                    # Get max_turns from context
+                    max_turns = context.get('max_turns') if context else None
+
+                    # Send prompt with max_turns
+                    response_text = self.send_prompt(prompt, context, max_turns)
+
+                    # ... rest of implementation ...
+
+      acceptance_criteria:
+        - "max_turns calculated adaptively"
+        - "error_max_turns caught and retried"
+        - "Retry doubles limit"
+        - "Upper bound enforced"
+        - "Max retries respected"
+
+    # -------------------------------------------------------------------------
+    # TASK 4.3: Integration with Orchestrator
+    # -------------------------------------------------------------------------
+    task_4_3:
+      name: "Integrate MaxTurnsCalculator into Orchestrator"
+
+      files_to_modify:
+        - path: "src/orchestrator.py"
+          changes:
+            - "Add MaxTurnsCalculator to __init__"
+            - "Use in execute_task()"
+
+          implementation: |
+            class Orchestrator:
+                def __init__(self, config: Config):
+                    # ... existing init ...
+
+                    # Initialize max turns calculator
+                    max_turns_config = config.get('orchestration.max_turns', {})
+                    self.max_turns_calculator = MaxTurnsCalculator(max_turns_config)
+
+      acceptance_criteria:
+        - "MaxTurnsCalculator initialized"
+        - "Used in execute_task()"
+
+    # -------------------------------------------------------------------------
+    # TASK 4.4: Configuration
+    # -------------------------------------------------------------------------
+    task_4_4:
+      name: "Add max_turns configuration"
+
+      files_to_modify:
+        - path: "config/config.yaml"
+          additions: |
+            orchestration:
+              max_turns:
+                # Enable adaptive calculation
+                adaptive: true
+
+                # Fallback if adaptive fails
+                default: 10
+
+                # Task-type specific overrides
+                by_task_type:
+                  validation: 5
+                  code_generation: 12
+                  refactoring: 15
+                  debugging: 20
+                  error_analysis: 8
+                  planning: 5
+                  documentation: 3
+                  testing: 8
+
+                # Safety bounds (from guide)
+                min: 3    # Never less than 3 turns
+                max: 30   # Never more than 30 turns
+
+                # Retry behavior on error_max_turns
+                auto_retry: true
+                max_retries: 1       # Retry once with doubled limit
+                retry_multiplier: 2  # Double turns on retry
+
+      acceptance_criteria:
+        - "Configuration complete"
+        - "All options documented"
+
+    # -------------------------------------------------------------------------
+    # TASK 4.5: Testing
+    # -------------------------------------------------------------------------
+    task_4_5:
+      name: "Max turns testing"
+
+      test_files:
+        - path: "tests/orchestration/test_max_turns_calculator.py"
+          test_cases:
+            - "test_simple_task_calculation (expect 3)"
+            - "test_medium_task_calculation (expect 6)"
+            - "test_complex_task_calculation (expect 12)"
+            - "test_very_complex_task_calculation (expect 20)"
+            - "test_task_type_override"
+            - "test_bounds_enforcement"
+            - "test_default_fallback"
+
+        - path: "tests/orchestration/test_max_turns_retry.py"
+          test_cases:
+            - "test_error_max_turns_retry"
+            - "test_retry_doubles_limit"
+            - "test_max_retries_respected"
+            - "test_upper_bound_on_retry"
+
+      acceptance_criteria:
+        - "All calculation tests pass"
+        - "All retry tests pass"
+        - "Coverage >85%"
+
+  deliverables:
+    files_created:
+      - "src/orchestration/max_turns_calculator.py"
+      - "tests/orchestration/test_max_turns_calculator.py"
+      - "tests/orchestration/test_max_turns_retry.py"
+
+    files_modified:
+      - "src/orchestrator.py (max_turns integration, retry logic)"
+      - "src/agents/claude_code_local.py (pass max_turns)"
+      - "config/config.yaml (max_turns config)"
+
+    features:
+      - "Adaptive max_turns calculation"
+      - "Task type overrides"
+      - "Auto-retry on error_max_turns"
+      - "Configurable bounds and retries"
+
+# ============================================================================
+# PHASE 5: TIMEOUTS & POLISH
+# ============================================================================
+
+phase_5:
+  name: "Extended Timeouts & Polish"
+  duration: "Week 5 (3-4 days)"
+  estimated_effort: "12-16 hours"
+  priority: "MEDIUM"
+
+  description: |
+    Increase timeouts, add comprehensive logging, write documentation,
+    and polish the implementation.
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # TASK 5.1: Extended Timeouts
+    # -------------------------------------------------------------------------
+    task_5_1:
+      name: "Increase timeout to 2 hours"
+      description: "Update default timeout for complex workflows"
+
+      files_to_modify:
+        - path: "src/agents/claude_code_local.py"
+          changes:
+            - "Change default response_timeout from 60 to 7200"
+
+          implementation: |
+            def __init__(self):
+                # ... existing init ...
+
+                # Extended timeout for complex work
+                self.response_timeout: int = 7200  # 2 hours (was 60)
+
+        - path: "config/config.yaml"
+          changes:
+            - "Update default timeout documentation"
+
+          additions: |
+            agent:
+              config:
+                # Timeout for Claude Code responses
+                # 2 hours allows complex tasks to complete
+                # Max turns prevents runaway loops (separate concern)
+                response_timeout: 7200  # 2 hours
+
+      acceptance_criteria:
+        - "Default timeout is 7200s"
+        - "Configurable via config.yaml"
+        - "Documentation updated"
+
+    # -------------------------------------------------------------------------
+    # TASK 5.2: Comprehensive Logging
+    # -------------------------------------------------------------------------
+    task_5_2:
+      name: "Add detailed logging for troubleshooting"
+
+      logging_additions:
+        - location: "src/orchestrator.py"
+          logs:
+            - "Session lifecycle events (start, end, refresh)"
+            - "Context window threshold warnings"
+            - "Max turns calculations and retries"
+            - "Task execution start/end with metadata"
+
+        - location: "src/agents/claude_code_local.py"
+          logs:
+            - "JSON response metadata (tokens, turns, duration)"
+            - "Session ID tracking"
+            - "Max turns usage (X/Y turns used)"
+
+        example: |
+          # Orchestrator logs
+          logger.info(f"Starting milestone {milestone_id} - Session: {session_id[:8]}...")
+          logger.info(f"Context window at 75% - Warning threshold reached")
+          logger.info(f"Calculated max_turns=12 for task {task_id} (complex task)")
+          logger.info(f"Task {task_id} complete - {response.num_turns}/12 turns used")
+
+          # Agent logs
+          logger.debug(f"JSON metadata: {tokens:,} tokens, {duration}ms, {num_turns} turns")
+          logger.debug(f"Cache efficiency: {cache_read_pct:.1%} from cache")
+
+      acceptance_criteria:
+        - "All critical events logged"
+        - "Debug logs for troubleshooting"
+        - "Performance metrics logged"
+
+    # -------------------------------------------------------------------------
+    # TASK 5.3: Documentation
+    # -------------------------------------------------------------------------
+    task_5_3:
+      name: "Comprehensive documentation"
+
+      files_to_create:
+        - path: "docs/guides/SESSION_MANAGEMENT_GUIDE.md"
+          description: "User guide for session management"
+          content:
+            - "How milestone-based sessions work"
+            - "Context window management explained"
+            - "Max turns recommendations"
+            - "Configuration options"
+            - "Troubleshooting common issues"
+
+        - path: "docs/development/HEADLESS_MODE_IMPLEMENTATION.md"
+          description: "Technical implementation details"
+          content:
+            - "Architecture overview"
+            - "JSON parsing implementation"
+            - "Context window tracking (manual vs Claude-provided)"
+            - "Max turns calculation algorithm"
+            - "Session refresh mechanism"
+            - "Testing approach"
+
+        - path: "docs/decisions/ADR-007-headless-mode-enhancements.md"
+          description: "Architecture Decision Record"
+          content:
+            - "Context and motivation"
+            - "Decision: JSON output, session management, context tracking"
+            - "Alternatives considered"
+            - "Consequences"
+            - "Implementation details"
+
+      files_to_update:
+        - path: "README.md"
+          additions:
+            - "Session management features"
+            - "Context window auto-refresh"
+            - "Adaptive max turns"
+            - "2-hour timeout support"
+
+        - path: "CLAUDE.md"
+          additions:
+            - "Session management best practices"
+            - "Context window management"
+            - "Max turns guidelines"
+
+      acceptance_criteria:
+        - "User guide complete"
+        - "Technical implementation doc complete"
+        - "ADR-007 written"
+        - "README and CLAUDE.md updated"
+
+    # -------------------------------------------------------------------------
+    # TASK 5.4: Integration Testing
+    # -------------------------------------------------------------------------
+    task_5_4:
+      name: "End-to-end integration testing"
+
+      test_files:
+        - path: "tests/integration/test_full_milestone_execution.py"
+          description: "Complete milestone execution with all features"
+          test_cases:
+            - "test_milestone_with_session_persistence"
+            - "test_context_window_refresh_during_milestone"
+            - "test_max_turns_retry_within_milestone"
+            - "test_milestone_summary_for_next_milestone"
+            - "test_extended_timeout_long_task"
+
+      acceptance_criteria:
+        - "Full milestone execution tested"
+        - "All features integrated correctly"
+        - "Performance acceptable"
+
+    # -------------------------------------------------------------------------
+    # TASK 5.5: Configuration Validation
+    # -------------------------------------------------------------------------
+    task_5_5:
+      name: "Configuration validation and examples"
+
+      files_to_create:
+        - path: "config/config.example.yaml"
+          description: "Example configuration with all options"
+          content:
+            - "Complete session management config"
+            - "Context window thresholds"
+            - "Max turns configuration"
+            - "Extended timeouts"
+            - "Comments explaining each option"
+
+      files_to_modify:
+        - path: "src/core/config.py"
+          changes:
+            - "Validate session config on load"
+            - "Check threshold values are sane (0.0-1.0)"
+            - "Warn about deprecated options"
+
+      acceptance_criteria:
+        - "Example config complete"
+        - "Config validation implemented"
+        - "Helpful error messages for invalid config"
+
+  deliverables:
+    files_created:
+      - "docs/guides/SESSION_MANAGEMENT_GUIDE.md"
+      - "docs/development/HEADLESS_MODE_IMPLEMENTATION.md"
+      - "docs/decisions/ADR-007-headless-mode-enhancements.md"
+      - "config/config.example.yaml"
+      - "tests/integration/test_full_milestone_execution.py"
+
+    files_modified:
+      - "src/agents/claude_code_local.py (timeout)"
+      - "src/orchestrator.py (logging)"
+      - "src/core/config.py (validation)"
+      - "README.md"
+      - "CLAUDE.md"
+      - "config/config.yaml"
+
+    documentation:
+      - "Complete user guide"
+      - "Technical implementation doc"
+      - "ADR-007"
+      - "Updated project docs"
+
+# ============================================================================
+# SUCCESS CRITERIA
+# ============================================================================
+
+success_criteria:
+  phase_1:
+    - "JSON parsing works for all Claude Code responses"
+    - "Metadata extracted and stored in AgentResponse"
+    - "Context window availability determined"
+    - "Tests pass >90% coverage"
+
+  phase_2:
+    - "Milestone-based sessions implemented"
+    - "Workplan context injection working"
+    - "Session summaries generated with Qwen"
+    - "Session persistence across milestone tasks"
+    - "Tests pass >85% coverage"
+
+  phase_3:
+    - "Context window tracking implemented (Claude or manual)"
+    - "Threshold warnings at 70%"
+    - "Auto-refresh at 80%"
+    - "Emergency handling at 95%"
+    - "No unexpected context window errors"
+    - "Tests pass >85% coverage"
+
+  phase_4:
+    - "Adaptive max_turns calculation working"
+    - "Task type overrides functional"
+    - "Auto-retry on error_max_turns"
+    - "Bounds enforced correctly"
+    - "Tests pass >85% coverage"
+
+  phase_5:
+    - "2-hour timeout configured"
+    - "Comprehensive logging added"
+    - "Documentation complete"
+    - "Integration tests pass"
+    - "Config validation working"
+
+  overall:
+    - "All phases complete"
+    - "Overall test coverage >85%"
+    - "Performance acceptable (no regressions)"
+    - "Production-ready for session persistence"
+    - "Documentation comprehensive"
+
+# ============================================================================
+# RISKS & MITIGATIONS
+# ============================================================================
+
+risks:
+  - risk: "JSON parsing failures from Claude Code changes"
+    severity: "HIGH"
+    mitigation: "Comprehensive error handling, fallback to text mode, fixture-based testing"
+
+  - risk: "Context window refresh interrupts work"
+    severity: "MEDIUM"
+    mitigation: "Detailed summaries with Qwen, test continuity extensively"
+
+  - risk: "Max turns retries burn excessive tokens"
+    severity: "MEDIUM"
+    mitigation: "Limit retries to 1, enforce upper bound of 30 turns"
+
+  - risk: "Manual token tracking out of sync with actual usage"
+    severity: "MEDIUM"
+    mitigation: "Regular validation against Claude's numbers (if provided), buffer in thresholds"
+
+  - risk: "2-hour timeout still insufficient for some tasks"
+    severity: "LOW"
+    mitigation: "Configurable timeout, max_turns prevents actual runaway"
+
+  - risk: "Database migrations fail in production"
+    severity: "MEDIUM"
+    mitigation: "Test migrations in dev/staging first, backup before migration"
+
+# ============================================================================
+# TIMELINE & EFFORT
+# ============================================================================
+
+timeline:
+  total_duration: "4-5 weeks"
+  total_effort: "110-136 hours"
+
+  breakdown:
+    phase_1: "Week 1 - 24-30 hours"
+    phase_2: "Week 2 - 24-30 hours"
+    phase_3: "Week 3 - 30-36 hours (depends on Path A vs B)"
+    phase_4: "Week 4 - 20-24 hours"
+    phase_5: "Week 5 - 12-16 hours"
+
+  milestones:
+    week_1: "JSON parsing and testing complete"
+    week_2: "Session management working"
+    week_3: "Context window management implemented"
+    week_4: "Dynamic max turns complete"
+    week_5: "Documentation and polish done"
+
+# ============================================================================
+# NEXT STEPS
+# ============================================================================
+
+next_steps:
+  immediate:
+    - "Review and approve this implementation plan"
+    - "Create GitHub issues/tasks for each phase"
+    - "Set up development branch (feature/headless-enhancements)"
+
+  phase_1_start:
+    - "Test Claude Code JSON responses (TASK 1.1)"
+    - "Document all available fields"
+    - "Decide: Path A vs Path B for Phase 3"
+    - "Create database migration for AgentResponse fields"
+
+  ongoing:
+    - "Update this plan as implementation progresses"
+    - "Document findings and decisions"
+    - "Maintain test coverage >85%"
+    - "Review each phase before proceeding to next"
+
+# ============================================================================
+# REFERENCES
+# ============================================================================
+
+references:
+  guides:
+    - "docs/research/claude-code-headless-guide.md"
+    - "docs/research/claude-code-max-turns-guide.md"
+
+  analysis:
+    - "docs/development/HEADLESS_MODE_GAP_ANALYSIS.md"
+
+  current_implementation:
+    - "src/agents/claude_code_local.py"
+    - "src/orchestrator.py"
+    - "src/core/state.py"
+
+  configuration:
+    - "config/config.yaml"
+
+  project_guidelines:
+    - "CLAUDE.md"
+    - "README.md"

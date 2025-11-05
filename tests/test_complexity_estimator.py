@@ -41,7 +41,7 @@ def mock_llm_interface():
         "estimated_files": 3,
         "estimated_tokens": 5000,
         "complexity_score": 65.0,
-        "should_decompose": True,
+        "obra_suggests_decomposition": True,
         "decomposition_reason": "Task exceeds LOC threshold",
         "subtask_suggestions": [
             "Design data models and interfaces",
@@ -171,11 +171,11 @@ class TestComplexityEstimate:
             estimated_loc=250,
             estimated_files=3,
             complexity_score=65.0,
-            should_decompose=True,
-            decomposition_suggestions=["Task 1", "Task 2"],
-            parallelization_opportunities=[{"group": 1, "tasks": [1, 2]}],
+            obra_suggests_decomposition=True,
+            suggested_subtasks=["Task 1", "Task 2"],
+            suggested_parallel_groups=[{"group": 1, "tasks": [1, 2]}],
             estimated_duration_minutes=120,
-            confidence=0.75,
+            obra_suggestion_confidence=0.75,
             timestamp=now
         )
 
@@ -184,11 +184,11 @@ class TestComplexityEstimate:
         assert estimate.estimated_loc == 250
         assert estimate.estimated_files == 3
         assert estimate.complexity_score == 65.0
-        assert estimate.should_decompose is True
-        assert len(estimate.decomposition_suggestions) == 2
-        assert len(estimate.parallelization_opportunities) == 1
+        assert estimate.obra_suggests_decomposition is True
+        assert len(estimate.suggested_subtasks) == 2
+        assert len(estimate.suggested_parallel_groups) == 1
         assert estimate.estimated_duration_minutes == 120
-        assert estimate.confidence == 0.75
+        assert estimate.obra_suggestion_confidence == 0.75
         assert estimate.timestamp == now
 
     def test_complexity_estimate_to_dict(self):
@@ -199,8 +199,8 @@ class TestComplexityEstimate:
             estimated_loc=50,
             estimated_files=2,
             complexity_score=40.0,
-            should_decompose=False,
-            confidence=0.8
+            obra_suggests_decomposition=False,
+            obra_suggestion_confidence=0.8
         )
 
         data = estimate.to_dict()
@@ -211,10 +211,10 @@ class TestComplexityEstimate:
         assert data['estimated_loc'] == 50
         assert data['estimated_files'] == 2
         assert data['complexity_score'] == 40.0
-        assert data['should_decompose'] is False
-        assert data['confidence'] == 0.8
+        assert data['obra_suggests_decomposition'] is False
+        assert data['obra_suggestion_confidence'] == 0.8
         assert isinstance(data['timestamp'], str)  # ISO format
-        assert isinstance(data['decomposition_suggestions'], list)
+        assert isinstance(data['suggested_subtasks'], list)
 
     def test_complexity_estimate_from_dict(self):
         """Test ComplexityEstimate deserialization from dictionary."""
@@ -239,8 +239,8 @@ class TestComplexityEstimate:
         assert estimate.estimated_loc == 50
         assert estimate.estimated_files == 2
         assert estimate.complexity_score == 40.0
-        assert estimate.should_decompose is False
-        assert estimate.confidence == 0.8
+        assert estimate.obra_suggests_decomposition is False
+        assert estimate.obra_suggestion_confidence == 0.8
         assert isinstance(estimate.timestamp, datetime)
 
     def test_complexity_estimate_round_trip(self):
@@ -251,9 +251,9 @@ class TestComplexityEstimate:
             estimated_loc=150,
             estimated_files=4,
             complexity_score=72.5,
-            should_decompose=True,
-            decomposition_suggestions=["Step 1", "Step 2", "Step 3"],
-            confidence=0.9
+            obra_suggests_decomposition=True,
+            suggested_subtasks=["Step 1", "Step 2", "Step 3"],
+            obra_suggestion_confidence=0.9
         )
 
         # Serialize and deserialize
@@ -266,16 +266,16 @@ class TestComplexityEstimate:
         assert restored.estimated_loc == original.estimated_loc
         assert restored.estimated_files == original.estimated_files
         assert restored.complexity_score == original.complexity_score
-        assert restored.should_decompose == original.should_decompose
-        assert restored.decomposition_suggestions == original.decomposition_suggestions
-        assert restored.confidence == original.confidence
+        assert restored.obra_suggests_decomposition == original.obra_suggests_decomposition
+        assert restored.suggested_subtasks == original.suggested_subtasks
+        assert restored.obra_suggestion_confidence == original.obra_suggestion_confidence
 
     def test_complexity_estimate_get_complexity_category_simple(self):
         """Test get_complexity_category for low complexity (0-30)."""
         estimate = ComplexityEstimate(
             task_id=1, estimated_tokens=500, estimated_loc=20,
-            estimated_files=1, complexity_score=25.0, should_decompose=False,
-            confidence=0.9
+            estimated_files=1, complexity_score=25.0, obra_suggests_decomposition=False,
+            obra_suggestion_confidence=0.9
         )
         assert estimate.get_complexity_category() == "low"
 
@@ -283,8 +283,8 @@ class TestComplexityEstimate:
         """Test get_complexity_category for medium complexity (31-60)."""
         estimate = ComplexityEstimate(
             task_id=1, estimated_tokens=2000, estimated_loc=100,
-            estimated_files=2, complexity_score=45.0, should_decompose=False,
-            confidence=0.8
+            estimated_files=2, complexity_score=45.0, obra_suggests_decomposition=False,
+            obra_suggestion_confidence=0.8
         )
         assert estimate.get_complexity_category() == "medium"
 
@@ -292,8 +292,8 @@ class TestComplexityEstimate:
         """Test get_complexity_category for high complexity (61-85)."""
         estimate = ComplexityEstimate(
             task_id=1, estimated_tokens=5000, estimated_loc=250,
-            estimated_files=4, complexity_score=70.0, should_decompose=True,
-            confidence=0.7
+            estimated_files=4, complexity_score=70.0, obra_suggests_decomposition=True,
+            obra_suggestion_confidence=0.7
         )
         assert estimate.get_complexity_category() == "high"
 
@@ -301,8 +301,8 @@ class TestComplexityEstimate:
         """Test get_complexity_category for very high complexity (86-100)."""
         estimate = ComplexityEstimate(
             task_id=1, estimated_tokens=10000, estimated_loc=500,
-            estimated_files=8, complexity_score=92.0, should_decompose=True,
-            confidence=0.6
+            estimated_files=8, complexity_score=92.0, obra_suggests_decomposition=True,
+            obra_suggestion_confidence=0.6
         )
         assert estimate.get_complexity_category() == "very_high"
 
@@ -311,15 +311,15 @@ class TestComplexityEstimate:
         with pytest.raises(ValueError, match="task_id must be non-negative"):
             ComplexityEstimate(
                 task_id=-1, estimated_tokens=1000, estimated_loc=50,
-                estimated_files=2, complexity_score=40.0, should_decompose=False,
-                confidence=0.8
+                estimated_files=2, complexity_score=40.0, obra_suggests_decomposition=False,
+                obra_suggestion_confidence=0.8
             )
 
         with pytest.raises(ValueError, match="estimated_tokens must be non-negative"):
             ComplexityEstimate(
                 task_id=1, estimated_tokens=-1, estimated_loc=50,
-                estimated_files=2, complexity_score=40.0, should_decompose=False,
-                confidence=0.8
+                estimated_files=2, complexity_score=40.0, obra_suggests_decomposition=False,
+                obra_suggestion_confidence=0.8
             )
 
     def test_complexity_estimate_validation_out_of_range(self):
@@ -327,15 +327,15 @@ class TestComplexityEstimate:
         with pytest.raises(ValueError, match="complexity_score must be in"):
             ComplexityEstimate(
                 task_id=1, estimated_tokens=1000, estimated_loc=50,
-                estimated_files=2, complexity_score=150.0, should_decompose=False,
-                confidence=0.8
+                estimated_files=2, complexity_score=150.0, obra_suggests_decomposition=False,
+                obra_suggestion_confidence=0.8
             )
 
-        with pytest.raises(ValueError, match="confidence must be in"):
+        with pytest.raises(ValueError, match="obra_suggestion_confidence must be in"):
             ComplexityEstimate(
                 task_id=1, estimated_tokens=1000, estimated_loc=50,
-                estimated_files=2, complexity_score=40.0, should_decompose=False,
-                confidence=1.5
+                estimated_files=2, complexity_score=40.0, obra_suggests_decomposition=False,
+                obra_suggestion_confidence=1.5
             )
 
 
@@ -567,12 +567,12 @@ class TestTaskComplexityEstimatorHeuristics:
 
         estimate = estimator_no_llm.estimate_complexity(test_task)
 
-        # NOTE: BUG - task_id is 0 when should_decompose=False (not updated in estimate_complexity)
+        # NOTE: BUG - task_id is 0 when obra_suggests_decomposition=False (not updated in estimate_complexity)
         # assert estimate.task_id == test_task.id
         assert estimate.complexity_score < 50  # Should be relatively low complexity
-        assert estimate.should_decompose is False  # Too simple to decompose
+        assert estimate.obra_suggests_decomposition is False  # Too simple to decompose
         assert estimate.estimated_loc < 150
-        assert estimate.confidence > 0.5
+        assert estimate.obra_suggestion_confidence > 0.5
 
     def test_estimate_complexity_complex_task(self, estimator_no_llm, test_task):
         """Test complexity estimation for a complex task."""
@@ -594,13 +594,13 @@ class TestTaskComplexityEstimatorHeuristics:
 
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
-        # NOTE: When should_decompose=True, task_id SHOULD be set correctly
+        # NOTE: When obra_suggests_decomposition=True, task_id SHOULD be set correctly
         # but currently it's set to estimate.task_id (which is 0) at line 329
         # assert estimate.task_id == test_task.id
         assert estimate.complexity_score > 60  # Should be high complexity
-        assert estimate.should_decompose is True  # Should trigger decomposition
+        assert estimate.obra_suggests_decomposition is True  # Should trigger decomposition
         assert estimate.estimated_loc > 200
-        assert len(estimate.decomposition_suggestions) >= 3
+        assert len(estimate.suggested_subtasks) >= 3
 
     def test_heuristic_analysis_keywords(self, estimator_no_llm):
         """Test heuristic analysis detects high-complexity keywords."""
@@ -651,8 +651,8 @@ class TestTaskComplexityEstimatorHeuristics:
 
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
-        assert estimate.should_decompose is True
-        assert len(estimate.decomposition_suggestions) >= 3
+        assert estimate.obra_suggests_decomposition is True
+        assert len(estimate.suggested_subtasks) >= 3
 
     def test_decomposition_suggestions_valid(self, estimator_no_llm, test_task):
         """Test decomposition suggestions are actionable strings."""
@@ -661,10 +661,10 @@ class TestTaskComplexityEstimatorHeuristics:
         context = {'files': ['api.py', 'auth.py', 'db.py', 'tests.py', 'docs.py']}
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
-        if estimate.should_decompose:
-            assert len(estimate.decomposition_suggestions) >= 3
-            assert len(estimate.decomposition_suggestions) <= 7
-            for suggestion in estimate.decomposition_suggestions:
+        if estimate.obra_suggests_decomposition:
+            assert len(estimate.suggested_subtasks) >= 3
+            assert len(estimate.suggested_subtasks) <= 7
+            for suggestion in estimate.suggested_subtasks:
                 assert isinstance(suggestion, str)
                 assert len(suggestion) > 10  # Should be meaningful
 
@@ -701,8 +701,8 @@ class TestTaskComplexityEstimatorHeuristics:
             estimated_loc=300,
             estimated_files=5,
             complexity_score=75.0,
-            should_decompose=True,
-            confidence=0.8
+            obra_suggests_decomposition=True,
+            obra_suggestion_confidence=0.8
         )
 
         # Test feature implementation pattern
@@ -744,7 +744,7 @@ class TestTaskComplexityEstimatorHeuristics:
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
         # Should trigger decomposition due to thresholds
-        assert estimate.should_decompose is True
+        assert estimate.obra_suggests_decomposition is True
 
 
 # =============================================================================
@@ -786,7 +786,8 @@ class TestTaskComplexityEstimatorLLM:
         assert estimate.estimated_loc == 100
         assert estimate.estimated_files == 2
         assert estimate.complexity_score == 45.0
-        assert estimate.confidence == 0.7
+        # PHASE_5B: obra_suggestion_confidence is calculated separately (base 0.6 for heuristics)
+        assert estimate.obra_suggestion_confidence == 0.6
 
     def test_combine_estimates_heuristic_and_llm(self, estimator_with_llm):
         """Test _combine_estimates combines heuristic and LLM (40/60 split)."""
@@ -821,7 +822,7 @@ class TestTaskComplexityEstimatorLLM:
         assert estimate.estimated_tokens == expected_tokens
         assert estimate.estimated_loc == expected_loc
         assert estimate.complexity_score == expected_score
-        assert estimate.should_decompose is True  # LLM confidence >= 0.7
+        assert estimate.obra_suggests_decomposition is True  # LLM confidence >= 0.7
 
     def test_llm_failure_graceful_degradation(self, estimator_with_llm, test_task):
         """Test estimator falls back to heuristics when LLM fails."""
@@ -834,7 +835,7 @@ class TestTaskComplexityEstimatorLLM:
         # Should still return valid estimate using heuristics
         assert estimate.estimated_loc > 0
         assert estimate.complexity_score > 0
-        assert 0 <= estimate.confidence <= 1
+        assert 0 <= estimate.obra_suggestion_confidence <= 1
 
     def test_llm_analysis_invalid_json_response(self, estimator_with_llm):
         """Test _parse_llm_response handles invalid JSON gracefully."""
@@ -995,8 +996,9 @@ class TestParallelizationAnalysis:
 
         estimate = ComplexityEstimate(
             task_id=100, estimated_tokens=5000, estimated_loc=250,
-            estimated_files=4, complexity_score=70.0, should_decompose=True,
-            estimated_duration_minutes=180, confidence=0.8
+            estimated_files=4, complexity_score=70.0, obra_suggests_decomposition=True,
+            estimated_duration_minutes=180,
+            obra_suggestion_confidence=0.8
         )
 
         subtasks = estimator_no_llm._create_subtasks_from_suggestions(
@@ -1113,9 +1115,9 @@ class TestComplexityEstimatorIntegration:
         # assert estimate.task_id == test_task.id
         assert estimate.estimated_loc > 0
         assert estimate.complexity_score > 0
-        assert estimate.should_decompose is True
-        assert len(estimate.decomposition_suggestions) >= 3
-        assert len(estimate.parallelization_opportunities) >= 0
+        assert estimate.obra_suggests_decomposition is True
+        assert len(estimate.suggested_subtasks) >= 3
+        assert len(estimate.suggested_parallel_groups) >= 0
 
     def test_estimate_complexity_end_to_end_with_parallelization(
         self, estimator_no_llm, test_task
@@ -1136,12 +1138,12 @@ class TestComplexityEstimatorIntegration:
 
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
-        if estimate.should_decompose:
+        if estimate.obra_suggests_decomposition:
             # Should have parallelization opportunities
-            assert len(estimate.parallelization_opportunities) > 0
+            assert len(estimate.suggested_parallel_groups) > 0
 
             # Each opportunity should have required fields
-            for opp in estimate.parallelization_opportunities:
+            for opp in estimate.suggested_parallel_groups:
                 assert 'group_id' in opp
                 assert 'subtask_ids' in opp
                 assert 'estimated_duration_minutes' in opp
@@ -1179,15 +1181,15 @@ class TestComplexityEstimatorIntegration:
         estimate = estimator_no_llm.estimate_complexity(test_task, context=context)
 
         # Step 2: Verify decomposition occurred
-        assert estimate.should_decompose is True
-        assert len(estimate.decomposition_suggestions) >= 3
+        assert estimate.obra_suggests_decomposition is True
+        assert len(estimate.suggested_subtasks) >= 3
 
         # Step 3: Verify subtasks were created (internal to estimator)
         # This is tested via parallelization_opportunities existing
-        if estimate.parallelization_opportunities:
-            assert len(estimate.parallelization_opportunities) > 0
+        if estimate.suggested_parallel_groups:
+            assert len(estimate.suggested_parallel_groups) > 0
 
             # Verify structure
-            for opp in estimate.parallelization_opportunities:
+            for opp in estimate.suggested_parallel_groups:
                 assert isinstance(opp['subtask_ids'], list)
                 assert len(opp['subtask_ids']) > 0

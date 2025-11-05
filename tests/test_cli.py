@@ -16,10 +16,27 @@ def runner():
 
 
 @pytest.fixture
-def isolated_fs(runner):
-    """Create isolated filesystem for testing."""
-    with runner.isolated_filesystem():
-        yield
+def isolated_fs(runner, tmp_path, monkeypatch):
+    """Create isolated filesystem for testing with writable database.
+
+    Uses pytest's tmp_path instead of Click's isolated_filesystem to avoid
+    readonly database issues.
+    """
+    # Change to temp directory
+    monkeypatch.chdir(tmp_path)
+
+    # Reset StateManager singleton to ensure each test gets fresh database
+    StateManager._instance = None
+
+    yield tmp_path
+
+    # Cleanup: close and reset StateManager after test
+    if StateManager._instance is not None:
+        try:
+            StateManager._instance.close()
+        except Exception:
+            pass
+        StateManager._instance = None
 
 
 @pytest.fixture

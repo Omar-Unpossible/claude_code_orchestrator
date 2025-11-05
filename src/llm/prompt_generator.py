@@ -413,6 +413,10 @@ class PromptGenerator:
         if not text:
             return ''
 
+        # Handle zero/negative max_tokens - return empty string
+        if max_tokens <= 0:
+            return ''
+
         current_tokens = self.llm_interface.estimate_tokens(text)
 
         if current_tokens <= max_tokens:

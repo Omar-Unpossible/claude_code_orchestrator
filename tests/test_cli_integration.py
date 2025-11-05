@@ -44,7 +44,7 @@ database:
   url: sqlite:///{test_runtime_dir}/data/test.db
 
 agent:
-  type: mock
+  type: claude-code-local
   workspace_path: {test_runtime_dir}/workspace
 
 llm:

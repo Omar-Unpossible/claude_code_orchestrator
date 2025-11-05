@@ -212,18 +212,28 @@ class DecisionEngine:
             quality_score = context.get('quality_score', 0.0)
             confidence_score = context.get('confidence_score', 0.0)
 
-            # Assess overall confidence
-            overall_confidence = self.assess_confidence(
-                context.get('response', ''),
-                validation_result
-            )
+            # SIMPLIFIED DECISION LOGIC (Nov 2025)
+            # Trust LLM quality scores directly instead of heuristic confidence
+            # This eliminates the clarification loop caused by conservative heuristics
 
-            # Check if breakpoint should be triggered
+            # Evaluate quality and validation
+            quality_acceptable = quality_score >= 0.7
+            quality_marginal = 0.5 <= quality_score < 0.7
+            quality_poor = quality_score < 0.5
+            validation_passed = validation_result.get('complete', False) and \
+                              validation_result.get('valid', False)
+
+            # Log decision factors for debugging
+            logger.info(f"DECISION: quality={quality_score:.2f}, "
+                       f"validation={validation_passed}, "
+                       f"task={task.id if task else 'N/A'}")
+
+            # Check if breakpoint should be triggered (safety gate)
             should_breakpoint, reason = self.should_trigger_breakpoint(context)
             if should_breakpoint:
                 action = Action(
                     type=self.ACTION_ESCALATE,
-                    confidence=overall_confidence,
+                    confidence=quality_score,
                     explanation=f"Triggering breakpoint: {reason}",
                     metadata={'breakpoint_reason': reason},
                     timestamp=datetime.now(UTC)
@@ -232,21 +242,16 @@ class DecisionEngine:
                 self._record_decision(action, context)
                 return action
 
-            # Evaluate quality
-            quality_acceptable = quality_score >= 0.7
-            validation_passed = validation_result.get('complete', False) and \
-                              validation_result.get('valid', False)
+            # DECISION LOGIC (simplified, LLM-based)
 
-            # Decision logic based on confidence and quality
-            if overall_confidence >= self._high_confidence and \
-               validation_passed and quality_acceptable:
-                # High confidence, good quality -> Proceed
+            # 1. PROCEED: Validation + Quality pass
+            if validation_passed and quality_acceptable:
                 action = Action(
                     type=self.ACTION_PROCEED,
-                    confidence=overall_confidence,
+                    confidence=quality_score,
                     explanation=(
-                        f"High confidence ({overall_confidence:.2f}), "
-                        f"quality score {quality_score:.2f}, validation passed"
+                        f"Quality acceptable ({quality_score:.2f}), "
+                        f"validation passed - proceeding"
                     ),
                     metadata={
                         'quality_score': quality_score,
@@ -255,14 +260,30 @@ class DecisionEngine:
                     timestamp=datetime.now(UTC)
                 )
 
-            elif self._medium_confidence <= overall_confidence < self._high_confidence:
-                # Medium confidence -> Clarify
+            # 2. CRITICAL: Validation failed OR quality very low
+            elif not validation_passed or quality_poor:
+                action = Action(
+                    type=self.ACTION_ESCALATE,
+                    confidence=quality_score,
+                    explanation=(
+                        f"Critical issue: validation={validation_passed}, "
+                        f"quality={quality_score:.2f} - escalating"
+                    ),
+                    metadata={
+                        'validation': validation_result,
+                        'quality_score': quality_score
+                    },
+                    timestamp=datetime.now(UTC)
+                )
+
+            # 3. CLARIFY: Quality marginal (0.5-0.7)
+            elif quality_marginal:
                 issues = self._identify_ambiguities(context)
                 action = Action(
                     type=self.ACTION_CLARIFY,
-                    confidence=overall_confidence,
+                    confidence=quality_score,
                     explanation=(
-                        f"Medium confidence ({overall_confidence:.2f}), "
+                        f"Marginal quality ({quality_score:.2f}), "
                         f"requesting clarification on {len(issues)} issues"
                     ),
                     metadata={
@@ -272,33 +293,20 @@ class DecisionEngine:
                     timestamp=datetime.now(UTC)
                 )
 
-            elif overall_confidence < self._medium_confidence:
-                # Low confidence -> Escalate
-                action = Action(
-                    type=self.ACTION_ESCALATE,
-                    confidence=overall_confidence,
-                    explanation=(
-                        f"Low confidence ({overall_confidence:.2f}), "
-                        "human intervention required"
-                    ),
-                    metadata={
-                        'confidence_score': confidence_score,
-                        'quality_score': quality_score
-                    },
-                    timestamp=datetime.now(UTC)
-                )
-
+            # 4. RETRY: Other edge cases
             else:
-                # Default: retry
                 action = Action(
                     type=self.ACTION_RETRY,
-                    confidence=overall_confidence,
-                    explanation="Unclear decision, retrying with modifications",
+                    confidence=quality_score,
+                    explanation=(
+                        f"Unclear state (quality={quality_score:.2f}, "
+                        f"validation={validation_passed}), retrying"
+                    ),
                     metadata={'retry_count': context.get('retry_count', 0) + 1},
                     timestamp=datetime.now(UTC)
                 )
 
-            logger.info(f"Decision: {action.type.upper()} (confidence: {action.confidence:.2f})")
+            logger.info(f"Decision: {action.type.upper()} (quality: {quality_score:.2f})")
             self._record_decision(action, context)
             return action
 

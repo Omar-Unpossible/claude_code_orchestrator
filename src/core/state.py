@@ -25,7 +25,7 @@ from src.core.models import (
     Base, ProjectState, Task, Interaction, Checkpoint,
     BreakpointEvent, UsageTracking, FileState, PatternLearning,
     ParameterEffectiveness, PromptRuleViolation, ComplexityEstimate,
-    ParallelAgentAttempt,
+    ParallelAgentAttempt, SessionRecord, ContextWindowUsage,
     TaskStatus, TaskAssignee, InteractionSource, BreakpointSeverity,
     ProjectStatus
 )
@@ -453,9 +453,24 @@ class StateManager:
 
                     # Update metadata
                     if metadata:
+                        # Initialize task.task_metadata if None
+                        if task.task_metadata is None:
+                            task.task_metadata = {}
+                        # Merge new metadata into task.task_metadata dict
+                        metadata_updated = False
                         for key, value in metadata.items():
-                            if hasattr(task, key):
+                            # Check if this is a direct Task column attribute
+                            if hasattr(task, key) and key in ['retry_count', 'max_retries', 'result', 'context']:
                                 setattr(task, key, value)
+                            else:
+                                # Store in task_metadata JSON field for non-column data
+                                task.task_metadata[key] = value
+                                metadata_updated = True
+
+                        # Mark task_metadata as modified for SQLAlchemy to detect changes
+                        if metadata_updated:
+                            from sqlalchemy.orm import attributes
+                            attributes.flag_modified(task, 'task_metadata')
 
                     logger.info(f"Updated task {task_id} status: {status.value}")
                     return task
@@ -1564,6 +1579,515 @@ class StateManager:
                 logger.error(f"Failed to get parallel attempts: {e}")
                 raise DatabaseException(
                     operation='get_parallel_attempts',
+                    details=str(e)
+                ) from e
+
+    # ========================================================================
+    # Session Management Methods (Iterative Orchestration)
+    # ========================================================================
+
+    def create_session_record(
+        self,
+        session_id: str,
+        project_id: int,
+        milestone_id: Optional[int] = None,
+        task_id: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> SessionRecord:
+        """Create a new session record.
+
+        Creates a session record to track Claude Code session lifecycle.
+        Sessions maintain context across multiple tasks within a milestone,
+        or track individual iterations for standalone tasks.
+
+        Args:
+            session_id: Claude Code session UUID
+            project_id: Associated project ID
+            milestone_id: Optional milestone ID being executed
+            task_id: Optional task ID for per-iteration tracking (BUG-PHASE4-006 fix)
+            metadata: Optional metadata dict (reserved for future use)
+
+        Returns:
+            Created SessionRecord
+
+        Raises:
+            DatabaseException: If creation fails
+
+        Example:
+            >>> session = state_manager.create_session_record(
+            ...     session_id='abc123',
+            ...     project_id=1,
+            ...     milestone_id=5,
+            ...     task_id=10,
+            ...     metadata={'iteration': 1}
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session_record = SessionRecord(
+                        session_id=session_id,
+                        project_id=project_id,
+                        milestone_id=milestone_id,
+                        task_id=task_id,
+                        started_at=datetime.now(UTC),
+                        status='active',
+                        total_tokens=0,
+                        total_turns=0,
+                        total_cost_usd=0.0
+                    )
+                    session = self._get_session()
+                    session.add(session_record)
+                    session.flush()
+                    logger.info(
+                        f"Created session record: {session_id[:8]}... "
+                        f"(project={project_id}, milestone={milestone_id}, task={task_id})"
+                    )
+                    return session_record
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='create_session_record',
+                    details=str(e)
+                ) from e
+
+    def complete_session_record(
+        self,
+        session_id: str,
+        ended_at: datetime
+    ) -> SessionRecord:
+        """Mark a session as completed.
+
+        Updates session status to 'completed' and sets end timestamp.
+
+        Args:
+            session_id: Claude Code session UUID
+            ended_at: Session end timestamp
+
+        Returns:
+            Updated SessionRecord
+
+        Raises:
+            DatabaseException: If update fails or session not found
+
+        Example:
+            >>> from datetime import datetime, UTC
+            >>> session = state_manager.complete_session_record(
+            ...     session_id='abc123',
+            ...     ended_at=datetime.now(UTC)
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    session_record = session.query(SessionRecord).filter(
+                        SessionRecord.session_id == session_id
+                    ).first()
+
+                    if not session_record:
+                        raise DatabaseException(
+                            operation='complete_session_record',
+                            details=f'Session {session_id} not found'
+                        )
+
+                    session_record.status = 'completed'
+                    session_record.ended_at = ended_at
+
+                    logger.info(f"Completed session: {session_id[:8]}...")
+                    return session_record
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='complete_session_record',
+                    details=str(e)
+                ) from e
+
+    def save_session_summary(
+        self,
+        session_id: str,
+        summary: str
+    ) -> SessionRecord:
+        """Save generated summary to session record.
+
+        Stores the LLM-generated summary of session work for milestone transitions.
+
+        Args:
+            session_id: Claude Code session UUID
+            summary: Generated summary text
+
+        Returns:
+            Updated SessionRecord
+
+        Raises:
+            DatabaseException: If update fails or session not found
+
+        Example:
+            >>> session = state_manager.save_session_summary(
+            ...     session_id='abc123',
+            ...     summary='Completed tasks 1-3, all tests passing'
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    session_record = session.query(SessionRecord).filter(
+                        SessionRecord.session_id == session_id
+                    ).first()
+
+                    if not session_record:
+                        raise DatabaseException(
+                            operation='save_session_summary',
+                            details=f'Session {session_id} not found'
+                        )
+
+                    session_record.summary = summary
+
+                    logger.debug(
+                        f"Saved summary for session {session_id[:8]}... "
+                        f"({len(summary)} chars)"
+                    )
+                    return session_record
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='save_session_summary',
+                    details=str(e)
+                ) from e
+
+    def get_session_record(self, session_id: str) -> Optional[SessionRecord]:
+        """Get session record by session ID.
+
+        Args:
+            session_id: Claude Code session UUID
+
+        Returns:
+            SessionRecord or None if not found
+
+        Example:
+            >>> session = state_manager.get_session_record('abc123')
+            >>> if session:
+            ...     print(f"Session status: {session.status}")
+        """
+        with self._lock:
+            session = self._get_session()
+            return session.query(SessionRecord).filter(
+                SessionRecord.session_id == session_id
+            ).first()
+
+    def get_latest_session_for_milestone(
+        self,
+        milestone_id: int
+    ) -> Optional[SessionRecord]:
+        """Get the most recent session for a milestone.
+
+        Useful for session continuity and context management.
+
+        Args:
+            milestone_id: Milestone ID
+
+        Returns:
+            SessionRecord or None if no session exists for milestone
+
+        Example:
+            >>> session = state_manager.get_latest_session_for_milestone(5)
+            >>> if session and session.summary:
+            ...     print(f"Previous work: {session.summary}")
+        """
+        with self._lock:
+            session = self._get_session()
+            return session.query(SessionRecord).filter(
+                SessionRecord.milestone_id == milestone_id
+            ).order_by(desc(SessionRecord.started_at)).first()
+
+    def get_interactions_for_session(
+        self,
+        session_id: str
+    ) -> List[Interaction]:
+        """Get all interactions that occurred in a session.
+
+        Retrieves interactions linked to this session via agent_session_id.
+
+        Args:
+            session_id: Claude Code session UUID
+
+        Returns:
+            List of Interaction records from this session
+
+        Example:
+            >>> interactions = state_manager.get_interactions_for_session('abc123')
+            >>> total_tokens = sum(i.total_tokens for i in interactions)
+        """
+        with self._lock:
+            session = self._get_session()
+            return session.query(Interaction).filter(
+                Interaction.agent_session_id == session_id
+            ).order_by(Interaction.timestamp).all()
+
+    def update_session_usage(
+        self,
+        session_id: str,
+        tokens: int,
+        turns: int,
+        cost: float
+    ) -> SessionRecord:
+        """Update cumulative usage for a session.
+
+        Updates cumulative token count, turn count, and cost.
+        Used for context window management.
+
+        Args:
+            session_id: Claude Code session UUID
+            tokens: Tokens to add to cumulative total
+            turns: Turns to add to cumulative total
+            cost: Cost (USD) to add to cumulative total
+
+        Returns:
+            Updated SessionRecord
+
+        Raises:
+            DatabaseException: If update fails or session not found
+
+        Example:
+            >>> session = state_manager.update_session_usage(
+            ...     session_id='abc123',
+            ...     tokens=1500,
+            ...     turns=1,
+            ...     cost=0.05
+            ... )
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    session_record = session.query(SessionRecord).filter(
+                        SessionRecord.session_id == session_id
+                    ).first()
+
+                    if not session_record:
+                        raise DatabaseException(
+                            operation='update_session_usage',
+                            details=f'Session {session_id} not found'
+                        )
+
+                    # Add to cumulative totals
+                    session_record.total_tokens += tokens
+                    session_record.total_turns += turns
+                    session_record.total_cost_usd += cost
+
+                    logger.debug(
+                        f"Updated session usage {session_id[:8]}...: "
+                        f"tokens={session_record.total_tokens}, "
+                        f"turns={session_record.total_turns}, "
+                        f"cost=${session_record.total_cost_usd:.2f}"
+                    )
+                    return session_record
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='update_session_usage',
+                    details=str(e)
+                ) from e
+
+    # ========================================================================
+    # Token Tracking Methods (Context Window Management - Phase 3)
+    # ========================================================================
+
+    def add_session_tokens(
+        self,
+        session_id: str,
+        task_id: int,
+        tokens_dict: Dict[str, int]
+    ) -> ContextWindowUsage:
+        """Add tokens to cumulative session total.
+
+        Creates a ContextWindowUsage record with cumulative token count.
+        Calculates new cumulative total from previous records + current tokens.
+
+        Args:
+            session_id: Claude Code session UUID
+            task_id: Task ID that generated these tokens
+            tokens_dict: Token breakdown with keys:
+                - total_tokens: Sum to add to cumulative
+                - input_tokens: Input tokens for this interaction
+                - cache_creation_tokens: Tokens cached in this interaction
+                - cache_read_tokens: Tokens read from cache
+                - output_tokens: Output tokens for this interaction
+
+        Returns:
+            Created ContextWindowUsage record with cumulative total
+
+        Raises:
+            DatabaseException: If creation fails
+
+        Example:
+            >>> usage = state_manager.add_session_tokens(
+            ...     session_id='abc123',
+            ...     task_id=5,
+            ...     tokens_dict={
+            ...         'total_tokens': 1500,
+            ...         'input_tokens': 1000,
+            ...         'cache_creation_tokens': 200,
+            ...         'cache_read_tokens': 100,
+            ...         'output_tokens': 500
+            ...     }
+            ... )
+            >>> print(f"Cumulative tokens: {usage.cumulative_tokens}")
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+
+                    # Get previous cumulative total
+                    previous = session.query(ContextWindowUsage).filter(
+                        ContextWindowUsage.session_id == session_id
+                    ).order_by(desc(ContextWindowUsage.timestamp)).first()
+
+                    previous_total = previous.cumulative_tokens if previous else 0
+
+                    # Calculate new cumulative total
+                    new_cumulative = previous_total + tokens_dict['total_tokens']
+
+                    # Create new usage record
+                    usage = ContextWindowUsage(
+                        session_id=session_id,
+                        task_id=task_id,
+                        cumulative_tokens=new_cumulative,
+                        input_tokens=tokens_dict.get('input_tokens', 0),
+                        cache_creation_tokens=tokens_dict.get('cache_creation_tokens', 0),
+                        cache_read_tokens=tokens_dict.get('cache_read_tokens', 0),
+                        output_tokens=tokens_dict.get('output_tokens', 0)
+                    )
+
+                    session.add(usage)
+                    session.flush()
+
+                    logger.debug(
+                        f"Added {tokens_dict['total_tokens']} tokens to session {session_id[:8]}...: "
+                        f"cumulative={new_cumulative}"
+                    )
+                    return usage
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='add_session_tokens',
+                    details=str(e)
+                ) from e
+
+    def get_session_token_usage(self, session_id: str) -> int:
+        """Get cumulative token count for session.
+
+        Queries the latest ContextWindowUsage record to get current cumulative total.
+
+        Args:
+            session_id: Claude Code session UUID
+
+        Returns:
+            Cumulative token count (0 if no records exist)
+
+        Example:
+            >>> tokens = state_manager.get_session_token_usage('abc123')
+            >>> print(f"Session has used {tokens:,} tokens")
+        """
+        with self._lock:
+            try:
+                session = self._get_session()
+                latest = session.query(ContextWindowUsage).filter(
+                    ContextWindowUsage.session_id == session_id
+                ).order_by(desc(ContextWindowUsage.timestamp)).first()
+
+                return latest.cumulative_tokens if latest else 0
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get session token usage: {e}")
+                raise DatabaseException(
+                    operation='get_session_token_usage',
+                    details=str(e)
+                ) from e
+
+    def reset_session_tokens(self, session_id: str) -> None:
+        """Reset token tracking for new session.
+
+        Note: This is a no-op since fresh sessions automatically start at 0.
+        We don't delete history - new session_id means fresh start.
+
+        Args:
+            session_id: Claude Code session UUID (unused, for API consistency)
+
+        Example:
+            >>> # When starting fresh session, no reset needed
+            >>> state_manager.reset_session_tokens('new_session_123')
+            >>> # First add_session_tokens() will start at cumulative=0
+        """
+        # No-op: Fresh sessions start at 0 automatically
+        # History is preserved (not deleted) for analysis
+        pass
+
+    def get_task_session_metrics(self, task_id: int) -> Dict[str, Any]:
+        """Aggregate session metrics across all iterations of a task.
+
+        BUG-PHASE4-006 FIX: With per-iteration sessions, each task may have
+        multiple session records (one per iteration). This method aggregates
+        all session metrics at the task level for reporting and analysis.
+
+        Args:
+            task_id: Task ID to aggregate metrics for
+
+        Returns:
+            Dict with aggregated metrics:
+            - total_tokens: Sum of all session tokens across iterations
+            - total_turns: Sum of all turns across iterations
+            - total_cost: Sum of all costs across iterations
+            - num_iterations: Number of sessions (iterations) for this task
+            - avg_tokens_per_iteration: Average tokens per iteration
+            - sessions: List of individual session records with their metrics
+
+        Raises:
+            DatabaseException: If query fails
+
+        Example:
+            >>> metrics = state_manager.get_task_session_metrics(task_id=123)
+            >>> print(f"Task used {metrics['total_tokens']:,} tokens across "
+            ...       f"{metrics['num_iterations']} iterations")
+            >>> print(f"Average: {metrics['avg_tokens_per_iteration']:.0f} tokens/iteration")
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+
+                    # Query all sessions for this task
+                    sessions = session.query(SessionRecord).filter(
+                        SessionRecord.task_id == task_id
+                    ).order_by(SessionRecord.started_at).all()
+
+                    if not sessions:
+                        # No sessions found - return zeros
+                        return {
+                            'total_tokens': 0,
+                            'total_turns': 0,
+                            'total_cost': 0.0,
+                            'num_iterations': 0,
+                            'avg_tokens_per_iteration': 0.0,
+                            'sessions': []
+                        }
+
+                    # Aggregate metrics
+                    total_tokens = sum(s.total_tokens or 0 for s in sessions)
+                    total_turns = sum(s.total_turns or 0 for s in sessions)
+                    total_cost = sum(s.total_cost_usd or 0.0 for s in sessions)
+                    num_iterations = len(sessions)
+                    avg_tokens = total_tokens / num_iterations if num_iterations > 0 else 0.0
+
+                    return {
+                        'total_tokens': total_tokens,
+                        'total_turns': total_turns,
+                        'total_cost': total_cost,
+                        'num_iterations': num_iterations,
+                        'avg_tokens_per_iteration': avg_tokens,
+                        'sessions': [s.to_dict() for s in sessions]
+                    }
+
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to get task session metrics: {e}")
+                raise DatabaseException(
+                    operation='get_task_session_metrics',
                     details=str(e)
                 ) from e
 

@@ -17,6 +17,8 @@ class MockAgent(AgentPlugin):
         super().__init__()
         self._response = "Mock response"
         self._initialized = False
+        self.use_session_persistence = False  # Match real agent interface
+        self.session_id = None  # Match real agent interface
 
     def initialize(self, config: Dict[str, Any]) -> None:
         """Initialize mock agent.
@@ -99,6 +101,14 @@ class MockAgent(AgentPlugin):
 
     def get_file_changes(self) -> Dict[str, Any]:
         """Get file changes (mock).
+
+        Returns:
+            Empty dict for mock agent
+        """
+        return {}
+
+    def get_last_metadata(self) -> Dict[str, Any]:
+        """Get metadata from last interaction (mock).
 
         Returns:
             Empty dict for mock agent

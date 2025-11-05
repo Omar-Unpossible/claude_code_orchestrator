@@ -1,0 +1,540 @@
+"""Tests for session management functionality (Phase 2, Task 2.5).
+
+Tests session lifecycle, milestone execution, and context injection.
+"""
+
+import pytest
+import uuid
+from datetime import datetime, UTC
+from unittest.mock import Mock, MagicMock, patch, call
+
+from src.core.state import StateManager
+from src.core.models import SessionRecord, ProjectState, Task, InteractionSource
+from src.core.config import Config
+from src.core.exceptions import DatabaseException
+from src.orchestrator import Orchestrator
+
+
+class TestSessionRecordModel:
+    """Test SessionRecord database model."""
+
+    def test_session_record_creation(self, test_config):
+        """Test creating a session record."""
+        state_manager = StateManager(database_url='sqlite:///:memory:')
+
+        # Create project first
+        project = state_manager.create_project(
+            name="Test Project",
+            description="Test",
+            working_dir="/test"
+        )
+
+        # Create session
+        session_id = str(uuid.uuid4())
+        session = state_manager.create_session_record(
+            session_id=session_id,
+            project_id=project.id,
+            milestone_id=1
+        )
+
+        assert session is not None
+        assert session.session_id == session_id
+        assert session.project_id == project.id
+        assert session.milestone_id == 1
+        assert session.status == 'active'
+        assert session.total_tokens == 0
+        assert session.total_turns == 0
+        assert session.total_cost_usd == 0.0
+
+    def test_session_record_to_dict(self):
+        """Test SessionRecord serialization."""
+        session = SessionRecord()
+        session.id = 1
+        session.session_id = "test-session-123"
+        session.project_id = 5
+        session.milestone_id = 3
+        session.status = 'completed'
+        session.total_tokens = 10000
+        session.started_at = datetime(2025, 1, 1, 12, 0, 0)
+
+        data = session.to_dict()
+
+        assert data['id'] == 1
+        assert data['session_id'] == "test-session-123"
+        assert data['project_id'] == 5
+        assert data['milestone_id'] == 3
+        assert data['status'] == 'completed'
+        assert data['total_tokens'] == 10000
+
+
+class TestStateManagerSessionMethods:
+    """Test StateManager session management methods."""
+
+    @pytest.fixture
+    def state_manager(self):
+        """Create StateManager with in-memory database."""
+        sm = StateManager(database_url='sqlite:///:memory:')
+        return sm
+
+    @pytest.fixture
+    def test_project(self, state_manager):
+        """Create test project."""
+        return state_manager.create_project(
+            name="Test Project",
+            description="Test",
+            working_dir="/test"
+        )
+
+    def test_create_session_record(self, state_manager, test_project):
+        """Test creating session record."""
+        session_id = str(uuid.uuid4())
+
+        session = state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        assert session.session_id == session_id
+        assert session.project_id == test_project.id
+        assert session.milestone_id == 5
+        assert session.status == 'active'
+
+    def test_complete_session_record(self, state_manager, test_project):
+        """Test completing session record."""
+        session_id = str(uuid.uuid4())
+        session = state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id
+        )
+
+        ended_at = datetime.now(UTC)
+        completed = state_manager.complete_session_record(
+            session_id=session_id,
+            ended_at=ended_at
+        )
+
+        assert completed.status == 'completed'
+        assert completed.ended_at is not None
+
+    def test_save_session_summary(self, state_manager, test_project):
+        """Test saving session summary."""
+        session_id = str(uuid.uuid4())
+        session = state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id
+        )
+
+        summary = "This session completed tasks X, Y, and Z."
+        updated = state_manager.save_session_summary(
+            session_id=session_id,
+            summary=summary
+        )
+
+        assert updated.summary == summary
+
+    def test_get_session_record(self, state_manager, test_project):
+        """Test retrieving session by ID."""
+        session_id = str(uuid.uuid4())
+        state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id
+        )
+
+        retrieved = state_manager.get_session_record(session_id)
+
+        assert retrieved is not None
+        assert retrieved.session_id == session_id
+
+    def test_get_session_record_not_found(self, state_manager):
+        """Test getting non-existent session returns None."""
+        result = state_manager.get_session_record("non-existent-session")
+
+        assert result is None
+
+    def test_get_latest_session_for_milestone(self, state_manager, test_project):
+        """Test getting most recent session for milestone."""
+        # Create multiple sessions for same milestone
+        session1 = state_manager.create_session_record(
+            session_id=str(uuid.uuid4()),
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        # Wait a moment to ensure different timestamps
+        import time
+        time.sleep(0.01)
+
+        session2 = state_manager.create_session_record(
+            session_id=str(uuid.uuid4()),
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        latest = state_manager.get_latest_session_for_milestone(5)
+
+        # Should get the most recent one
+        assert latest.id == session2.id
+
+    def test_get_interactions_for_session(self, state_manager, test_project):
+        """Test retrieving interactions for a session."""
+        session_id = str(uuid.uuid4())
+
+        # Create task
+        task = state_manager.create_task(
+            project_id=test_project.id,
+            task_data={
+                'title': "Test Task",
+                'description': "Test",
+                'assigned_to': "claude_code"
+            }
+        )
+
+        # This would require interactions to be created with agent_session_id
+        # For now, just test that it doesn't crash
+        interactions = state_manager.get_interactions_for_session(session_id)
+
+        assert isinstance(interactions, list)
+
+    def test_update_session_usage(self, state_manager, test_project):
+        """Test updating session usage metrics."""
+        session_id = str(uuid.uuid4())
+        session = state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id
+        )
+
+        # Update usage
+        updated = state_manager.update_session_usage(
+            session_id=session_id,
+            tokens=1000,
+            turns=2,
+            cost=0.05
+        )
+
+        assert updated.total_tokens == 1000
+        assert updated.total_turns == 2
+        assert updated.total_cost_usd == 0.05
+
+        # Update again (should accumulate)
+        updated2 = state_manager.update_session_usage(
+            session_id=session_id,
+            tokens=500,
+            turns=1,
+            cost=0.02
+        )
+
+        assert updated2.total_tokens == 1500
+        assert updated2.total_turns == 3
+        assert updated2.total_cost_usd == 0.07
+
+
+class TestOrchestratorSessionLifecycle:
+    """Test Orchestrator session lifecycle methods."""
+
+    @pytest.fixture
+    def orchestrator(self, test_config, tmp_path):
+        """Create orchestrator for testing."""
+        # Modify test_config directly
+        test_config._config['database']['url'] = 'sqlite:///:memory:'
+        test_config._config['agent']['local'] = {'workspace_path': str(tmp_path)}
+
+        orch = Orchestrator(config=test_config)
+
+        # Mock LLM initialization to avoid Ollama connection
+        with patch.object(orch, '_initialize_llm'):
+            orch.initialize()
+
+        # Set up mock LLM interface and components that are normally created in _initialize_llm
+        orch.llm_interface = Mock()
+        orch.response_validator = Mock()
+        orch.prompt_generator = Mock()
+        orch.prompt_generator.generate_prompt = Mock(return_value="Test prompt")
+
+        return orch
+
+    @pytest.fixture
+    def test_project(self, orchestrator, request, tmp_path):
+        """Create test project with unique name."""
+        # Use test name to ensure unique project names
+        project_name = f"Test Project - {request.node.name}"
+        return orchestrator.state_manager.create_project(
+            name=project_name,
+            description="Test",
+            working_dir=str(tmp_path)  # Use tmp_path instead of /test
+        )
+
+    def test_start_milestone_session(self, orchestrator, test_project):
+        """Test starting a milestone session."""
+        session_id = orchestrator._start_milestone_session(
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        # Verify session created
+        assert session_id is not None
+        assert len(session_id) == 36  # UUID format
+
+        # Verify in database
+        session = orchestrator.state_manager.get_session_record(session_id)
+        assert session is not None
+        assert session.milestone_id == 5
+        assert session.status == 'active'
+
+    def test_end_milestone_session(self, orchestrator, test_project):
+        """Test ending a milestone session."""
+        session_id = orchestrator._start_milestone_session(
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        # Mock LLM for summary generation
+        with patch.object(orchestrator.llm_interface, 'generate', return_value="Test summary"):
+            orchestrator._end_milestone_session(
+                session_id=session_id,
+                milestone_id=5
+            )
+
+        # Verify session completed
+        session = orchestrator.state_manager.get_session_record(session_id)
+        assert session.status == 'completed'
+        assert session.ended_at is not None
+        assert session.summary == "Test summary"
+
+    def test_build_milestone_context(self, orchestrator, test_project):
+        """Test building milestone context."""
+        context = orchestrator._build_milestone_context(
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        # Should include project info
+        assert "Test Project" in context
+        assert "Milestone: 5" in context
+
+    def test_build_milestone_context_with_previous_summary(self, orchestrator, test_project):
+        """Test milestone context includes previous summary."""
+        # Create previous milestone session with summary
+        prev_session_id = str(uuid.uuid4())
+        prev_session = orchestrator.state_manager.create_session_record(
+            session_id=prev_session_id,
+            project_id=test_project.id,
+            milestone_id=4
+        )
+        orchestrator.state_manager.save_session_summary(
+            session_id=prev_session_id,
+            summary="Previous milestone completed X, Y, Z."
+        )
+
+        # Build context for milestone 5
+        context = orchestrator._build_milestone_context(
+            project_id=test_project.id,
+            milestone_id=5
+        )
+
+        # Should include previous summary
+        assert "Previous Milestone Summary" in context
+        assert "Previous milestone completed" in context
+
+    def test_execute_milestone(self, orchestrator, test_project):
+        """Test full milestone execution flow."""
+        # Create tasks
+        task1 = orchestrator.state_manager.create_task(
+            project_id=test_project.id,
+            task_data={
+                'title': "Task 1",
+                'description': "First task",
+                'assigned_to': "claude_code"
+            }
+        )
+        task2 = orchestrator.state_manager.create_task(
+            project_id=test_project.id,
+            task_data={
+                'title': "Task 2",
+                'description': "Second task",
+                'assigned_to': "claude_code"
+            }
+        )
+
+        # Mock execute_task
+        with patch.object(orchestrator, 'execute_task') as mock_execute:
+            mock_execute.return_value = {
+                'task_id': 1,
+                'status': 'completed',
+                'result': 'Success'
+            }
+
+            # Mock LLM for summary
+            with patch.object(orchestrator.llm_interface, 'generate', return_value="Summary"):
+                result = orchestrator.execute_milestone(
+                    project_id=test_project.id,
+                    task_ids=[task1.id, task2.id],
+                    milestone_id=5
+                )
+
+        # Verify results
+        assert result['milestone_id'] == 5
+        assert result['session_id'] is not None
+        assert result['tasks_completed'] == 2
+        assert result['tasks_failed'] == 0
+
+        # Verify execute_task called for each task
+        assert mock_execute.call_count == 2
+
+    def test_milestone_context_injection_into_first_task(self, orchestrator, test_project):
+        """Test that milestone context is injected into first task only."""
+        task1 = orchestrator.state_manager.create_task(
+            project_id=test_project.id,
+            task_data={
+                'title': "Task 1",
+                'description': "First task",
+                'assigned_to': "claude_code"
+            }
+        )
+
+        # Set milestone context
+        orchestrator._current_milestone_context = "TEST MILESTONE CONTEXT"
+        orchestrator._current_milestone_first_task = task1.id
+
+        # Mock agent and other components
+        with patch.object(orchestrator.agent, 'send_prompt') as mock_send:
+            mock_send.return_value = "Task completed"
+
+            with patch.object(orchestrator.response_validator, 'validate_format', return_value=True):
+                with patch.object(orchestrator.quality_controller, 'validate_output') as mock_quality:
+                    mock_quality.return_value = Mock(
+                        overall_score=85.0,
+                        gate=Mock(name='PASS'),
+                        validation_passed=True
+                    )
+
+                    with patch.object(orchestrator.decision_engine, 'decide_next_action') as mock_decide:
+                        mock_decide.return_value = {
+                            'action': 'complete',
+                            'reason': 'Task completed successfully',
+                            'confidence': 0.95
+                        }
+
+                        try:
+                            orchestrator.execute_task(task_id=task1.id, max_iterations=1)
+                        except:
+                            pass  # May fail due to other mocks, but we just want to check the prompt
+
+        # Verify prompt included milestone context
+        assert mock_send.called
+        prompt = mock_send.call_args[0][0]
+        assert "[MILESTONE CONTEXT]" in prompt
+        assert "TEST MILESTONE CONTEXT" in prompt
+
+    def test_session_usage_tracking(self, orchestrator, test_project):
+        """Test that session usage is updated after each interaction."""
+        session_id = str(uuid.uuid4())
+        orchestrator.state_manager.create_session_record(
+            session_id=session_id,
+            project_id=test_project.id
+        )
+
+        # Mock agent with metadata
+        orchestrator.agent.get_last_metadata = Mock(return_value={
+            'session_id': session_id,
+            'total_tokens': 1000,
+            'num_turns': 2,
+            'cost_usd': 0.05
+        })
+
+        task = orchestrator.state_manager.create_task(
+            project_id=test_project.id,
+            task_data={
+                'title': "Test Task",
+                'description': "Test",
+                'assigned_to': "claude_code"
+            }
+        )
+
+        # Mock components
+        with patch.object(orchestrator.agent, 'send_prompt', return_value="Done"):
+            with patch.object(orchestrator.response_validator, 'validate_format', return_value=True):
+                with patch.object(orchestrator.quality_controller, 'validate_output') as mock_quality:
+                    mock_quality.return_value = Mock(
+                        overall_score=85.0,
+                        gate=Mock(name='PASS'),
+                        validation_passed=True
+                    )
+
+                    with patch.object(orchestrator.decision_engine, 'decide_next_action') as mock_decide:
+                        mock_decide.return_value = {
+                            'action': 'complete',
+                            'reason': 'Done',
+                            'confidence': 0.95
+                        }
+
+                        try:
+                            orchestrator.execute_task(task_id=task.id, max_iterations=1)
+                        except:
+                            pass
+
+        # Verify session usage was updated
+        session = orchestrator.state_manager.get_session_record(session_id)
+        assert session.total_tokens == 1000
+        assert session.total_turns == 2
+        assert session.total_cost_usd == 0.05
+
+
+class TestSessionSummaryGeneration:
+    """Test session summary generation."""
+
+    @pytest.fixture
+    def orchestrator(self, test_config, tmp_path):
+        """Create orchestrator for testing."""
+        # Modify test_config directly
+        test_config._config['database']['url'] = 'sqlite:///:memory:'
+        test_config._config['agent']['local'] = {'workspace_path': str(tmp_path)}
+
+        orch = Orchestrator(config=test_config)
+
+        # Mock LLM initialization to avoid Ollama connection
+        with patch.object(orch, '_initialize_llm'):
+            orch.initialize()
+
+        # Set up mock LLM interface and components that are normally created in _initialize_llm
+        orch.llm_interface = Mock()
+        orch.response_validator = Mock()
+        orch.prompt_generator = Mock()
+        orch.prompt_generator.generate_prompt = Mock(return_value="Test prompt")
+
+        return orch
+
+    def test_generate_session_summary(self, orchestrator, tmp_path):
+        """Test generating session summary with Qwen."""
+        # Create project and session first
+        project = orchestrator.state_manager.create_project(
+            name="Test Project",
+            description="Test",
+            working_dir=str(tmp_path)
+        )
+
+        session_id = str(uuid.uuid4())
+        orchestrator.state_manager.create_session_record(
+            session_id=session_id,
+            project_id=project.id,
+            milestone_id=5
+        )
+
+        # Mock LLM response
+        with patch.object(orchestrator.llm_interface, 'generate') as mock_generate:
+            mock_generate.return_value = "Summary of work completed in this session."
+
+            summary = orchestrator._generate_session_summary(
+                session_id=session_id,
+                milestone_id=5
+            )
+
+        # Verify LLM was called
+        assert mock_generate.called
+        assert summary == "Summary of work completed in this session."
+
+        # Verify prompt asked for key points (called with keyword args)
+        call_kwargs = mock_generate.call_args[1]  # Get keyword arguments
+        prompt = call_kwargs.get('prompt', '')
+        assert "accomplished" in prompt.lower()
+        assert "decisions" in prompt.lower() or "implementation" in prompt.lower()

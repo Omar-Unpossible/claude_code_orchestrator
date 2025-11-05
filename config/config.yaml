@@ -22,7 +22,10 @@ agent:
   # Local headless agent config (recommended - uses subprocess with --print)
   local:
     claude_command: claude  # Command to run (default: 'claude')
-    response_timeout: 120  # Timeout for Claude responses (seconds)
+    # Response timeout: 7200 seconds = 2 hours
+    # Allows complex workflows to complete without interruption
+    # Separate from max_turns: timeout is WALL-CLOCK time, max_turns is ITERATION limit
+    response_timeout: 7200
     bypass_permissions: true  # Enable dangerous mode (automatic permission bypass)
     use_session_persistence: false  # Use fresh session per call (more reliable)
 
@@ -78,6 +81,34 @@ orchestration:
   concurrent_tasks: 1  # Number of tasks to run in parallel
   auto_retry: true  # Automatically retry failed operations
 
+  # Maximum turns configuration for iterative orchestration
+  max_turns:
+    # Enable adaptive calculation based on task complexity
+    adaptive: true
+
+    # Fallback value if adaptive calculation fails
+    default: 10
+
+    # Task-type specific overrides (takes precedence over adaptive)
+    by_task_type:
+      validation: 5
+      code_generation: 12
+      refactoring: 15
+      debugging: 20
+      error_analysis: 8
+      planning: 5
+      documentation: 3
+      testing: 8
+
+    # Safety bounds - never exceed these limits
+    min: 3    # Never less than 3 turns (minimum for meaningful iteration)
+    max: 30   # Never more than 30 turns (prevent infinite loops)
+
+    # Retry behavior when error_max_turns is hit
+    auto_retry: true         # Automatically retry with increased limit
+    max_retries: 1           # Number of retries allowed (1 = try twice total)
+    retry_multiplier: 2      # Multiply max_turns by this on retry (e.g., 10 -> 20)
+
 # Breakpoint Configuration
 breakpoints:
   enabled: true  # Enable breakpoint system
@@ -120,6 +151,29 @@ confidence:
     quality: 0.4  # Weight for quality score
     agent_health: 0.1  # Weight for agent health status
     retry_count: 0.2  # Weight for number of retries
+
+# Decision Engine Configuration (SIMPLIFIED - Nov 2025)
+# Controls when to proceed/clarify/escalate based on LLM quality scores
+decision_engine:
+  # NEW SIMPLIFIED THRESHOLDS (in use)
+  # Decision logic now trusts LLM quality scores directly
+  quality_proceed_threshold: 0.70    # Proceed if quality >= this AND validation passes
+  quality_critical_threshold: 0.50   # Escalate if quality < this OR validation fails
+  # Note: CLARIFY range is 0.50-0.70 (marginal quality)
+
+  # DEPRECATED THRESHOLDS (kept for backward compatibility, not used)
+  # These were part of the old heuristic-based system that caused clarification loops
+  high_confidence: 0.45     # DEPRECATED: Was for heuristic overall_confidence
+  medium_confidence: 0.30   # DEPRECATED: Was for heuristic confidence ranges
+  critical_threshold: 0.20  # DEPRECATED: Was for heuristic escalation
+
+  # DEPRECATED WEIGHTS (kept for backward compatibility, not used)
+  # Decision logic no longer uses weighted multi-criteria scoring
+  weight_confidence: 0.30   # DEPRECATED: Was for heuristic confidence
+  weight_validation: 0.30   # DEPRECATED: Now validation is binary gate
+  weight_quality: 0.30      # DEPRECATED: Now quality is primary signal
+  weight_complexity: 0.05   # DEPRECATED: Complexity not used in decisions
+  weight_history: 0.05      # DEPRECATED: History not used in decisions
 
 # Context Management
 context:

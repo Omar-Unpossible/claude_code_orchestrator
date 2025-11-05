@@ -19,6 +19,8 @@ setup(
         "watchdog>=3.0.0",
         "pyyaml>=6.0",
         "scipy>=1.11.0",  # PHASE_6 TASK_6.2: A/B testing statistical analysis
+        "colorama>=0.4.6",  # Interactive Streaming: Colored terminal output
+        "prompt_toolkit>=3.0.0",  # Interactive Streaming: Rich interactive input
     ],
     extras_require={
         "dev": [

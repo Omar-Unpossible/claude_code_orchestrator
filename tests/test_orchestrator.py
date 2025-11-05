@@ -27,11 +27,11 @@ def state_manager():
 @pytest.fixture
 def project(state_manager):
     """Create test project."""
-    return state_manager.create_project({
-        'name': 'Test Project',
-        'description': 'Test',
-        'working_dir': '/tmp/test'
-    })
+    return state_manager.create_project(
+        name='Test Project',
+        description='Test',
+        working_dir='/tmp/test'
+    )
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ class TestOrchestratorInitialization:
         """Test orchestrator initializes with config."""
         orchestrator = Orchestrator(config=test_config)
 
-        assert orchestrator.config is config
+        assert orchestrator.config is test_config
         assert orchestrator._state == OrchestratorState.UNINITIALIZED
 
     def test_initialize_components(self, test_config):

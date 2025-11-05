@@ -763,9 +763,9 @@ Provide only the JSON response, no additional text."""
             )
 
             # Use LLM's decomposition suggestion if confidence is high
-            if llm_result['suggestion_confidence'] >= 0.7:
-                suggests_decomposition = llm_result['suggest_decompose']
-                suggestion_confidence = llm_result['suggestion_confidence']
+            if llm_result.get('confidence', 0.0) >= 0.7:
+                suggests_decomposition = llm_result.get('should_decompose', False)
+                suggestion_confidence = llm_result.get('confidence', 0.6)
             else:
                 # Fall back to threshold-based decision
                 threshold = self.thresholds['decomposition_thresholds']

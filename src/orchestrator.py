@@ -12,19 +12,21 @@ Example:
 
 import logging
 import time
+import uuid
 from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from threading import RLock
 
 from src.core.config import Config
 from src.core.state import StateManager
-from src.core.models import Task, ProjectState
+from src.core.models import Task, ProjectState, TaskStatus
 from src.core.exceptions import OrchestratorException
 
 # Component imports
 from src.plugins.registry import AgentRegistry, LLMRegistry
+from src.plugins.exceptions import AgentException  # Phase 4, Task 4.2: For retry logic
 import src.agents  # Import to register agent plugins
 from src.llm.local_interface import LocalLLMInterface
 from src.llm.response_validator import ResponseValidator
@@ -35,6 +37,7 @@ from src.orchestration.breakpoint_manager import BreakpointManager
 from src.orchestration.decision_engine import DecisionEngine
 from src.orchestration.quality_controller import QualityController
 from src.orchestration.complexity_estimator import TaskComplexityEstimator
+from src.orchestration.max_turns_calculator import MaxTurnsCalculator  # Phase 4, Task 4.2
 from src.orchestration.complexity_estimate import ComplexityEstimate
 from src.utils.token_counter import TokenCounter
 from src.utils.context_manager import ContextManager
@@ -111,12 +114,14 @@ class Orchestrator:
         self.context_manager: Optional[ContextManager] = None
         self.confidence_scorer: Optional[ConfidenceScorer] = None
         self.complexity_estimator: Optional[TaskComplexityEstimator] = None
+        self.max_turns_calculator = None  # Phase 4, Task 4.2: Adaptive max_turns
 
         # Runtime state
         self.current_project: Optional[ProjectState] = None
         self.current_task: Optional[Task] = None
         self._iteration_count = 0
         self._start_time: Optional[datetime] = None
+        self._current_milestone_id: Optional[int] = None
 
         # Complexity estimation config
         self._enable_complexity_estimation = self.config.get('enable_complexity_estimation', False)
@@ -286,6 +291,15 @@ class Orchestrator:
             logger.warning(f"Failed to initialize complexity estimator: {e}")
             self.complexity_estimator = None
 
+        # Phase 4, Task 4.2: Initialize MaxTurnsCalculator
+        try:
+            max_turns_config = self.config.get('orchestration.max_turns', {})
+            self.max_turns_calculator = MaxTurnsCalculator(config=max_turns_config)
+            logger.info("MaxTurnsCalculator initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize max_turns calculator: {e}")
+            self.max_turns_calculator = None
+
     def _initialize_monitoring(self) -> None:
         """Initialize monitoring components."""
         if self.current_project:
@@ -298,15 +312,258 @@ class Orchestrator:
             self.file_watcher.start_watching()
             logger.info("File monitoring started")
 
+    # =========================================================================
+    # SESSION MANAGEMENT (Phase 2, Task 2.4)
+    # =========================================================================
+
+    def _start_milestone_session(self, project_id: int, milestone_id: Optional[int] = None) -> str:
+        """Start new session for milestone execution.
+
+        Args:
+            project_id: Project ID
+            milestone_id: Optional milestone ID
+
+        Returns:
+            str: New session_id (UUID)
+
+        Example:
+            >>> session_id = orchestrator._start_milestone_session(
+            ...     project_id=1,
+            ...     milestone_id=5
+            ... )
+        """
+        # Generate new session ID
+        session_id = str(uuid.uuid4())
+
+        # Create session record in database
+        self.state_manager.create_session_record(
+            session_id=session_id,
+            project_id=project_id,
+            milestone_id=milestone_id
+        )
+
+        # Update agent to use this session
+        if hasattr(self.agent, 'session_id'):
+            self.agent.session_id = session_id
+            self.agent.use_session_persistence = True
+            logger.info(f"Agent configured with session {session_id[:8]}...")
+
+        context_type = f"milestone {milestone_id}" if milestone_id else "ad-hoc work"
+        logger.info(
+            f"SESSION START: session_id={session_id[:8]}..., "
+            f"project_id={project_id}, context={context_type}"
+        )
+
+        return session_id
+
+    def _end_milestone_session(self, session_id: str, milestone_id: Optional[int] = None) -> None:
+        """End session and save summary.
+
+        Args:
+            session_id: Session to end
+            milestone_id: Optional milestone ID for summary context
+
+        Example:
+            >>> orchestrator._end_milestone_session(
+            ...     session_id="550e8400-e29b-41d4-a716-446655440001",
+            ...     milestone_id=5
+            ... )
+        """
+        try:
+            logger.info(f"SESSION END: Ending session {session_id[:8]}...")
+
+            # Generate session summary using Qwen
+            summary = self._generate_session_summary(session_id, milestone_id)
+
+            # Save summary to session record
+            self.state_manager.save_session_summary(session_id, summary)
+
+            # Mark session as completed
+            self.state_manager.complete_session_record(
+                session_id=session_id,
+                ended_at=datetime.now(UTC)
+            )
+
+            logger.info(
+                f"SESSION END: session_id={session_id[:8]}..., "
+                f"summary_chars={len(summary):,}, milestone={milestone_id}"
+            )
+
+        except Exception as e:
+            logger.error(f"SESSION END ERROR: Failed to end session {session_id[:8]}...: {e}")
+            # Mark as abandoned but don't raise
+            try:
+                session = self.state_manager.get_session_record(session_id)
+                if session:
+                    session.status = 'abandoned'
+                    session.ended_at = datetime.now(UTC)
+                logger.warning(f"SESSION ABANDONED: session_id={session_id[:8]}...")
+            except:
+                pass
+
+    def _build_milestone_context(self, project_id: int, milestone_id: Optional[int] = None) -> str:
+        """Build context for milestone including workplan and previous summary.
+
+        Args:
+            project_id: Project ID
+            milestone_id: Optional milestone ID
+
+        Returns:
+            str: Formatted context for milestone execution
+
+        Example:
+            >>> context = orchestrator._build_milestone_context(
+            ...     project_id=1,
+            ...     milestone_id=5
+            ... )
+        """
+        context_parts = []
+
+        # Project context
+        project = self.state_manager.get_project(project_id)
+        context_parts.append(f"# Project: {project.project_name}")
+        if project.description:
+            context_parts.append(f"Description: {project.description}")
+        context_parts.append(f"Working Directory: {project.working_directory}")
+        context_parts.append("")
+
+        # Previous milestone summary (if available)
+        if milestone_id and milestone_id > 1:
+            prev_session = self.state_manager.get_latest_session_for_milestone(milestone_id - 1)
+            if prev_session and prev_session.summary:
+                context_parts.append("## Previous Milestone Summary")
+                context_parts.append(prev_session.summary)
+                context_parts.append("")
+
+        # Current milestone info (if available)
+        if milestone_id:
+            context_parts.append(f"## Current Milestone: {milestone_id}")
+            # Note: We don't have a milestone table yet, but placeholder for future
+            context_parts.append("Tasks will be executed sequentially within this session.")
+            context_parts.append("")
+
+        return "\n".join(context_parts)
+
+    def execute_milestone(
+        self,
+        project_id: int,
+        task_ids: List[int],
+        milestone_id: Optional[int] = None,
+        max_iterations_per_task: int = 10
+    ) -> Dict[str, Any]:
+        """Execute multiple tasks in a milestone with session management.
+
+        Session lifecycle:
+        1. Start new session
+        2. Build milestone context (workplan + previous summary)
+        3. Execute all tasks in session
+        4. End session and generate summary
+
+        Args:
+            project_id: Project ID
+            task_ids: List of task IDs to execute
+            milestone_id: Optional milestone ID
+            max_iterations_per_task: Max iterations per task
+
+        Returns:
+            Dictionary with execution results:
+            - milestone_id: Optional[int]
+            - session_id: str
+            - tasks_completed: int
+            - tasks_failed: int
+            - results: List[Dict]
+
+        Example:
+            >>> result = orchestrator.execute_milestone(
+            ...     project_id=1,
+            ...     task_ids=[10, 11, 12],
+            ...     milestone_id=5
+            ... )
+        """
+        logger.info(
+            f"MILESTONE START: milestone_id={milestone_id}, "
+            f"project_id={project_id}, num_tasks={len(task_ids)}"
+        )
+
+        # Start session
+        session_id = self._start_milestone_session(project_id, milestone_id)
+
+        # Build milestone context
+        milestone_context = self._build_milestone_context(project_id, milestone_id)
+
+        # Store context for task injection
+        self._current_milestone_context = milestone_context
+        self._current_milestone_first_task = task_ids[0] if task_ids else None
+        self._current_milestone_id = milestone_id
+
+        results = []
+        tasks_completed = 0
+        tasks_failed = 0
+
+        try:
+            # Execute all tasks in session
+            for task_id in task_ids:
+                try:
+                    logger.info(f"Executing task {task_id} in session {session_id[:8]}...")
+
+                    result = self.execute_task(
+                        task_id=task_id,
+                        max_iterations=max_iterations_per_task
+                    )
+
+                    results.append(result)
+
+                    if result.get('status') == 'completed':
+                        tasks_completed += 1
+                    else:
+                        tasks_failed += 1
+
+                except Exception as e:
+                    logger.error(f"Task {task_id} failed: {e}")
+                    results.append({
+                        'task_id': task_id,
+                        'status': 'failed',
+                        'error': str(e)
+                    })
+                    tasks_failed += 1
+
+            # End session
+            self._end_milestone_session(session_id, milestone_id)
+
+        finally:
+            # Clean up context
+            self._current_milestone_context = None
+            self._current_milestone_first_task = None
+            self._current_milestone_id = None
+
+        logger.info(
+            f"MILESTONE END: milestone_id={milestone_id}, "
+            f"completed={tasks_completed}, failed={tasks_failed}, "
+            f"session_id={session_id[:8]}..."
+        )
+
+        return {
+            'milestone_id': milestone_id,
+            'session_id': session_id,
+            'tasks_completed': tasks_completed,
+            'tasks_failed': tasks_failed,
+            'results': results
+        }
+
     def execute_task(self, task_id: int, max_iterations: int = 10, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute a single task with optional complexity estimation.
 
+        Automatically creates temporary session for tracking if not in milestone context.
+        This enables standalone task execution while maintaining session usage tracking.
+
         Process:
-        1. Get task from StateManager
-        2. Estimate complexity (if enabled) - suggestions only
-        3. Log complexity estimate
-        4. Execute task (Claude handles parallelization if needed)
-        5. Return results
+        1. Create temporary session if needed (for tracking)
+        2. Get task from StateManager
+        3. Estimate complexity (if enabled) - suggestions only
+        4. Log complexity estimate
+        5. Execute task (Claude handles parallelization if needed)
+        6. Clean up temporary session if created
+        7. Return results
 
         Args:
             task_id: Task ID to execute
@@ -332,8 +589,15 @@ class Orchestrator:
                     recovery="Call initialize() first"
                 )
 
+            # BUG-PHASE4-002 FIX: Create temporary session for standalone execution
+            # Check if we're already in a milestone session
+            in_milestone_session = hasattr(self, 'current_session_id') and self.current_session_id is not None
+            temp_session_id = None
+            old_agent_session_id = None
+            cleanup_temp_session = False
+
             try:
-                # Get task
+                # Get task first to get project_id for session creation
                 self.current_task = self.state_manager.get_task(task_id)
                 if not self.current_task:
                     raise OrchestratorException(
@@ -350,36 +614,169 @@ class Orchestrator:
                 if not self.file_watcher:
                     self._initialize_monitoring()
 
-                logger.info(f"Executing task {task_id}: {self.current_task.title}")
+                # Create temporary session if not in milestone context
+                if not in_milestone_session:
+                    # Generate temporary session UUID
+                    temp_session_id = str(uuid.uuid4())
+
+                    # Create session record in database
+                    self.state_manager.create_session_record(
+                        session_id=temp_session_id,
+                        project_id=self.current_project.id,
+                        milestone_id=None  # Temporary session, not milestone-bound
+                    )
+
+                    # Configure agent to use this session_id for tracking
+                    if hasattr(self.agent, 'session_id'):
+                        old_agent_session_id = self.agent.session_id
+                        self.agent.session_id = temp_session_id
+
+                    # Set as current session for this execution
+                    self.current_session_id = temp_session_id
+                    cleanup_temp_session = True
+
+                    logger.info(
+                        f"TEMP_SESSION: session_id={temp_session_id[:8]}..., "
+                        f"task_id={task_id}, project_id={self.current_project.id}, "
+                        f"mode=standalone"
+                    )
+
+                logger.info(f"TASK START: task_id={task_id}, title='{self.current_task.title}'")
 
                 # Estimate complexity if enabled (suggestions only, not commands)
                 complexity_estimate = None
                 if self.complexity_estimator:
                     complexity_estimate = self._estimate_task_complexity(self.current_task, context)
                     logger.info(
-                        f"Complexity estimate: {complexity_estimate.complexity_score}/100, "
-                        f"suggestions: {len(complexity_estimate.decomposition_suggestions)} subtasks, "
-                        f"{len(complexity_estimate.parallelization_opportunities)} parallel groups"
+                        f"COMPLEXITY: task_id={task_id}, score={complexity_estimate.complexity_score:.0f}/100, "
+                        f"category={complexity_estimate.get_complexity_category()}, "
+                        f"decompose={complexity_estimate.should_decompose}, "
+                        f"subtasks={len(complexity_estimate.decomposition_suggestions)}, "
+                        f"parallel_groups={len(complexity_estimate.parallelization_opportunities)}"
                     )
 
-                # Execute with single agent (Claude may use Task tool internally)
-                result = self._execute_single_task(
-                    self.current_task,
-                    max_iterations,
-                    context,
-                    complexity_estimate=complexity_estimate
-                )
+                # Phase 4, Task 4.2: Calculate adaptive max_turns
+                task_dict = self.current_task.to_dict()
+                if complexity_estimate:
+                    # Add complexity metadata for calculator
+                    task_dict['estimated_files'] = len(complexity_estimate.files_to_create) + len(complexity_estimate.files_to_modify)
+                    task_dict['estimated_loc'] = sum(f.get('estimated_loc', 0) for f in complexity_estimate.files_to_create + complexity_estimate.files_to_modify)
+
+                max_turns = 10  # Default fallback
+                max_turns_reason = "default"
+                if self.max_turns_calculator:
+                    max_turns = self.max_turns_calculator.calculate(task_dict)
+                    max_turns_reason = "calculated"
+                    logger.info(
+                        f"MAX_TURNS: task_id={task_id}, max_turns={max_turns}, "
+                        f"reason={max_turns_reason}, "
+                        f"estimated_files={task_dict.get('estimated_files', 0)}, "
+                        f"estimated_loc={task_dict.get('estimated_loc', 0):,}"
+                    )
+
+                # Phase 4, Task 4.2: Retry logic for error_max_turns
+                retry_count = 0
+                max_retries = self.config.get('orchestration.max_turns.max_retries', 1)
+                retry_multiplier = self.config.get('orchestration.max_turns.retry_multiplier', 2)
+                auto_retry = self.config.get('orchestration.max_turns.auto_retry', True)
+
+                # Ensure context dict exists
+                if context is None:
+                    context = {}
+
+                while retry_count <= max_retries:
+                    try:
+                        # Add max_turns to context for agent
+                        context['max_turns'] = max_turns
+
+                        # Execute with single agent (Claude may use Task tool internally)
+                        result = self._execute_single_task(
+                            self.current_task,
+                            max_iterations,
+                            context,
+                            complexity_estimate=complexity_estimate
+                        )
+
+                        # Success - break out of retry loop
+                        break
+
+                    except AgentException as e:
+                        # Check if it's error_max_turns
+                        if e.context_data.get('subtype') == 'error_max_turns' and auto_retry:
+                            num_turns = e.context_data.get('num_turns', max_turns)
+
+                            logger.warning(
+                                f"ERROR_MAX_TURNS: task_id={task_id}, "
+                                f"turns_used={num_turns}, max_turns={max_turns}, "
+                                f"attempt={retry_count + 1}/{max_retries + 1}"
+                            )
+
+                            if retry_count < max_retries:
+                                # Retry with increased limit
+                                retry_count += 1
+                                old_max_turns = max_turns
+                                max_turns = max_turns * retry_multiplier
+
+                                # Enforce upper bound
+                                if self.max_turns_calculator:
+                                    max_turns = min(max_turns, self.max_turns_calculator.max_turns)
+
+                                logger.info(
+                                    f"MAX_TURNS RETRY: task_id={task_id}, "
+                                    f"attempt={retry_count + 1}/{max_retries + 1}, "
+                                    f"max_turns={old_max_turns} → {max_turns} "
+                                    f"(multiplier={retry_multiplier}x)"
+                                )
+
+                                # Continue to next iteration of retry loop
+                                continue
+                            else:
+                                # Max retries reached
+                                logger.error(
+                                    f"MAX_TURNS EXHAUSTED: task_id={task_id}, "
+                                    f"attempts={max_retries + 1}, final_max_turns={max_turns}, "
+                                    f"last_turns_used={num_turns}"
+                                )
+                                raise
+                        else:
+                            # Not error_max_turns, or auto_retry disabled - don't retry
+                            raise
 
                 # Add complexity estimate to result if available
                 if complexity_estimate:
                     result['complexity_estimate'] = complexity_estimate.to_dict()
 
-                logger.info(f"Task {task_id} completed: {result['status']}")
+                logger.info(
+                    f"TASK END: task_id={task_id}, status={result['status']}, "
+                    f"iterations={result.get('iterations', 0)}, max_iterations={max_iterations}"
+                )
                 return result
 
             except Exception as e:
-                logger.error(f"Task execution failed: {e}", exc_info=True)
+                logger.error(f"TASK ERROR: task_id={task_id}, error={e}", exc_info=True)
                 raise
+
+            finally:
+                # Clean up temporary session if we created one
+                if cleanup_temp_session and temp_session_id:
+                    try:
+                        # Mark temporary session as completed
+                        self.state_manager.complete_session_record(
+                            session_id=temp_session_id,
+                            ended_at=datetime.now(UTC)
+                        )
+                        logger.info(f"TEMP_SESSION_END: session_id={temp_session_id[:8]}...")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up temp session {temp_session_id[:8]}...: {e}")
+
+                    # Restore agent's previous session_id (even if None, to clear temp session)
+                    # BUG-PHASE4-005 FIX: Always reset to prevent session reuse across tasks
+                    if hasattr(self.agent, 'session_id'):
+                        self.agent.session_id = old_agent_session_id
+
+                    # Clear current session if it was temporary
+                    if hasattr(self, 'current_session_id') and self.current_session_id == temp_session_id:
+                        self.current_session_id = None
 
     def _execute_single_task(
         self,
@@ -406,18 +803,60 @@ class Orchestrator:
             iteration += 1
             self._iteration_count += 1
 
-            logger.info(f"Iteration {iteration}/{max_iterations}")
+            logger.debug(f"ITERATION START: task_id={self.current_task.id}, iteration={iteration}/{max_iterations}")
             self._print_obra(f"Starting iteration {iteration}/{max_iterations}")
 
+            # BUG-PHASE4-006 FIX: Create fresh session per iteration to avoid lock errors
+            # Generate unique session_id for this iteration
+            iteration_session_id = str(uuid.uuid4())
+            old_agent_session_id = getattr(self.agent, 'session_id', None)
+            session_created = False
+
             try:
-                # 1. Build context
-                context = self._build_context(accumulated_context)
-                self._print_obra(f"Built context ({len(context)} chars)")
+                # Create session record for this iteration (linked to task for aggregation)
+                self.state_manager.create_session_record(
+                    session_id=iteration_session_id,
+                    project_id=task.project_id,
+                    task_id=task.id,  # Link to task for metrics aggregation
+                    milestone_id=None,
+                    metadata={'iteration': iteration}
+                )
+                session_created = True
+                logger.debug(
+                    f"ITERATION_SESSION: session_id={iteration_session_id[:8]}..., "
+                    f"task_id={task.id}, iteration={iteration}/{max_iterations}"
+                )
+
+                # Assign session_id to agent for this iteration
+                if hasattr(self.agent, 'session_id'):
+                    self.agent.session_id = iteration_session_id
+                # 1. Build context (text from accumulated context)
+                context_text = self._build_context(accumulated_context)
+                logger.debug(f"CONTEXT BUILT: iteration={iteration}, context_chars={len(context_text):,}")
+                self._print_obra(f"Built context ({len(context_text)} chars)")
 
                 # 2. Generate prompt (include complexity estimate if available)
+                # BUG-TETRIS-001 FIX: Flatten task object into template variables
                 prompt_context = {
-                    'task': self.current_task,
-                    'context': context
+                    # Task attributes (flattened from self.current_task)
+                    'task_id': self.current_task.id,
+                    'task_title': self.current_task.title,
+                    'task_description': self.current_task.description,
+                    'task_priority': self.current_task.priority,
+                    'task_status': self.current_task.status.value if hasattr(self.current_task.status, 'value') else str(self.current_task.status),
+                    'task_dependencies': self.current_task.dependencies if self.current_task.dependencies else [],
+
+                    # Project attributes (flattened from self.current_project)
+                    'project_name': self.current_project.project_name if self.current_project else 'Unknown',
+                    'project_id': self.current_project.id if self.current_project else None,
+                    'working_directory': self.current_project.working_directory if self.current_project else './workspace',
+                    'project_goals': self.current_project.description if self.current_project and self.current_project.description else None,
+
+                    # Context text
+                    'context': context_text,
+
+                    # Instructions (BUG-TETRIS-004 FIX: explicit working directory)
+                    'instructions': f"Work in the directory: {self.current_project.working_directory if self.current_project else './workspace'}. All project files should be created there."
                 }
                 if complexity_estimate:
                     prompt_context['complexity_estimate'] = complexity_estimate
@@ -427,11 +866,93 @@ class Orchestrator:
                     prompt_context
                 )
 
+                # Phase 2, Task 2.4: Inject milestone context on first task, first iteration
+                if (iteration == 1 and
+                    hasattr(self, '_current_milestone_context') and
+                    hasattr(self, '_current_milestone_first_task') and
+                    self._current_milestone_first_task == task.id):
+
+                    prompt = f"""[MILESTONE CONTEXT]
+{self._current_milestone_context}
+
+[CURRENT TASK]
+{prompt}
+"""
+                    logger.info("Injected milestone context into first task")
+
+                # Phase 3, Task 3.2: Check context window before execution
+                if self.agent.use_session_persistence and hasattr(self.agent, 'session_id'):
+                    session_id = self.agent.session_id
+                    if session_id:
+                        context_summary = self._check_context_window_manual(session_id)
+                        if context_summary:
+                            # Session was refreshed, prepend summary to prompt
+                            prompt = f"""[CONTEXT FROM PREVIOUS SESSION]
+{context_summary}
+
+[CURRENT TASK]
+{prompt}
+"""
+                            logger.info(f"SESSION REFRESH: session_id={session_id[:8]}..., summary_chars={len(context_summary):,}")
+
                 # 3. Send to agent
-                logger.info("Sending prompt to agent...")
+                logger.info(f"AGENT SEND: task_id={self.current_task.id}, iteration={iteration}, prompt_chars={len(prompt):,}")
                 self._print_obra(f"Sending prompt to Claude Code...", "[OBRA→CLAUDE]")
-                response = self.agent.send_prompt(prompt, context={'task_id': self.current_task.id})
+                # Phase 4, Task 4.2: Pass context with max_turns (if present) and task_id
+                agent_context = context.copy() if context else {}
+                agent_context['task_id'] = self.current_task.id
+                response = self.agent.send_prompt(prompt, context=agent_context)
                 self._print_obra(f"Response received ({len(response)} chars)")
+
+                # Phase 2, Task 2.4: Update session usage tracking
+                # Phase 3, Task 3.2: Add token tracking for context window management
+                if hasattr(self.agent, 'get_last_metadata'):
+                    metadata = self.agent.get_last_metadata()
+                    if metadata and metadata.get('session_id'):
+                        try:
+                            # Extract and log metadata
+                            total_tokens = metadata.get('total_tokens', 0)
+                            input_tokens = metadata.get('input_tokens', 0)
+                            cache_read_tokens = metadata.get('cache_read_tokens', 0)
+                            output_tokens = metadata.get('output_tokens', 0)
+                            num_turns = metadata.get('num_turns', 0)
+                            duration_ms = metadata.get('duration_ms', 0)
+                            cache_hit_rate = metadata.get('cache_hit_rate', 0.0)
+
+                            logger.info(
+                                f"RESPONSE METADATA: iteration={iteration}, "
+                                f"tokens={total_tokens:,} "
+                                f"(input={input_tokens:,}, cache_read={cache_read_tokens:,}, output={output_tokens:,}), "
+                                f"turns={num_turns}, duration={duration_ms}ms, "
+                                f"cache_efficiency={cache_hit_rate:.1%}"
+                            )
+
+                            # Update session-level metrics (total tokens, turns, cost)
+                            self.state_manager.update_session_usage(
+                                session_id=metadata['session_id'],
+                                tokens=metadata.get('total_tokens', 0),
+                                turns=metadata.get('num_turns', 0),
+                                cost=metadata.get('cost_usd', 0.0)
+                            )
+
+                            # Add tokens to cumulative tracking for context window management
+                            tokens_dict = {
+                                'input_tokens': metadata.get('input_tokens', 0),
+                                'cache_creation_tokens': metadata.get('cache_creation_tokens', 0),
+                                'cache_read_tokens': metadata.get('cache_read_tokens', 0),
+                                'output_tokens': metadata.get('output_tokens', 0)
+                            }
+                            # Calculate total from breakdown
+                            tokens_dict['total_tokens'] = sum(tokens_dict.values())
+
+                            self.state_manager.add_session_tokens(
+                                session_id=metadata['session_id'],
+                                task_id=task.id,
+                                tokens_dict=tokens_dict
+                            )
+                            logger.debug(f"CONTEXT_WINDOW: session_id={metadata['session_id'][:8]}..., tracked={tokens_dict['total_tokens']:,} tokens")
+                        except Exception as e:
+                            logger.debug(f"Failed to update session usage: {e}")
 
                 # 4. Validate response
                 is_valid = self.response_validator.validate_format(
@@ -456,7 +977,8 @@ class Orchestrator:
                     self.current_task,
                     {'language': 'python'}
                 )
-                self._print_qwen(f"  Quality: {quality_result.overall_score:.2f} ({quality_result.gate.name})")
+                gate_status = "PASS" if quality_result.passes_gate else "FAIL"
+                self._print_qwen(f"  Quality: {quality_result.overall_score:.2f} ({gate_status})")
 
                 # 6. Confidence scoring
                 confidence = self.confidence_scorer.score_response(
@@ -466,11 +988,96 @@ class Orchestrator:
                 )
                 self._print_qwen(f"  Confidence: {confidence:.2f}")
 
+                # BUG-TETRIS-002 FIX: Record interaction to database
+                try:
+                    # Get metadata from agent if available
+                    interaction_metadata = {}
+                    if hasattr(self.agent, 'get_last_metadata'):
+                        agent_metadata = self.agent.get_last_metadata()
+                        if agent_metadata:
+                            interaction_metadata = {
+                                'input_tokens': agent_metadata.get('input_tokens', 0),
+                                'cache_creation_input_tokens': agent_metadata.get('cache_creation_tokens', 0),
+                                'cache_read_input_tokens': agent_metadata.get('cache_read_tokens', 0),
+                                'output_tokens': agent_metadata.get('output_tokens', 0),
+                                'total_tokens': agent_metadata.get('total_tokens', 0),
+                                'duration_ms': agent_metadata.get('duration_ms', 0),
+                                'num_turns': agent_metadata.get('num_turns', 0),
+                                'agent_session_id': agent_metadata.get('session_id')
+                            }
+
+                    # Record interaction
+                    self.state_manager.record_interaction(
+                        project_id=self.current_project.id,
+                        task_id=self.current_task.id,
+                        interaction_data={
+                            'source': InteractionSource.CLAUDE_CODE,
+                            'prompt': prompt,
+                            'response': response,
+                            'confidence_score': confidence,
+                            'quality_score': quality_result.overall_score,
+                            'validation_passed': is_valid,
+                            'context': {'iteration': iteration},
+                            **interaction_metadata
+                        }
+                    )
+                    logger.debug(f"Recorded interaction for task {self.current_task.id}, iteration {iteration}")
+                except Exception as e:
+                    logger.warning(f"Failed to record interaction: {e}")
+
+                # BUG-TETRIS-003 FIX: Detect "no work done" scenarios before decision
+                # These heuristics prevent false positives where agent just asks questions or expresses confusion
+                no_work_indicators = []
+                response_lower = response.lower()
+
+                # Heuristic 1: Response too short for real work (first iteration only)
+                if iteration == 1 and len(response) < 500:
+                    no_work_indicators.append("response_too_short")
+
+                # Heuristic 2: Contains confusion/question phrases
+                confusion_phrases = [
+                    ('empty', 'directory'),
+                    ('not sure', ''),
+                    ('confused', ''),
+                    ("don't know", ''),
+                    ('unclear', ''),
+                    ('what should', '')
+                ]
+                for phrase1, phrase2 in confusion_phrases:
+                    if phrase1 in response_lower and (not phrase2 or phrase2 in response_lower):
+                        no_work_indicators.append(f"confusion_phrase:{phrase1}")
+                        break
+
+                # Heuristic 3: No files modified (if file watcher available and first iteration)
+                if iteration == 1 and hasattr(self, 'file_watcher') and self.file_watcher:
+                    try:
+                        file_changes = self.file_watcher.get_changes()
+                        if len(file_changes) == 0:
+                            no_work_indicators.append("no_files_modified")
+                    except Exception:
+                        pass  # Ignore file watcher errors
+
+                # Heuristic 4: Response is mostly questions (contains many ? without deliverables)
+                question_count = response.count('?')
+                if question_count > 3 and 'created' not in response_lower and 'implemented' not in response_lower:
+                    no_work_indicators.append("mostly_questions")
+
+                # If we detect "no work done" on first iteration, force CLARIFY
+                if no_work_indicators and iteration == 1:
+                    logger.warning(f"No work done detected: {', '.join(no_work_indicators)}")
+                    logger.info("Forcing CLARIFY decision to request actual work")
+                    accumulated_context.append({
+                        'type': 'feedback',
+                        'content': f"Previous response did not contain actionable work. Please actually perform the requested task instead of just describing or asking questions. Create files, write code, generate documentation as specified in the requirements.",
+                        'timestamp': datetime.now(UTC)
+                    })
+                    continue  # Skip to next iteration
+
                 # 7. Decision making
                 decision_context = {
                     'task': self.current_task,
                     'response': response,
-                    'validation_result': validation_result,
+                    'validation_result': {'valid': is_valid, 'complete': True},
                     'quality_score': quality_result.overall_score,
                     'confidence_score': confidence
                 }
@@ -485,7 +1092,7 @@ class Orchestrator:
                     # Task completed successfully
                     self.state_manager.update_task_status(
                         self.current_task.id,
-                        'completed'
+                        TaskStatus.COMPLETED
                     )
 
                     # Parse parallel metadata from Claude's response
@@ -528,6 +1135,18 @@ class Orchestrator:
                         'timestamp': datetime.now(UTC)
                     })
 
+            except AgentException as e:
+                # Phase 4, Task 4.2: Let error_max_turns propagate to retry loop
+                if e.context_data.get('subtype') == 'error_max_turns':
+                    logger.debug(f"Propagating error_max_turns exception to retry loop")
+                    raise
+                # Other agent errors - log and continue
+                logger.error(f"Iteration {iteration} failed: {e}", exc_info=True)
+                accumulated_context.append({
+                    'type': 'error',
+                    'content': f"Error: {str(e)}",
+                    'timestamp': datetime.now(UTC)
+                })
             except Exception as e:
                 logger.error(f"Iteration {iteration} failed: {e}", exc_info=True)
                 accumulated_context.append({
@@ -535,6 +1154,22 @@ class Orchestrator:
                     'content': f"Error: {str(e)}",
                     'timestamp': datetime.now(UTC)
                 })
+            finally:
+                # BUG-PHASE4-006 FIX: Always complete session and restore agent state
+                if session_created:
+                    try:
+                        # Complete session record for this iteration
+                        self.state_manager.complete_session_record(
+                            session_id=iteration_session_id,
+                            ended_at=datetime.now(UTC)
+                        )
+                        logger.debug(f"ITERATION_SESSION_END: session_id={iteration_session_id[:8]}...")
+                    except Exception as e:
+                        logger.warning(f"Failed to complete iteration session {iteration_session_id[:8]}...: {e}")
+
+                # Restore agent's previous session_id
+                if hasattr(self.agent, 'session_id'):
+                    self.agent.session_id = old_agent_session_id
 
         # Max iterations reached
         logger.warning(f"Max iterations ({max_iterations}) reached")
@@ -673,6 +1308,295 @@ class Orchestrator:
                 confidence=0.5,
                 timestamp=datetime.now()
             )
+
+    def _generate_session_summary(self, session_id: str, milestone_id: Optional[int] = None) -> str:
+        """Generate summary of session using Qwen (local LLM).
+
+        Creates a concise summary of what was accomplished in a Claude Code session,
+        focusing on implementation decisions, codebase state, and next steps.
+
+        Args:
+            session_id: Session ID to summarize
+            milestone_id: Optional milestone ID for context
+
+        Returns:
+            str: Concise summary (target <5000 tokens)
+
+        Raises:
+            OrchestratorException: If summary generation fails
+        """
+        try:
+            logger.info(f"Generating summary for session {session_id}")
+
+            # TODO: Get session-specific interactions once StateManager.get_session_interactions() is implemented
+            # For now, we'll use project interactions and filter by session_id in metadata
+
+            # Get session record to find project_id
+            session_record = None
+            try:
+                # Get session record using StateManager method (implemented in Phase 2, Task 2.1)
+                session_record = self.state_manager.get_session_record(session_id)
+            except Exception as e:
+                logger.warning(f"Could not retrieve session record: {e}")
+
+            if not session_record:
+                # Fallback: use current project if available
+                if not self.current_project:
+                    raise OrchestratorException(
+                        "Cannot generate summary without session or project context",
+                        context={'session_id': session_id},
+                        recovery="Ensure orchestrator has active project"
+                    )
+                project_id = self.current_project.id
+            else:
+                project_id = session_record.project_id
+
+            # Get interactions for the project
+            interactions = self.state_manager.get_interactions(
+                project_id=project_id,
+                limit=100  # Get up to 100 recent interactions
+            )
+
+            # Filter interactions by session_id if available in metadata
+            session_interactions = []
+            for interaction in interactions:
+                metadata = interaction.metadata or {}
+                if metadata.get('session_id') == session_id:
+                    session_interactions.append(interaction)
+
+            # If no session-specific interactions found, use all recent interactions
+            if not session_interactions:
+                logger.warning(f"No session-specific interactions found for {session_id}, using all recent")
+                session_interactions = interactions
+
+            # Build context for summarization
+            context_parts = []
+
+            # Add milestone info if provided
+            if milestone_id:
+                context_parts.append(f"## Milestone Context\n")
+                context_parts.append(f"Milestone ID: {milestone_id}\n")
+                context_parts.append(f"This session was working toward milestone {milestone_id} objectives.\n\n")
+
+            # Add interaction history
+            context_parts.append(f"## Session Interactions ({len(session_interactions)} total)\n\n")
+
+            for i, interaction in enumerate(session_interactions[:20], 1):  # Limit to 20 most recent
+                context_parts.append(f"### Interaction {i}\n")
+                context_parts.append(f"**Source**: {interaction.source}\n")
+                context_parts.append(f"**Timestamp**: {interaction.timestamp}\n\n")
+
+                # Add prompt (truncated if too long)
+                prompt_preview = interaction.prompt[:500] + "..." if len(interaction.prompt) > 500 else interaction.prompt
+                context_parts.append(f"**Prompt**:\n```\n{prompt_preview}\n```\n\n")
+
+                # Add response (truncated if too long)
+                if interaction.response:
+                    response_preview = interaction.response[:1000] + "..." if len(interaction.response) > 1000 else interaction.response
+                    context_parts.append(f"**Response**:\n```\n{response_preview}\n```\n\n")
+
+            context_text = "".join(context_parts)
+
+            # Generate summary prompt
+            summary_prompt = f"""You are analyzing a Claude Code development session. Generate a concise summary focusing on:
+
+1. **What was accomplished**: Key features/fixes implemented
+2. **Implementation decisions**: Important technical choices made
+3. **Current codebase state**: What's working, what's in progress
+4. **Issues encountered**: Problems faced and how they were resolved
+5. **Next steps**: What should be done next to continue progress
+
+## Session Data
+
+{context_text}
+
+## Instructions
+
+Provide a concise summary (target 500-1000 tokens, MAX 1200 tokens). Focus on actionable information for the next session.
+Use clear section headers and bullet points for readability.
+
+DO NOT repeat the raw interaction data - synthesize and summarize it.
+"""
+
+            # Generate summary using Qwen
+            logger.info("Calling Qwen to generate summary...")
+            summary = self.llm_interface.generate(
+                prompt=summary_prompt,
+                temperature=0.3,  # Low temperature for consistent, factual summaries
+                max_tokens=1500   # Allow enough tokens for comprehensive summary
+            )
+
+            logger.info(f"Generated summary ({len(summary)} chars) for session {session_id}")
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate session summary: {e}", exc_info=True)
+            raise OrchestratorException(
+                f"Session summary generation failed: {e}",
+                context={'session_id': session_id, 'milestone_id': milestone_id},
+                recovery="Check LLM availability and session data"
+            ) from e
+
+    def _refresh_session_with_summary(self) -> Tuple[str, str]:
+        """Refresh session before hitting context limit.
+
+        Creates a new session, generates a summary of the old session,
+        and transfers context to continue work seamlessly.
+
+        Args:
+            None (uses self.agent.session_id internally)
+
+        Returns:
+            Tuple[str, str]: (new_session_id, context_summary)
+
+        Raises:
+            OrchestratorException: If refresh fails
+
+        Example:
+            >>> new_session_id, summary = orchestrator._refresh_session_with_summary()
+            >>> # Continue work with new session
+        """
+        try:
+            # Get old session ID from agent
+            old_session_id = self.agent.session_id if hasattr(self.agent, 'session_id') else None
+            if not old_session_id:
+                raise OrchestratorException(
+                    "Cannot refresh session: no active session_id in agent",
+                    recovery="Ensure agent has session_id attribute set"
+                )
+
+            # Get current milestone_id (if exists, else None)
+            milestone_id = self._current_milestone_id
+
+            # Generate summary using existing method
+            summary = self._generate_session_summary(old_session_id, milestone_id)
+
+            # Create new session ID
+            new_session_id = str(uuid.uuid4())
+
+            # Update agent with new session
+            self.agent.session_id = new_session_id
+
+            # Create new session record in database
+            # Get project_id from old session or current project
+            old_session = self.state_manager.get_session_record(old_session_id)
+            project_id = old_session.project_id if old_session else (
+                self.current_project.id if self.current_project else None
+            )
+
+            if not project_id:
+                raise OrchestratorException(
+                    "Cannot create new session: no project_id available",
+                    context={'old_session_id': old_session_id},
+                    recovery="Ensure session has project_id or current_project is set"
+                )
+
+            self.state_manager.create_session_record(
+                session_id=new_session_id,
+                project_id=project_id,
+                milestone_id=milestone_id
+            )
+
+            # Mark old session as 'refreshed'
+            if old_session:
+                old_session.status = 'refreshed'
+                old_session.ended_at = datetime.now(UTC)
+                old_session.summary = summary
+
+            # Log info message with both session IDs
+            logger.info(
+                f"Session refreshed: {old_session_id[:8]}... → {new_session_id[:8]}... "
+                f"(summary: {len(summary)} chars)"
+            )
+
+            return (new_session_id, summary)
+
+        except Exception as e:
+            logger.error(f"Session refresh failed: {e}", exc_info=True)
+            raise OrchestratorException(
+                f"Failed to refresh session: {e}",
+                context={
+                    'old_session_id': old_session_id if 'old_session_id' in locals() else None,
+                    'error': str(e)
+                },
+                recovery="Check session state and LLM availability"
+            ) from e
+
+    # =========================================================================
+    # CONTEXT WINDOW MANAGEMENT (Phase 3, Tasks 3B.3 + 3.2)
+    # =========================================================================
+
+    def _check_context_window_manual(self, session_id: str) -> Optional[str]:
+        """Check context window using manual token tracking.
+
+        Monitors cumulative token usage and triggers appropriate actions
+        based on configured thresholds:
+        - Warning (70%): Log warning
+        - Refresh (80%): Auto-refresh session with summary
+        - Critical (95%): Emergency handling
+
+        Args:
+            session_id: Session to check
+
+        Returns:
+            Optional[str]: Context summary if session was refreshed, None otherwise
+
+        Example:
+            >>> summary = orchestrator._check_context_window_manual(session_id)
+            >>> if summary:
+            ...     # Prepend summary to next prompt
+            ...     prompt = f"[CONTEXT]\\n{summary}\\n\\n{prompt}"
+        """
+        try:
+            # Get configuration
+            config = self.config.get('session', {}).get('context_window', {})
+            limit = config.get('limit', 200000)  # Claude Pro default
+            thresholds = config.get('thresholds', {})
+
+            warning_pct = thresholds.get('warning', 0.70)
+            refresh_pct = thresholds.get('refresh', 0.80)
+            critical_pct = thresholds.get('critical', 0.95)
+
+            # Get current usage
+            current_tokens = self.state_manager.get_session_token_usage(session_id)
+            pct = current_tokens / limit if limit > 0 else 0
+
+            # Check thresholds
+            if pct >= critical_pct:
+                # CRITICAL: Emergency handling
+                logger.error(
+                    f"CONTEXT_WINDOW CRITICAL: session_id={session_id[:8]}..., "
+                    f"usage={pct:.1%} ({current_tokens:,}/{limit:,}) - forcing refresh"
+                )
+                new_session_id, summary = self._refresh_session_with_summary()
+                logger.info(f"CONTEXT_WINDOW REFRESH: emergency refresh completed, new_session={new_session_id[:8]}...")
+                return summary
+
+            elif pct >= refresh_pct:
+                # REFRESH: Auto-refresh session
+                logger.info(
+                    f"CONTEXT_WINDOW REFRESH: session_id={session_id[:8]}..., "
+                    f"usage={pct:.1%} ({current_tokens:,}/{limit:,}) "
+                    f"- auto-refreshing (threshold={refresh_pct:.0%})"
+                )
+                new_session_id, summary = self._refresh_session_with_summary()
+                logger.info(f"CONTEXT_WINDOW REFRESH: new_session={new_session_id[:8]}..., summary_chars={len(summary):,}")
+                return summary
+
+            elif pct >= warning_pct:
+                # WARNING: Just log
+                logger.warning(
+                    f"CONTEXT_WINDOW WARNING: session_id={session_id[:8]}..., "
+                    f"usage={pct:.1%} ({current_tokens:,}/{limit:,}) "
+                    f"- approaching refresh threshold ({refresh_pct:.0%})"
+                )
+
+            return None
+
+        except Exception as e:
+            logger.error(f"CONTEXT_WINDOW CHECK ERROR: {e}", exc_info=True)
+            # Don't raise - allow execution to continue
+            return None
 
     def run(self, project_id: Optional[int] = None) -> None:
         """Run continuous orchestration loop.

@@ -39,6 +39,7 @@ from src.orchestration.quality_controller import QualityController, QualityResul
 from src.orchestration.complexity_estimate import ComplexityEstimate
 from src.orchestration.subtask import SubTask
 from src.orchestration.complexity_estimator import TaskComplexityEstimator
+from src.orchestration.max_turns_calculator import MaxTurnsCalculator
 
 __all__ = [
     'TaskScheduler',
@@ -50,5 +51,6 @@ __all__ = [
     'QualityResult',
     'ComplexityEstimate',
     'SubTask',
-    'TaskComplexityEstimator'
+    'TaskComplexityEstimator',
+    'MaxTurnsCalculator'
 ]

@@ -330,26 +330,483 @@ class Config:
             logger.debug(f"Config set: {key} = {log_value}")
 
     def validate(self) -> bool:
-        """Validate configuration structure.
+        """Validate configuration structure and values.
+
+        Validates:
+        - Context window thresholds (0.0-1.0, ordered)
+        - Max turns bounds (min <= default <= max, min >= 3, max <= 30)
+        - Timeout values (positive integers)
+        - Threshold ranges
 
         Returns:
             True if valid
 
         Raises:
+            ConfigValidationException: If validation fails with helpful message
+        """
+        # Validate context window thresholds
+        self._validate_context_thresholds()
+
+        # Validate max_turns configuration
+        self._validate_max_turns()
+
+        # Validate timeout values
+        self._validate_timeouts()
+
+        # Validate confidence threshold
+        self._validate_confidence_threshold()
+
+        # Validate quality threshold
+        self._validate_quality_threshold()
+
+        # Validate breakpoint configuration
+        self._validate_breakpoints()
+
+        # Validate LLM configuration
+        self._validate_llm_config()
+
+        # Validate agent configuration
+        self._validate_agent_config()
+
+        logger.debug("Configuration validation passed")
+        return True
+
+    def _validate_context_thresholds(self) -> None:
+        """Validate context window threshold configuration.
+
+        Rules:
+        - Must be floats between 0.0 and 1.0
+        - warning < refresh < critical
+        - All three must be present
+
+        Raises:
             ConfigValidationException: If validation fails
         """
-        # Basic validation - check required keys exist
-        required_sections = []  # Will add validation in future milestones
+        thresholds_path = 'context.thresholds'
+        thresholds = self.get(thresholds_path, {})
 
-        for section in required_sections:
-            if section not in self._config:
+        if not thresholds:
+            logger.debug("Context thresholds not configured, using defaults")
+            return
+
+        required_keys = ['warning', 'refresh', 'critical']
+        for key in required_keys:
+            if key not in thresholds:
                 raise ConfigValidationException(
-                    config_key=section,
-                    expected='dictionary',
+                    config_key=f'{thresholds_path}.{key}',
+                    expected='float between 0.0 and 1.0',
                     got='missing'
                 )
 
-        return True
+        # Validate each threshold
+        values = {}
+        for key in required_keys:
+            value = thresholds[key]
+
+            if not isinstance(value, (int, float)):
+                raise ConfigValidationException(
+                    config_key=f'{thresholds_path}.{key}',
+                    expected='float',
+                    got=type(value).__name__
+                )
+
+            if not (0.0 <= value <= 1.0):
+                raise ConfigValidationException(
+                    config_key=f'{thresholds_path}.{key}',
+                    expected='float between 0.0 and 1.0',
+                    got=str(value)
+                )
+
+            values[key] = float(value)
+
+        # Validate ordering: warning < refresh < critical
+        if not (values['warning'] < values['refresh'] < values['critical']):
+            raise ConfigValidationException(
+                config_key=thresholds_path,
+                expected='warning < refresh < critical',
+                got=f"warning={values['warning']}, refresh={values['refresh']}, critical={values['critical']}"
+            )
+
+        logger.debug(f"Context thresholds valid: warning={values['warning']}, refresh={values['refresh']}, critical={values['critical']}")
+
+    def _validate_max_turns(self) -> None:
+        """Validate max_turns configuration.
+
+        Rules:
+        - min >= 3 (minimum for meaningful iteration)
+        - max <= 30 (prevent infinite loops)
+        - default between min and max
+        - retry_multiplier >= 1.0
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        max_turns_path = 'orchestration.max_turns'
+        max_turns = self.get(max_turns_path, {})
+
+        if not max_turns:
+            logger.debug("Max turns not configured, using defaults")
+            return
+
+        # Validate min
+        min_turns = max_turns.get('min')
+        if min_turns is not None:
+            if not isinstance(min_turns, int):
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.min',
+                    expected='integer',
+                    got=type(min_turns).__name__
+                )
+            if min_turns < 3:
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.min',
+                    expected='integer >= 3',
+                    got=str(min_turns)
+                )
+
+        # Validate max
+        max_value = max_turns.get('max')
+        if max_value is not None:
+            if not isinstance(max_value, int):
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.max',
+                    expected='integer',
+                    got=type(max_value).__name__
+                )
+            if max_value > 30:
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.max',
+                    expected='integer <= 30',
+                    got=str(max_value)
+                )
+
+        # Validate default
+        default_turns = max_turns.get('default')
+        if default_turns is not None:
+            if not isinstance(default_turns, int):
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.default',
+                    expected='integer',
+                    got=type(default_turns).__name__
+                )
+
+            min_val = min_turns or 3
+            max_val = max_value or 30
+
+            if not (min_val <= default_turns <= max_val):
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.default',
+                    expected=f'integer between {min_val} and {max_val}',
+                    got=str(default_turns)
+                )
+
+        # Validate retry_multiplier
+        retry_mult = max_turns.get('retry_multiplier')
+        if retry_mult is not None:
+            if not isinstance(retry_mult, (int, float)):
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.retry_multiplier',
+                    expected='number',
+                    got=type(retry_mult).__name__
+                )
+            if retry_mult < 1.0:
+                raise ConfigValidationException(
+                    config_key=f'{max_turns_path}.retry_multiplier',
+                    expected='number >= 1.0',
+                    got=str(retry_mult)
+                )
+
+        logger.debug(f"Max turns configuration valid")
+
+    def _validate_timeouts(self) -> None:
+        """Validate timeout configurations.
+
+        Rules:
+        - All timeouts must be positive integers (seconds)
+        - response_timeout >= 60 (minimum 1 minute)
+        - iteration_timeout > 0
+        - task_timeout >= iteration_timeout
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        timeout_checks = [
+            ('agent.timeout', 60),
+            ('orchestration.iteration_timeout', 1),
+            ('orchestration.task_timeout', 1),
+            ('agent.local.response_timeout', 60),
+            ('llm.timeout', 1),
+            ('database.connect_timeout', 1),
+        ]
+
+        for timeout_path, min_value in timeout_checks:
+            timeout = self.get(timeout_path)
+            if timeout is None:
+                continue
+
+            if not isinstance(timeout, int):
+                raise ConfigValidationException(
+                    config_key=timeout_path,
+                    expected='positive integer',
+                    got=type(timeout).__name__
+                )
+
+            if timeout < min_value:
+                raise ConfigValidationException(
+                    config_key=timeout_path,
+                    expected=f'integer >= {min_value}',
+                    got=str(timeout)
+                )
+
+        logger.debug("Timeout configuration valid")
+
+    def _validate_confidence_threshold(self) -> None:
+        """Validate confidence threshold.
+
+        Rules:
+        - Must be between 0 and 100
+        - Should be reasonable (30-70 typical range)
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        threshold_path = 'confidence.threshold'
+        threshold = self.get(threshold_path)
+
+        if threshold is None:
+            logger.debug("Confidence threshold not configured, using default")
+            return
+
+        if not isinstance(threshold, (int, float)):
+            raise ConfigValidationException(
+                config_key=threshold_path,
+                expected='number between 0 and 100',
+                got=type(threshold).__name__
+            )
+
+        if not (0 <= threshold <= 100):
+            raise ConfigValidationException(
+                config_key=threshold_path,
+                expected='number between 0 and 100',
+                got=str(threshold)
+            )
+
+        if threshold < 10 or threshold > 90:
+            logger.warning(
+                f"Confidence threshold {threshold} seems unusual. "
+                f"Recommended range: 30-70. Check {threshold_path}"
+            )
+
+        logger.debug(f"Confidence threshold valid: {threshold}")
+
+    def _validate_quality_threshold(self) -> None:
+        """Validate quality score threshold.
+
+        Rules:
+        - Must be between 0 and 100
+        - Should be reasonable (50-85 typical range)
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        threshold_path = 'validation.quality.threshold'
+        threshold = self.get(threshold_path)
+
+        if threshold is None:
+            logger.debug("Quality threshold not configured, using default")
+            return
+
+        if not isinstance(threshold, (int, float)):
+            raise ConfigValidationException(
+                config_key=threshold_path,
+                expected='number between 0 and 100',
+                got=type(threshold).__name__
+            )
+
+        if not (0 <= threshold <= 100):
+            raise ConfigValidationException(
+                config_key=threshold_path,
+                expected='number between 0 and 100',
+                got=str(threshold)
+            )
+
+        logger.debug(f"Quality threshold valid: {threshold}")
+
+    def _validate_breakpoints(self) -> None:
+        """Validate breakpoint configuration.
+
+        Rules:
+        - Thresholds must be between 0 and 100
+        - max_retries must be non-negative
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        breakpoints_path = 'breakpoints'
+        breakpoints = self.get(breakpoints_path, {})
+
+        if not breakpoints:
+            logger.debug("Breakpoints not configured")
+            return
+
+        triggers = breakpoints.get('triggers', {})
+
+        # Validate low_confidence threshold
+        lc_config = triggers.get('low_confidence', {})
+        if lc_config:
+            threshold = lc_config.get('threshold')
+            if threshold is not None and not (0 <= threshold <= 100):
+                raise ConfigValidationException(
+                    config_key=f'{breakpoints_path}.triggers.low_confidence.threshold',
+                    expected='number between 0 and 100',
+                    got=str(threshold)
+                )
+
+        # Validate quality_too_low threshold
+        ql_config = triggers.get('quality_too_low', {})
+        if ql_config:
+            threshold = ql_config.get('threshold')
+            if threshold is not None and not (0 <= threshold <= 100):
+                raise ConfigValidationException(
+                    config_key=f'{breakpoints_path}.triggers.quality_too_low.threshold',
+                    expected='number between 0 and 100',
+                    got=str(threshold)
+                )
+
+        # Validate validation_failed max_retries
+        vf_config = triggers.get('validation_failed', {})
+        if vf_config:
+            max_retries = vf_config.get('max_retries')
+            if max_retries is not None and max_retries < 0:
+                raise ConfigValidationException(
+                    config_key=f'{breakpoints_path}.triggers.validation_failed.max_retries',
+                    expected='non-negative integer',
+                    got=str(max_retries)
+                )
+
+        logger.debug("Breakpoint configuration valid")
+
+    def _validate_llm_config(self) -> None:
+        """Validate LLM configuration.
+
+        Rules:
+        - temperature must be between 0.0 and 2.0
+        - max_tokens must be positive
+        - context_length must be positive
+        - api_url must be valid URL format
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        llm_path = 'llm'
+        llm = self.get(llm_path, {})
+
+        if not llm:
+            logger.debug("LLM configuration not present, using defaults")
+            return
+
+        # Validate temperature
+        temperature = llm.get('temperature')
+        if temperature is not None:
+            if not isinstance(temperature, (int, float)):
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.temperature',
+                    expected='number between 0.0 and 2.0',
+                    got=type(temperature).__name__
+                )
+            if not (0.0 <= temperature <= 2.0):
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.temperature',
+                    expected='number between 0.0 and 2.0',
+                    got=str(temperature)
+                )
+
+        # Validate max_tokens
+        max_tokens = llm.get('max_tokens')
+        if max_tokens is not None:
+            if not isinstance(max_tokens, int):
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.max_tokens',
+                    expected='positive integer',
+                    got=type(max_tokens).__name__
+                )
+            if max_tokens <= 0:
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.max_tokens',
+                    expected='positive integer',
+                    got=str(max_tokens)
+                )
+
+        # Validate context_length
+        context_length = llm.get('context_length')
+        if context_length is not None:
+            if not isinstance(context_length, int):
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.context_length',
+                    expected='positive integer',
+                    got=type(context_length).__name__
+                )
+            if context_length <= 0:
+                raise ConfigValidationException(
+                    config_key=f'{llm_path}.context_length',
+                    expected='positive integer',
+                    got=str(context_length)
+                )
+
+        logger.debug("LLM configuration valid")
+
+    def _validate_agent_config(self) -> None:
+        """Validate agent configuration.
+
+        Rules:
+        - type must be one of allowed values
+        - workspace_path must be valid
+        - max_retries must be non-negative
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        agent_path = 'agent'
+        agent = self.get(agent_path, {})
+
+        if not agent:
+            logger.debug("Agent configuration not present, using defaults")
+            return
+
+        # Validate agent type
+        agent_type = agent.get('type')
+        if agent_type is not None:
+            # Allow both full names and short names for backwards compatibility
+            allowed_types = [
+                'claude-code-local', 'local',
+                'claude-code-ssh', 'ssh',
+                'claude-code-docker', 'docker',
+                'aider'
+            ]
+            if agent_type not in allowed_types:
+                raise ConfigValidationException(
+                    config_key=f'{agent_path}.type',
+                    expected=f'one of {allowed_types}',
+                    got=agent_type
+                )
+
+        # Validate max_retries
+        max_retries = agent.get('max_retries')
+        if max_retries is not None:
+            if not isinstance(max_retries, int):
+                raise ConfigValidationException(
+                    config_key=f'{agent_path}.max_retries',
+                    expected='non-negative integer',
+                    got=type(max_retries).__name__
+                )
+            if max_retries < 0:
+                raise ConfigValidationException(
+                    config_key=f'{agent_path}.max_retries',
+                    expected='non-negative integer',
+                    got=str(max_retries)
+                )
+
+        logger.debug("Agent configuration valid")
 
     def reload(self) -> None:
         """Reload configuration from files.

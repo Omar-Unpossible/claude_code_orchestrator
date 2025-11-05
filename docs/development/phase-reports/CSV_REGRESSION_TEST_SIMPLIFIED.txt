@@ -1,0 +1,101 @@
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Condition evaluation failed: task_type == 'design' - name 'task_type' is not defined
+Condition evaluation failed: test_failed == True - name 'test_failed' is not defined
+Condition evaluation failed: rate_limit_detected == True - name 'rate_limit_detected' is not defined
+Condition evaluation failed: consecutive_task_failures >= count_threshold - name 'consecutive_task_failures' is not defined
+Condition evaluation failed: local_validation != remote_validation - name 'local_validation' is not defined
+Condition evaluation failed: all_milestone_tasks_complete == True - name 'all_milestone_tasks_complete' is not defined
+Condition evaluation failed: task_running_time > timeout_seconds - name 'task_running_time' is not defined
+Failed to extract JSON from response: I'd be happy to help you complete a task! However, I notice that the task information appears to be incomplete - the Task ID, Title, Description, Priority, and Project Context fields are all empty.
+
+T...
+Traceback (most recent call last):
+  File "/tmp/csv_regression_test.py", line 143, in run_csv_test
+    response = task_record.current_response or ""
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Task' object has no attribute 'current_response'
+
+================================================================================
+CSV REGRESSION TEST - Task 4.3
+================================================================================
+
+✓ Created test environment: /tmp/csv_test
+✓ Created sample CSV: /tmp/csv_test/sample.csv
+
+CSV Content:
+name,age,city
+Alice,30,NYC
+Bob,25,SF
+Charlie,35,LA
+
+  Expected average age: 30.0
+
+✓ Loading config from: /home/omarwsl/projects/claude_code_orchestrator/config/config.yaml
+✓ Initializing StateManager: sqlite:///data/csv_test.db
+
+✓ Creating test project...
+  Project ID: 1
+
+✓ Creating task...
+  Task ID: 1
+  Description: 
+Read the CSV file at /tmp/csv_test/sample.csv and calculate the average age of all people.
+
+The CSV...
+
+✓ Initializing Orchestrator...
+  Agent: ClaudeCodeLocalAgent
+  LLM: LocalLLMInterface
+
+================================================================================
+EXECUTING CSV TASK
+================================================================================
+[34m[OBRA][0m Starting iteration 1/10
+[34m[OBRA][0m Built context (308 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (1432 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.62 (FAIL)
+[33m[QWEN][0m   Confidence: 0.34
+[34m[OBRA][0m Decision: clarify
+[34m[OBRA][0m Starting iteration 2/10
+[34m[OBRA][0m Built context (367 chars)
+[34m[OBRA→CLAUDE][0m Sending prompt to Claude Code...
+[34m[OBRA][0m Response received (882 chars)
+[34m[OBRA][0m Validation: ✓
+[33m[QWEN][0m Validating response...
+[33m[QWEN][0m   Quality: 0.78 (PASS)
+[33m[QWEN][0m   Confidence: 0.63
+[34m[OBRA][0m Decision: proceed
+
+================================================================================
+TASK EXECUTION COMPLETE
+================================================================================
+
+Result:
+  Status: completed
+  Iterations: 2
+  Elapsed: 49.6s
+
+================================================================================
+VALIDATION
+================================================================================
+✅ Task completed successfully
+
+================================================================================
+TASK EXECUTION FAILED
+================================================================================
+Error: 'Task' object has no attribute 'current_response'
+Elapsed: 49.6s
+
+================================================================================
+TEST SUMMARY
+================================================================================
+❌ CSV regression test FAILED

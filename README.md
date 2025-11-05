@@ -236,6 +236,37 @@ Obra uses **headless mode** to execute Claude Code non-interactively:
 
 **Why not PTY?** Claude Code has known issues with PTY/terminal emulation (no bugfix available). Headless mode is simpler and more reliable.
 
+### Session Management
+
+Obra provides intelligent session management for complex, multi-task workflows:
+
+#### Milestone-Based Sessions
+- **Sessions** maintain context across related tasks within a milestone
+- **Workplan context** injected on first task of milestone
+- **Previous milestone summaries** included for continuity
+- **Automatic session refresh** when context window reaches 80% capacity
+
+#### Context Window Management
+- **Manual token tracking**: Monitors cumulative token usage across interactions
+- **Tiered thresholds**:
+  - 70% (Warning): Log warning, continue normally
+  - 80% (Refresh): Auto-refresh session with Qwen-generated summary
+  - 95% (Critical): Emergency refresh to prevent overflow
+- **Seamless continuity**: Summaries preserve key decisions and context
+
+#### Adaptive Max Turns
+- **Complexity-based calculation**: Simple tasks (3 turns) to very complex (20 turns)
+- **Task type overrides**: Debugging (20), code generation (12), validation (5)
+- **Auto-retry on error_max_turns**: Doubles limit and retries once if exceeded
+- **Configurable bounds**: Min 3, max 30 turns
+
+#### Extended Timeouts
+- **Default: 7200s (2 hours)** - supports complex workflows without interruption
+- **Configurable per deployment**: Adjust for quick tasks (1800s) or overnight jobs (14400s)
+- **Separate limits**: Timeout (wall-clock) and max_turns (iterations) both enforced
+
+**See [Session Management Guide](docs/guides/SESSION_MANAGEMENT_GUIDE.md) for detailed usage and configuration.**
+
 ### Iterative Orchestration Workflow
 
 The `run_obra_iterative.py` script demonstrates multi-turn task execution:

@@ -1,0 +1,876 @@
+# Example Configuration for Claude Code Orchestrator
+#
+# This file demonstrates all available configuration options with extensive comments.
+# Copy this to config/config.yaml and customize for your environment.
+#
+# Configuration Precedence (highest to lowest):
+# 1. Command-line arguments
+# 2. Environment variables (ORCHESTRATOR_* prefix)
+# 3. Explicit config path
+# 4. User config (~/.orchestrator/config.yaml)
+# 5. Project config (./config/config.yaml)
+# 6. Profile config (./config/profiles/{profile}.yaml)
+# 7. Default config (./config/default_config.yaml)
+#
+# All sections are optional and will use defaults from default_config.yaml if omitted.
+
+# ============================================================================
+# LOCAL LLM CONFIGURATION (Ollama)
+# ============================================================================
+#
+# Configures the local LLM for validation and quality scoring.
+# Used by QualityController, ConfidenceScorer, and DecisionEngine.
+#
+# Note: LLM location is INDEPENDENT of agent location (M8 architecture).
+# - Agent (Claude Code) can be local or remote
+# - LLM (Ollama) is always on host machine for GPU access
+#
+llm:
+  # LLM provider type (must match LLMRegistry)
+  type: ollama
+
+  # Model to use for inference
+  # Options:
+  #  - qwen2.5-coder:32b    # 32B model (recommended, best quality)
+  #  - qwen2.5-coder:14b    # 14B model (faster, lower quality)
+  #  - qwen2.5-coder:7b     # 7B model (fast, minimal quality)
+  model: qwen2.5-coder:32b
+
+  # API endpoint for Ollama service
+  # Examples:
+  #  - http://172.29.144.1:11434   # Host machine (recommended for VM)
+  #  - http://localhost:11434      # Local machine
+  #  - http://192.168.1.100:11434  # Network address
+  api_url: http://172.29.144.1:11434
+
+  # Temperature for generation (controls randomness)
+  # Range: 0.0 (deterministic) to 2.0 (highly random)
+  # Recommended: 0.7 (balanced)
+  # Lower for validation tasks (more consistent)
+  # Higher for creative tasks
+  temperature: 0.7
+
+  # Timeout for LLM generation (seconds)
+  # Large complex prompts may need longer timeouts
+  # Recommended: 30-120 seconds
+  timeout: 30
+
+  # Maximum tokens to generate per response
+  # Larger = more verbose responses but slower
+  # Recommended: 4096 (good balance)
+  max_tokens: 4096
+
+  # Model context window size (tokens)
+  # Must match the actual model capacity
+  # Qwen 2.5 Coder: 32768 tokens
+  context_length: 32768
+
+
+# ============================================================================
+# AGENT CONFIGURATION
+# ============================================================================
+#
+# Configures how Claude Code is executed. Two modes are supported:
+#
+# 1. LOCAL (recommended for same-machine deployment)
+#    - Runs Claude Code in subprocess with headless mode (--print flag)
+#    - Fresh session per call for 100% reliability
+#    - No PTY (known issues with terminal emulation)
+#    - Automatic permission bypass (dangerous mode)
+#
+# 2. SSH (for remote execution)
+#    - Runs Claude Code on remote machine via SSH
+#    - Persistent agent connection
+#    - More network overhead
+#    - Requires SSH key configuration
+#
+agent:
+  # Agent type to use
+  # Options:
+  #  - claude-code-local    # Local subprocess (recommended - M8)
+  #  - claude-code-ssh      # Remote via SSH
+  #  - claude-code-docker   # Docker container (future)
+  type: claude-code-local
+
+  # Global agent timeout (seconds)
+  # Used if agent-specific timeout not set
+  # Recommended: 120 (2 minutes) for quick tasks
+  # Increase for long-running tasks (300-600)
+  timeout: 120
+
+  # Maximum retry attempts on failure
+  # Each retry uses backoff (exponential)
+  # Recommended: 2-3
+  max_retries: 3
+
+  # Agent workspace directory
+  # Must exist and be writable
+  # Claude Code will work in this directory
+  # Recommended: /home/user/obra-runtime/workspace
+  workspace_path: /home/omarwsl/obra-runtime/workspace
+
+  # ========================================================================
+  # LOCAL AGENT CONFIGURATION (claude-code-local)
+  # ========================================================================
+  # Only used when agent.type = claude-code-local
+  #
+  # The local agent runs Claude Code in a subprocess with these settings:
+  # - Uses subprocess.run() with --print flag (non-interactive)
+  # - Each call is a fresh session (no persistent state)
+  # - Dangerous mode enabled for autonomous operation
+  # - No PTY (Terminal emulation disabled for reliability)
+  #
+  local:
+    # Command to run Claude Code
+    # Default: 'claude' (assumes it's in PATH)
+    # Options:
+    #  - claude              # If installed globally
+    #  - /usr/bin/claude     # Absolute path
+    #  - python -m claude    # Via module
+    claude_command: claude
+
+    # Timeout for Claude responses (seconds)
+    # Time limit for entire Claude operation
+    # Recommended: 120 for quick tasks, 300-600 for complex tasks
+    # Note: Extended timeouts (7200) supported for overnight jobs
+    response_timeout: 120
+
+    # Enable dangerous mode (automatic permission bypass)
+    # When true, uses --dangerously-skip-permissions flag
+    # Allows fully autonomous operation without prompts
+    # Security: Only use in trusted, isolated environments
+    # Recommended: true for orchestration, false for manual use
+    bypass_permissions: true
+
+    # Use session persistence (NOT RECOMMENDED)
+    # When false (recommended): Each call uses a fresh session
+    #   - More reliable (no session state issues)
+    #   - Obra provides context continuity
+    # When true: Attempts to maintain session across calls
+    #   - Faster (less startup overhead)
+    #   - More fragile (session state bugs)
+    # IMPORTANT: Fresh sessions are required for production
+    use_session_persistence: false
+
+  # ========================================================================
+  # SSH AGENT CONFIGURATION (claude-code-ssh)
+  # ========================================================================
+  # Only used when agent.type = claude-code-ssh
+  #
+  # SSH agent runs Claude Code on a remote machine.
+  # Use for:
+  # - Running multiple agents on different machines
+  # - Isolating execution from host
+  # - Testing multi-agent scenarios
+  #
+  ssh:
+    # Remote host address
+    # Can be hostname or IP
+    # Examples: localhost, 192.168.1.100, remote.example.com
+    host: localhost
+
+    # SSH port (default 22)
+    # Change if SSH is on non-standard port
+    port: 22
+
+    # SSH username
+    # User must have Claude Code installed
+    # Must have shell access (bash/sh)
+    user: claude
+
+    # Path to SSH private key
+    # Recommended: ~/.ssh/id_rsa or ~/.ssh/id_ed25519
+    # Security: Use ORCHESTRATOR_AGENT_SSH_KEY_PATH env var instead
+    key_path: ~/.ssh/id_rsa
+
+    # SSH known_hosts verification (future)
+    # When true, verify host fingerprint
+    verify_host_key: true
+
+  # ========================================================================
+  # DOCKER AGENT CONFIGURATION (claude-code-docker) - FUTURE
+  # ========================================================================
+  docker:
+    # Docker image name
+    # Should have Claude Code pre-installed
+    image: claude-code:latest
+
+    # Container name
+    # Used for docker run --name
+    container_name: claude-agent
+
+    # Mount point for workspace in container
+    # Maps host workspace to container path
+    workspace_mount: ./workspace
+
+    # Additional Docker run flags (future)
+    docker_flags: ""
+
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+#
+# Configures persistent storage for tasks, responses, and state.
+# Used by StateManager and models.
+#
+database:
+  # Database connection URL
+  # Supports SQLite and PostgreSQL
+  #
+  # SQLite (simple, local):
+  #   sqlite:///path/to/db.db           # Relative path
+  #   sqlite:////absolute/path/to/db.db # Absolute path
+  #   sqlite:///:memory:                # In-memory (testing only)
+  #
+  # PostgreSQL (production):
+  #   postgresql://user:password@localhost/orchestrator
+  #   postgresql://user:password@db.example.com:5432/orchestrator
+  #
+  # Note: Password should be set via ORCHESTRATOR_DATABASE_PASSWORD env var
+  url: sqlite:////home/omarwsl/obra-runtime/data/orchestrator.db
+
+  # Database connection pool size
+  # Number of connections to maintain in pool
+  # Recommended: 5-20 for typical usage
+  pool_size: 10
+
+  # Maximum overflow connections
+  # Additional connections beyond pool_size
+  # Recommended: pool_size / 2
+  max_overflow: 20
+
+  # Log all SQL queries (for debugging)
+  # Set to true to see all database operations
+  # Warning: Verbose output, use for debugging only
+  echo: false
+
+  # Connection timeout (seconds)
+  # Time to wait for database connection
+  connect_timeout: 5
+
+
+# ============================================================================
+# FILE MONITORING CONFIGURATION
+# ============================================================================
+#
+# Monitors file changes during task execution.
+# Enables rollback capability if something goes wrong.
+#
+monitoring:
+  # File watcher configuration
+  file_watcher:
+    # Enable file watching
+    # When true, monitors workspace for changes
+    # When false, no file change tracking
+    enabled: true
+
+    # Debounce rapid changes (milliseconds)
+    # Groups rapid changes into single event
+    # Recommended: 500ms (balance between responsiveness and noise)
+    debounce_ms: 500
+
+    # Patterns to ignore (glob-style)
+    # Files matching these patterns are not tracked
+    # Common patterns:
+    #  - **/__pycache__/**  # Python compiled files
+    #  - **/.git/**         # Git internals
+    #  - **/.venv/**        # Virtual environments
+    #  - **/*.pyc           # Compiled Python
+    #  - **/node_modules/** # Node dependencies
+    ignore_patterns:
+      - "**/__pycache__/**"
+      - "**/.git/**"
+      - "**/.venv/**"
+      - "**/.venv2/**"
+      - "**/*.pyc"
+      - "**/node_modules/**"
+      - "**/.pytest_cache/**"
+      - "**/.mypy_cache/**"
+      - "**/site-packages/**"
+      - "**/.egg-info/**"
+
+  # Output monitor configuration
+  output_monitor:
+    # Markers that indicate task completion
+    # Check output for these strings
+    completion_markers:
+      - "Task completed"
+      - "Done"
+      - "Finished"
+      - "SUCCESS"
+      - "✓"
+
+    # Markers that indicate errors
+    error_markers:
+      - "Error:"
+      - "Failed:"
+      - "Exception:"
+      - "ERROR"
+      - "FAILED"
+
+
+# ============================================================================
+# ORCHESTRATION SETTINGS
+# ============================================================================
+#
+# Controls the orchestration loop and task execution parameters.
+#
+orchestration:
+  # Maximum iterations per task
+  # Hard limit on iterations (prevents infinite loops)
+  # Recommended: 50 (very generous)
+  # Typical tasks: 3-10 iterations
+  max_iterations: 50
+
+  # Timeout per iteration (seconds)
+  # Time limit for each iteration
+  # If exceeded, iteration is marked failed and next is attempted
+  # Recommended: 300 (5 minutes)
+  iteration_timeout: 300
+
+  # Overall task timeout (seconds)
+  # Absolute deadline for entire task
+  # If exceeded, task is marked failed
+  # Recommended: 3600 (1 hour), or 7200 (2 hours) for complex tasks
+  task_timeout: 3600
+
+  # Number of tasks to run in parallel
+  # Only affects multiple tasks, not iterations within task
+  # Recommended: 1 (sequential) for stability
+  # Increase only if you have multiple independent tasks
+  concurrent_tasks: 1
+
+  # Automatically retry failed operations
+  # When true, retries failed operations with backoff
+  # When false, fails immediately
+  auto_retry: true
+
+  # ========================================================================
+  # MAXIMUM TURNS CONFIGURATION (Iterative Orchestration - M8)
+  # ========================================================================
+  #
+  # Controls how many iterations are allowed for task execution.
+  # A "turn" is one round of: prompt -> execute -> validate -> score
+  #
+  # Context window management:
+  # - As turns progress, context window fills with history
+  # - Context window thresholds trigger compression/summarization
+  # - Extended timeouts allow complex multi-turn work
+  #
+  max_turns:
+    # Enable adaptive calculation based on task complexity
+    # When true: Uses task complexity to determine initial max_turns
+    # When false: Uses default value for all tasks
+    # Recommended: true (better resource utilization)
+    adaptive: true
+
+    # Fallback value if adaptive calculation fails
+    # Used when adaptive=true but calculation fails
+    # Used when adaptive=false for all tasks
+    # Recommended: 10 (reasonable for most tasks)
+    # Range: 3-30
+    default: 10
+
+    # Task-type specific overrides
+    # Takes precedence over both adaptive and default
+    # Allows fine-tuning for known task patterns
+    #
+    # Task types and recommended values:
+    #  - validation:       5   # Quick checks
+    #  - code_generation: 12   # Complex code writing
+    #  - refactoring:     15   # Code improvements
+    #  - debugging:       20   # Complex troubleshooting
+    #  - error_analysis:   8   # Error investigation
+    #  - planning:         5   # Task planning
+    #  - documentation:    3   # Doc generation
+    #  - testing:          8   # Test writing/fixing
+    #
+    by_task_type:
+      validation: 5
+      code_generation: 12
+      refactoring: 15
+      debugging: 20
+      error_analysis: 8
+      planning: 5
+      documentation: 3
+      testing: 8
+
+    # Safety bounds - never exceed these limits
+    # min: Minimum allowed max_turns
+    #      Must be at least 3 for meaningful iteration
+    #      Claude Code session needs multiple turns for context
+    #      Rule: 3 is absolute minimum
+    # max: Maximum allowed max_turns
+    #      Prevents infinite loops and runaway tasks
+    #      30 turns is very generous (90+ minutes typical)
+    #      Rule: Never exceed 30
+    min: 3
+    max: 30
+
+    # Retry behavior when error_max_turns is hit
+    # When max_turns is exceeded:
+    #  1. Task fails with "max turns exceeded" error
+    #  2. If auto_retry=true: Automatically retry with higher limit
+    #  3. If auto_retry=false: Fail and escalate to breakpoint
+
+    # Enable automatic retry with increased limit
+    auto_retry: true
+
+    # Number of retries allowed
+    # 1 = try twice total (initial + 1 retry)
+    # 2 = try three times total
+    # Recommended: 1 (to prevent excessive processing)
+    max_retries: 1
+
+    # Multiplier for max_turns on retry
+    # When retrying, max_turns = original_max_turns * retry_multiplier
+    # Example: max_turns=10, multiplier=2 -> retry with max_turns=20
+    # Recommended: 2.0 (double on retry)
+    retry_multiplier: 2
+
+    # Extended timeout for long-running tasks (hours)
+    # Used when task appears to need more time
+    # Examples:
+    #  - 0.5  # 30 minutes
+    #  - 1    # 1 hour
+    #  - 2    # 2 hours
+    #  - 4    # 4 hours (overnight job)
+    # Recommended: 2 (reasonable for most long tasks)
+    extended_timeout_hours: 2
+
+
+# ============================================================================
+# CONTEXT WINDOW MANAGEMENT (M5)
+# ============================================================================
+#
+# Manages context history and thresholds for compression.
+#
+# Context Window Lifecycle:
+# 1. Task starts, context window ~20% full (task description, initial context)
+# 2. Each iteration adds response + validation (window grows)
+# 3. At 70% (warning): Log warning, consider summarization
+# 4. At 80% (refresh): Begin compressing old context
+# 5. At 95% (critical): Aggressive compression or new session
+#
+# Thresholds are percentages (0.0-1.0) of model.context_length
+# Example: context_length=32768, warning_threshold=0.70 -> 22937 tokens
+#
+context:
+  # Maximum total tokens for context in prompts
+  # This is per-iteration limit, not total limit
+  # Limits how much history is included
+  # Recommended: 8000 (good balance for Qwen 2.5 Coder 32B)
+  # Rules:
+  #  - Must be <= model.context_length
+  #  - Larger = more context but slower
+  #  - Smaller = faster but less history
+  max_tokens: 8000
+
+  # Context window threshold configuration
+  # Used by ContextManager to decide when to compress/summarize
+  #
+  # These are percentages of the model context window (0.0-1.0)
+  # Examples based on context_length=32768:
+  #  - 0.70 = 22937 tokens (warning)
+  #  - 0.80 = 26214 tokens (refresh)
+  #  - 0.95 = 31130 tokens (critical)
+  #
+  thresholds:
+    # Warning threshold: Start monitoring memory pressure
+    # Recommendations:
+    #  - Typical: 0.70 (good balance)
+    #  - Conservative: 0.60 (more frequent monitoring)
+    #  - Aggressive: 0.80 (less overhead)
+    # Rule: Must be < refresh and < critical
+    warning: 0.70
+
+    # Refresh threshold: Begin context summarization
+    # Start compressing and summarizing old context
+    # Recommendations:
+    #  - Typical: 0.80
+    #  - Conservative: 0.70
+    #  - Aggressive: 0.85
+    # Rule: Must be > warning and < critical
+    refresh: 0.80
+
+    # Critical threshold: Aggressive compression or new session
+    # If this is reached, consider terminating iteration
+    # Recommendations:
+    #  - Typical: 0.95
+    #  - Conservative: 0.90
+    #  - Aggressive: 0.99
+    # Rule: Must be > warning and > refresh
+    critical: 0.95
+
+  # Prioritization of context to keep when compressing
+  # Order matters: first items have highest priority
+  # When compressing, keep items in this order
+  prioritization:
+    - recent_interactions  # Most recent (highest priority)
+    - task_description     # Current task
+    - relevant_files       # Files mentioned
+    - project_context      # General context
+
+  # Context summarization when limit reached
+  summarization:
+    # Enable context summarization
+    # When true: Summarizes old context to free space
+    # When false: Uses other compression strategies
+    enabled: true
+
+    # Number of recent interactions to keep unsummarized
+    # Recent interactions are kept in full for accuracy
+    # Older ones are summarized
+    # Recommended: 5 (keep last 5 interactions, summarize rest)
+    keep_recent: 5
+
+    # Summary compression ratio
+    # 0.5 = reduce old context to 50% of original size
+    # Higher = more aggressive compression (faster)
+    # Lower = more detailed summaries (better quality)
+    compression_ratio: 0.5
+
+
+# ============================================================================
+# BREAKPOINT CONFIGURATION
+# ============================================================================
+#
+# Breakpoints pause execution for human review/input.
+# When a breakpoint is triggered, the task waits for user decision.
+#
+breakpoints:
+  # Enable breakpoint system
+  # When true: Can trigger breakpoints
+  # When false: No breakpoints (fully autonomous)
+  enabled: true
+
+  # Auto-resolve timeout (seconds)
+  # If no human response after this time, auto-proceed
+  # 0 = wait forever (never auto-resolve)
+  # Recommended: 0 (wait for human) for critical decisions
+  # Recommended: 300 (5 min) for non-critical decisions
+  auto_resolve_timeout: 300
+
+  # Breakpoint triggers
+  # Each trigger can be enabled/disabled individually
+  triggers:
+    # Low confidence breakpoint
+    low_confidence:
+      enabled: true
+      # Confidence below this percentage triggers breakpoint
+      # Recommended: 30 (low confidence)
+      # Range: 0-100
+      threshold: 30
+
+    # Poor quality breakpoint
+    quality_too_low:
+      enabled: true
+      # Quality score below this triggers breakpoint
+      # Recommended: 50 (halfway through range)
+      # Range: 0-100
+      threshold: 50
+
+    # Validation failed breakpoint
+    validation_failed:
+      enabled: true
+      # Trigger breakpoint after this many failures
+      # Recommended: 3 (allow a few retries)
+      max_retries: 3
+
+    # Rate limit hit
+    rate_limit_hit:
+      enabled: true
+
+    # Unexpected error
+    unexpected_error:
+      enabled: true
+
+
+# ============================================================================
+# VALIDATION SETTINGS
+# ============================================================================
+#
+# Controls validation of Claude Code responses.
+# Two-stage validation:
+# 1. ResponseValidator: Checks format/completeness (fast)
+# 2. QualityController: Checks correctness (may use LLM)
+#
+validation:
+  # Response validation (format checks)
+  response:
+    # Check response completeness
+    # Ensures response is not truncated/incomplete
+    check_completeness: true
+
+    # Check code blocks are properly closed
+    # Markdown code blocks should have opening and closing ```
+    check_code_blocks_closed: true
+
+    # Minimum response length (characters)
+    # Responses shorter than this may be incomplete
+    # Recommended: 10 (very permissive)
+    min_length: 10
+
+  # Quality validation (correctness checks)
+  quality:
+    # Enable quality checking
+    # When true: Runs quality validation
+    # When false: Skips quality checks
+    enabled: true
+
+    # Minimum acceptable quality score (0-100)
+    # Responses below this are marked as low-quality
+    # Recommended: 70 (good quality)
+    # Range: 0-100
+    threshold: 70
+
+    # Run tests if applicable
+    # Executes test suite to validate code
+    # Only for code generation tasks
+    run_tests: true
+
+    # Check code syntax
+    # Validates generated code has correct syntax
+    check_syntax: true
+
+    # Check for common errors
+    # Detects security issues, anti-patterns, etc.
+    check_common_errors: true
+
+    # Code style validation
+    # Checks code follows project style guide
+    check_code_style: true
+
+
+# ============================================================================
+# CONFIDENCE SCORING
+# ============================================================================
+#
+# Calculates confidence that response is correct.
+# Used by DecisionEngine to decide whether to proceed or escalate.
+#
+confidence:
+  # Minimum confidence to proceed (0-100)
+  # Scores below this trigger low_confidence breakpoint
+  # Recommended: 50 (allow moderate confidence)
+  # Range: 0-100
+  threshold: 50
+
+  # Ensemble weights for confidence scoring
+  # Sum should equal 1.0 (or will be normalized)
+  # Higher weight = more influence on final score
+  weights:
+    # Weight for validation result (format/completeness)
+    # Lower weight = more forgiving of format issues
+    validation: 0.3
+
+    # Weight for quality score (correctness)
+    # Higher weight = prioritize correctness
+    quality: 0.4
+
+    # Weight for agent health (successful operations)
+    # Helps detect when agent is having issues
+    agent_health: 0.1
+
+    # Weight for retry count (how many attempts)
+    # More retries = lower confidence
+    # Helps detect problems
+    retry_count: 0.2
+
+
+# ============================================================================
+# PROMPT ENGINEERING SETTINGS
+# ============================================================================
+#
+# Controls prompt generation and optimization.
+#
+prompts:
+  # Directory containing Jinja2 prompt templates
+  # Templates support dynamic variable substitution
+  template_dir: config/prompt_templates
+
+  # Prompt optimization
+  optimization:
+    # Enable prompt optimization
+    enabled: true
+
+    # Optimization strategies
+    strategies:
+      - clarity          # Improve clarity
+      - conciseness      # Remove verbosity
+      - specificity      # Be more specific
+
+  # Few-shot examples
+  few_shot:
+    # Number of examples to include
+    # More examples = longer prompts but better guidance
+    count: 2
+
+    # Example selection strategy
+    # Options: random, similarity, difficulty
+    strategy: similarity
+
+
+# ============================================================================
+# PERFORMANCE SETTINGS
+# ============================================================================
+#
+# Optimization and caching settings.
+#
+performance:
+  # Enable caching
+  # When true: Cache LLM responses and analysis
+  # When false: Never cache (slower but always fresh)
+  enable_caching: true
+
+  # Cache time-to-live (seconds)
+  # Cache entries older than this are invalidated
+  # Recommended: 300 (5 minutes)
+  cache_ttl: 300
+
+  # Threading settings
+  threading:
+    # Maximum worker threads
+    # More threads = more parallelism but higher resource usage
+    max_workers: 4
+
+    # Queue timeout (seconds)
+    # Time to wait for thread pool queue
+    queue_timeout: 30
+
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+#
+# Controls application logging behavior.
+#
+logging:
+  # Log level
+  # Options: DEBUG (verbose), INFO (normal), WARNING, ERROR, CRITICAL
+  # Recommended: INFO for production
+  level: INFO
+
+  # Log message format
+  # Standard Python logging format string
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log file path
+  # Absolute path recommended
+  # {{date}} will be replaced with date (YYYY-MM-DD)
+  file: /home/omarwsl/obra-runtime/logs/orchestrator.log
+
+  # Maximum log file size (bytes)
+  # File is rotated when size exceeded
+  # 10485760 = 10MB
+  max_bytes: 10485760
+
+  # Number of backup log files to keep
+  # When rotating, keeps this many old files
+  backup_count: 5
+
+
+# ============================================================================
+# DEVELOPMENT/DEBUG SETTINGS
+# ============================================================================
+#
+# Development aids. DISABLE in production!
+#
+debug:
+  # Enable debug mode
+  # When true: Extra logging and checks
+  # When false: Normal operation
+  enabled: false
+
+  # Save all interactions to files
+  # For post-mortem analysis and debugging
+  # Warning: Verbose output
+  save_interactions: true
+
+  # Extra verbose logging
+  # More detailed log messages
+  # Warning: Very verbose
+  verbose_logging: false
+
+  # Save all prompts
+  # Track all generated prompts
+  save_prompts: false
+
+  # Save all responses
+  # Track all LLM responses
+  save_responses: false
+
+  # Validate all schemas
+  # Extra validation of response schemas
+  validate_schemas: false
+
+  # Trace all decisions
+  # Log all DecisionEngine decisions
+  trace_decisions: false
+
+
+# ============================================================================
+# COMMON CONFIGURATION SCENARIOS
+# ============================================================================
+#
+# Quick reference for common setups:
+#
+# SCENARIO 1: Quick Development Testing
+# - Use minimal validation
+# - Short timeouts
+# - Verbose logging
+# Modify: validation.quality.threshold=30, agent.timeout=60, logging.level=DEBUG
+#
+# SCENARIO 2: Production Deployment
+# - Strict validation
+# - Longer timeouts
+# - Minimal logging
+# Modify: validation.quality.threshold=80, agent.timeout=300, logging.level=WARNING
+#
+# SCENARIO 3: Complex Task Processing
+# - Extended timeouts
+# - Adaptive max_turns
+# - Context summarization enabled
+# Modify: agent.timeout=600, max_turns.adaptive=true, context.summarization.enabled=true
+#
+# SCENARIO 4: Remote Agent Setup
+# - Change agent.type to claude-code-ssh
+# - Configure SSH credentials
+# - Set up network connectivity
+# Modify: agent.type=claude-code-ssh, agent.ssh.host=remote.host, agent.ssh.user=claude
+#
+# SCENARIO 5: Autonomous Mode
+# - Enable dangerous mode
+# - High confidence threshold
+# - No breakpoints
+# Modify: agent.local.bypass_permissions=true, confidence.threshold=60, breakpoints.enabled=false
+
+# ============================================================================
+# ENVIRONMENT VARIABLE OVERRIDES
+# ============================================================================
+#
+# Any config value can be overridden via environment variables.
+# Format: ORCHESTRATOR_SECTION_KEY=value
+#
+# Examples:
+#
+#   Override agent timeout:
+#   export ORCHESTRATOR_AGENT_TIMEOUT=300
+#
+#   Override LLM model:
+#   export ORCHESTRATOR_LLM_MODEL=qwen2.5-coder:14b
+#
+#   Override database URL (RECOMMENDED for secrets):
+#   export ORCHESTRATOR_DATABASE_URL=postgresql://user:pass@localhost/db
+#
+#   Override SSH key path (RECOMMENDED for security):
+#   export ORCHESTRATOR_AGENT_SSH_KEY_PATH=/home/user/.ssh/id_ed25519
+#
+# Precedence: Environment variables override all config files!
+# This is useful for:
+# - Secrets (passwords, API keys, SSH keys)
+# - Machine-specific settings (hosts, ports, paths)
+# - Runtime overrides (timeouts, log levels)
+#
+# Best Practice: Use environment variables for sensitive data!

@@ -99,6 +99,73 @@ orchestration:
     enable_testing_validation: false
 ```
 
+## Configuration Profiles (M9)
+
+**New in v1.2**: Instead of manually configuring every option, use pre-configured profiles optimized for different project types!
+
+### Available Profiles
+
+Obra includes 6 built-in profiles:
+
+| Profile | Best For | Key Features |
+|---------|----------|--------------|
+| `python_project` | Python development | pytest integration, moderate timeouts, type hints |
+| `web_app` | Web applications | Rapid iteration, shorter timeouts, feature branches |
+| `ml_project` | Machine learning | Extended timeouts (4h), high quality, GPU-aware |
+| `microservice` | Microservices | Docker integration, dependencies, PR automation |
+| `minimal` | Quick tasks | Fast, lean, minimal overhead |
+| `production` | Production code | Maximum quality (0.90), strict validation, git auto-commit |
+
+### Using Profiles
+
+**Quick Start with Profile:**
+```bash
+# Create project with python_project profile
+python -m src.cli --profile python_project project create "My Python App"
+
+# Execute task with profile
+python -m src.cli --profile python_project task execute 1
+
+# Override specific settings
+python -m src.cli --profile production \
+  --set agent.response_timeout=3600 \
+  --set git.enabled=false \
+  task execute 1
+```
+
+**Set Default Profile:**
+```yaml
+# config/config.yaml
+profiles:
+  default_profile: python_project  # Used if no --profile flag
+```
+
+**Examples:**
+
+```bash
+# Python library development
+python -m src.cli --profile python_project project create "awesome-lib"
+
+# Web app with rapid iteration
+python -m src.cli --profile web_app project create "Dashboard"
+
+# ML experiment with extended timeout
+python -m src.cli --profile ml_project \
+  --set agent.response_timeout=21600 \
+  project create "Text Classification"
+
+# Microservice with git automation
+python -m src.cli --profile microservice project create "User Service"
+
+# Quick prototype
+python -m src.cli --profile minimal task create "Test API" --execute
+
+# Production deployment
+python -m src.cli --profile production project create "Payment System"
+```
+
+For detailed profile documentation, see [Configuration Profiles Guide](CONFIGURATION_PROFILES_GUIDE.md).
+
 ## Basic Usage
 
 ### 1. Create a Project
@@ -366,6 +433,7 @@ agent:
 
 ## Next Steps
 
+- Read [Configuration Profiles Guide](CONFIGURATION_PROFILES_GUIDE.md) - Learn about profiles (M9)
 - Read [Architecture Documentation](../architecture/ARCHITECTURE.md)
 - Explore [API Reference](../api/API_REFERENCE.md)
 - Check [Advanced Usage Guide](ADVANCED_USAGE.md)
