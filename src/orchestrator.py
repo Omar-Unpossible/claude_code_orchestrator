@@ -1276,6 +1276,14 @@ class Orchestrator:
                 logger.info(f"[ORCH:{llm_name}] Quality: {quality_result.overall_score:.2f} ({gate_status})")
                 self._print_orch(f"  Quality: {quality_result.overall_score:.2f} ({gate_status})")
 
+                # [PHASE 2.3] Log validation guidance if user provided it
+                if self.interactive_mode and self.injected_context.get('to_orch_intent') == 'validation_guidance':
+                    orch_message = self.injected_context.get('to_orch', '')
+                    logger.info(f"[ORCH_GUIDANCE] User validation guidance: \"{orch_message}\"")
+                    self._print_orch(f"  Note: User guidance active: {orch_message[:50]}...")
+                    # Note: This guidance is logged for human awareness but doesn't modify
+                    # quality scoring (which uses complex rule-based heuristics, not LLM prompts)
+
                 # 6. Confidence scoring
                 confidence = self.confidence_scorer.score_response(
                     response,
@@ -1384,7 +1392,17 @@ class Orchestrator:
                     'confidence_score': confidence
                 }
 
-                action = self.decision_engine.decide_next_action(decision_context)
+                # [PHASE 2.3] Apply decision hint if user provided guidance
+                threshold_adjustment = 0.0
+                if self.interactive_mode and self.injected_context.get('to_orch_intent') == 'decision_hint':
+                    # User wants to override decision - lower threshold temporarily
+                    threshold_adjustment = 0.15  # Make decision more lenient
+                    orch_message = self.injected_context.get('to_orch', '')
+                    logger.info(f"[ORCH_HINT] User decision hint active: \"{orch_message}\" "
+                               f"(adjusting thresholds by +{threshold_adjustment})")
+                    self._print_orch(f"  Applying decision hint: {orch_message[:50]}...")
+
+                action = self.decision_engine.decide_next_action(decision_context, threshold_adjustment)
 
                 # Phase 2: Allow user to override decision
                 if self.interactive_mode and self.injected_context.get('override_decision'):
@@ -1414,6 +1432,45 @@ class Orchestrator:
                 logger.info(f"[OBRA] Decision: {action.type} | Confidence: {action.confidence:.2f}")
                 logger.info(f"Decision: {action.type} (confidence: {action.confidence:.2f})")
                 self._print_obra(f"Decision: {action.type}")
+
+                # [PHASE 2.3] Generate feedback if user requested analysis
+                if self.interactive_mode and self.injected_context.get('to_orch_intent') == 'feedback_request':
+                    orch_message = self.injected_context.get('to_orch', '')
+                    logger.info(f"[ORCH_FEEDBACK] Generating feedback based on user request: \"{orch_message}\"")
+                    self._print_orch(f"  Generating feedback: {orch_message[:50]}...")
+
+                    try:
+                        # Build feedback prompt for orchestrator LLM
+                        feedback_prompt = f"""Analyze the following code implementation and provide feedback.
+
+User Request: {orch_message}
+
+Task Description:
+{self.current_task.description}
+
+Implementation (Response):
+{response[:2000]}...
+
+Provide concise, actionable feedback focusing on what the user requested. Be specific."""
+
+                        # Generate feedback using orchestrator LLM
+                        feedback = self.llm_interface.generate(
+                            feedback_prompt,
+                            max_tokens=500,
+                            temperature=0.3
+                        )
+
+                        # Inject feedback into next implementer prompt
+                        feedback_message = f"ORCHESTRATOR FEEDBACK:\n{feedback}\n\nPlease address this feedback in your next iteration."
+                        self.injected_context['to_impl'] = feedback_message
+                        self.injected_context['to_claude'] = feedback_message  # Legacy key
+
+                        logger.info(f"[ORCH_FEEDBACK] Generated {len(feedback)} chars of feedback, injected for next iteration")
+                        self._print_orch(f"  Feedback generated ({len(feedback)} chars) → will be sent to implementer")
+
+                    except Exception as e:
+                        logger.error(f"[ORCH_FEEDBACK] Failed to generate feedback: {e}")
+                        self._print_orch(f"  Error generating feedback: {str(e)}")
 
                 # Phase 2: Clear injected context based on decision (persist through RETRY)
                 if self.interactive_mode:

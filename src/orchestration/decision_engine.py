@@ -177,7 +177,7 @@ class DecisionEngine:
 
         logger.info("DecisionEngine initialized")
 
-    def decide_next_action(self, context: Dict[str, Any]) -> Action:
+    def decide_next_action(self, context: Dict[str, Any], threshold_adjustment: float = 0.0) -> Action:
         """Decide next action based on context.
 
         Analyzes all available information and selects the most appropriate
@@ -191,6 +191,10 @@ class DecisionEngine:
                 - quality_score: Quality score (0.0-1.0)
                 - confidence_score: Confidence score (0.0-1.0)
                 - (optional) other relevant data
+            threshold_adjustment: Adjustment to quality thresholds (default: 0.0)
+                Positive values make decisions more lenient (lower thresholds)
+                Negative values make decisions stricter (raise thresholds)
+                Typically used with user /to-orch decision hints
 
         Returns:
             Action to take
@@ -204,6 +208,9 @@ class DecisionEngine:
             ...     'confidence_score': 0.90
             ... })
             >>> print(action.type)  # 'proceed'
+
+            >>> # With decision hint (more lenient)
+            >>> action = engine.decide_next_action(context, threshold_adjustment=0.1)
         """
         with self._lock:
             # Extract context data
@@ -216,10 +223,19 @@ class DecisionEngine:
             # Trust LLM quality scores directly instead of heuristic confidence
             # This eliminates the clarification loop caused by conservative heuristics
 
+            # Apply threshold adjustment (for user decision hints)
+            acceptable_threshold = max(0.0, min(1.0, 0.7 - threshold_adjustment))
+            marginal_threshold = max(0.0, min(1.0, 0.5 - threshold_adjustment))
+
+            if threshold_adjustment != 0.0:
+                logger.info(f"[DECISION_HINT] Threshold adjustment: {threshold_adjustment:+.2f} "
+                           f"(acceptable: 0.7→{acceptable_threshold:.2f}, "
+                           f"marginal: 0.5→{marginal_threshold:.2f})")
+
             # Evaluate quality and validation
-            quality_acceptable = quality_score >= 0.7
-            quality_marginal = 0.5 <= quality_score < 0.7
-            quality_poor = quality_score < 0.5
+            quality_acceptable = quality_score >= acceptable_threshold
+            quality_marginal = marginal_threshold <= quality_score < acceptable_threshold
+            quality_poor = quality_score < marginal_threshold
             validation_passed = validation_result.get('complete', False) and \
                               validation_result.get('valid', False)
 
