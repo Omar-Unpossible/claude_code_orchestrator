@@ -819,6 +819,9 @@ class Orchestrator:
             old_agent_session_id = None
             cleanup_temp_session = False
 
+            # BUG FIX: Initialize streaming_handler before try block to avoid UnboundLocalError
+            streaming_handler = None
+
             try:
                 # Get task first to get project_id for session creation
                 self.current_task = self.state_manager.get_task(task_id)
@@ -838,7 +841,6 @@ class Orchestrator:
                     self._initialize_monitoring()
 
                 # Initialize streaming handler if stream=True (Phase 1)
-                streaming_handler = None
                 if stream:
                     from src.utils.streaming_handler import StreamingHandler
                     streaming_handler = StreamingHandler()
