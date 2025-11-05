@@ -18,12 +18,16 @@ from prompt_toolkit.history import InMemoryHistory
 
 logger = logging.getLogger(__name__)
 
-# Command names for autocompletion
+# Command names for autocompletion (includes aliases)
 COMMANDS = [
     '/pause',
     '/resume',
-    '/to-claude',
-    '/to-obra',
+    '/to-impl',
+    '/to-orch',
+    '/to-implementer',
+    '/to-orchestrator',
+    '/to-claude',        # Alias (show in autocomplete)
+    '/to-obra',          # Alias (show in autocomplete)
     '/override-decision',
     '/status',
     '/help',

@@ -185,11 +185,11 @@ class TestCommandExecution:
         assert mock_orchestrator.injected_context['to_obra'] == 'Lower threshold'
 
     def test_execute_to_obra_empty_directive(self, processor):
-        """Test executing /to-obra with empty directive."""
+        """Test executing /to-obra (alias for /to-orch) with empty message."""
         result = processor.execute_command('/to-obra')
 
         assert 'error' in result
-        assert 'requires a directive' in result['error']
+        assert 'requires a message' in result['error']
 
     def test_execute_override_decision_proceed(self, processor, mock_orchestrator):
         """Test executing /override-decision with PROCEED."""

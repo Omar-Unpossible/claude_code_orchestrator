@@ -25,12 +25,19 @@ VALID_DECISIONS = ['proceed', 'retry', 'clarify', 'escalate', 'checkpoint']
 HELP_TEXT = {
     '/pause': 'Pause execution after current turn. Resume with /resume.',
     '/resume': 'Resume paused execution.',
-    '/to-claude': 'Inject guidance into Claude\'s next prompt. Max 5000 chars. Example: /to-claude Add unit tests',
-    '/to-obra': 'Add directive to Obra\'s decision logic. Example: /to-obra Lower quality threshold',
+    '/to-impl': 'Send message to implementer (Claude Code). Aliases: /to-claude, /to-implementer. Max 5000 chars. Example: /to-impl Add unit tests',
+    '/to-orch': '''Send message to orchestrator (Qwen/Codex). Aliases: /to-obra, /to-orchestrator. Purpose depends on message content. Examples:
+  - Validation guidance: /to-orch Be more lenient with quality scores
+  - Decision override: /to-orch Accept this response even if quality is low
+  - Feedback request: /to-orch Analyze this code and suggest improvements to implementer''',
     '/override-decision': 'Override current decision. Valid: proceed, retry, clarify, escalate, checkpoint. Example: /override-decision retry',
     '/status': 'Show current task status, iteration, quality score, token usage.',
     '/help': 'Show this help message or help for specific command.',
     '/stop': 'Stop execution gracefully (completes current turn, saves state).',
+
+    # Deprecated (show but indicate aliases)
+    '/to-claude': 'DEPRECATED: Use /to-impl instead. Alias for /to-impl.',
+    '/to-obra': 'DEPRECATED: Use /to-orch instead. Alias for /to-orch.',
 }
 
 
@@ -60,12 +67,16 @@ class CommandProcessor:
         self.orchestrator = orchestrator
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Register commands
+        # Register commands (with aliases for backward compatibility)
         self.commands: Dict[str, Callable] = {
             '/pause': self._pause,
             '/resume': self._resume,
-            '/to-claude': self._to_claude,
-            '/to-obra': self._to_obra,
+            '/to-impl': self._to_impl,          # Primary
+            '/to-orch': self._to_orch,          # Primary
+            '/to-claude': self._to_impl,        # Alias (backward compat)
+            '/to-obra': self._to_orch,          # Alias (backward compat)
+            '/to-implementer': self._to_impl,   # Formal alias
+            '/to-orchestrator': self._to_orch,  # Formal alias
             '/override-decision': self._override_decision,
             '/status': self._status,
             '/help': self._help,
@@ -98,7 +109,8 @@ class CommandProcessor:
         # Build args dict based on command
         args: Dict[str, Any] = {}
 
-        if command in ['/to-claude', '/to-obra']:
+        if command in ['/to-impl', '/to-orch', '/to-implementer', '/to-orchestrator',
+                       '/to-claude', '/to-obra']:  # Include all aliases
             args['message'] = args_str
         elif command == '/override-decision':
             args['decision'] = args_str.lower()
@@ -176,20 +188,24 @@ class CommandProcessor:
             'message': 'Execution resumed'
         }
 
-    def _to_claude(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Inject message into Claude's next prompt (last-wins policy).
+    def _to_impl(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Inject message into implementer's next prompt (last-wins policy).
 
         Args:
             args: Command arguments with 'message' key
 
         Returns:
             Success result or error
+
+        Example:
+            >>> processor.execute_command('/to-impl Add unit tests for validation logic')
+            {'success': True, 'message': 'Will send to implementer: Add unit tests for validation logic'}
         """
         message = args.get('message', '').strip()
 
         # Validation
         if not message:
-            return {'error': '/to-claude requires a message'}
+            return {'error': '/to-impl requires a message'}
 
         if len(message) > MAX_INJECTED_TEXT_LENGTH:
             return {
@@ -197,55 +213,94 @@ class CommandProcessor:
             }
 
         # Warn if overwriting existing context
-        if self.orchestrator.injected_context.get('to_claude'):
+        if self.orchestrator.injected_context.get('to_impl'):
             self.logger.warning(
-                "Replacing previous /to-claude message with new one (last-wins)"
+                "Replacing previous /to-impl message with new one (last-wins)"
             )
 
-        self.orchestrator.injected_context['to_claude'] = message
+        # Store with both new and legacy keys (for transition period)
+        self.orchestrator.injected_context['to_impl'] = message
+        self.orchestrator.injected_context['to_claude'] = message  # Legacy key for compatibility
 
         # Show preview (first 50 chars)
         preview = message[:50] + '...' if len(message) > 50 else message
 
         return {
             'success': True,
-            'message': f'Will send to Claude: {preview}'
+            'message': f'Will send to implementer: {preview}'
         }
 
-    def _to_obra(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Add directive to Obra's decision logic.
+    def _to_orch(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Send message to orchestrator (validation LLM).
+
+        Message behavior depends on content:
+        - Validation guidance: Injected into quality scoring prompt
+        - Decision hints: Affects decision thresholds temporarily
+        - Feedback requests: Orch generates feedback sent to implementer
 
         Args:
             args: Command arguments with 'message' key
 
         Returns:
             Success result or error
+
+        Examples:
+            >>> # Validation guidance
+            >>> processor.execute_command('/to-orch Be more lenient with code quality')
+
+            >>> # Decision hint
+            >>> processor.execute_command('/to-orch Accept this even if quality is borderline')
+
+            >>> # Feedback request
+            >>> processor.execute_command('/to-orch Review the code and suggest 3 improvements')
         """
         message = args.get('message', '').strip()
 
         # Validation
         if not message:
-            return {'error': '/to-obra requires a directive'}
+            return {'error': '/to-orch requires a message'}
 
         if len(message) > MAX_INJECTED_TEXT_LENGTH:
             return {
-                'error': f'Directive too long ({len(message)} chars, max {MAX_INJECTED_TEXT_LENGTH})'
+                'error': f'Message too long ({len(message)} chars, max {MAX_INJECTED_TEXT_LENGTH})'
             }
 
         # Warn if overwriting existing context
-        if self.orchestrator.injected_context.get('to_obra'):
+        if self.orchestrator.injected_context.get('to_orch'):
             self.logger.warning(
-                "Replacing previous /to-obra directive with new one (last-wins)"
+                "Replacing previous /to-orch message with new one (last-wins)"
             )
 
-        self.orchestrator.injected_context['to_obra'] = message
+        # Store with both new and legacy keys (for transition period)
+        self.orchestrator.injected_context['to_orch'] = message
+        self.orchestrator.injected_context['to_obra'] = message  # Legacy key for compatibility
 
-        # Show preview (first 50 chars)
+        # Classify message intent (simple heuristics)
+        message_lower = message.lower()
+        intent = 'general'
+
+        if any(word in message_lower for word in ['quality', 'score', 'validate', 'lenient', 'strict']):
+            intent = 'validation_guidance'
+        elif any(word in message_lower for word in ['accept', 'proceed', 'approve', 'override']):
+            intent = 'decision_hint'
+        elif any(word in message_lower for word in ['review', 'analyze', 'suggest', 'feedback', 'tell']):
+            intent = 'feedback_request'
+
+        # Store intent for downstream use
+        self.orchestrator.injected_context['to_orch_intent'] = intent
+
+        # Show preview with detected intent
         preview = message[:50] + '...' if len(message) > 50 else message
+        intent_label = {
+            'validation_guidance': '→ Will influence quality scoring',
+            'decision_hint': '→ Will affect decision thresholds',
+            'feedback_request': '→ Will generate feedback for implementer',
+            'general': '→ General guidance'
+        }[intent]
 
         return {
             'success': True,
-            'message': f'Will apply directive: {preview}'
+            'message': f'Will send to orchestrator: {preview}\n{intent_label}'
         }
 
     def _override_decision(self, args: Dict[str, Any]) -> Dict[str, Any]:

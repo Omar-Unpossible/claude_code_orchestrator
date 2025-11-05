@@ -267,7 +267,8 @@ class Orchestrator:
         Returns:
             Augmented prompt with user guidance
         """
-        injected_text = context.get('to_claude', '')
+        # Check both new and legacy keys (to_impl takes precedence)
+        injected_text = context.get('to_impl', '') or context.get('to_claude', '')
         if not injected_text:
             return base_prompt
 
@@ -294,6 +295,56 @@ class Orchestrator:
                         f"Context window usage: {usage_pct:.1f}% ({total_tokens}/{limit} tokens). "
                         f"Injected context may trigger refresh soon."
                     )
+
+        return augmented
+
+    def _apply_orch_context(self, validation_prompt: str, context: Dict[str, Any]) -> str:
+        """Apply orchestrator-injected context to validation prompt.
+
+        Adds user guidance to quality scoring and validation prompts based on intent.
+
+        Args:
+            validation_prompt: Base validation prompt
+            context: Injected context dict
+
+        Returns:
+            Augmented validation prompt with user guidance
+
+        Note:
+            This is a placeholder for future enhancement (Phase 2 full implementation).
+            Currently, the intent classification is done but not fully utilized.
+            Future work: Integrate with QualityController.validate() custom prompts.
+
+        Example:
+            >>> context = {'to_orch': 'Be more lenient', 'to_orch_intent': 'validation_guidance'}
+            >>> augmented = self._apply_orch_context(base_prompt, context)
+        """
+        orch_message = context.get('to_orch', '')
+        if not orch_message:
+            return validation_prompt
+
+        intent = context.get('to_orch_intent', 'general')
+
+        # Build augmented prompt based on intent
+        if intent == 'validation_guidance':
+            augmented = f"{validation_prompt}\n\n--- USER GUIDANCE (VALIDATION) ---\n{orch_message}\n"
+        elif intent == 'decision_hint':
+            augmented = f"{validation_prompt}\n\n--- USER HINT (DECISION) ---\n{orch_message}\n" + \
+                        "Note: User has provided guidance on decision thresholds. Consider this when evaluating.\n"
+        elif intent == 'feedback_request':
+            augmented = f"{validation_prompt}\n\n--- USER REQUEST (FEEDBACK) ---\n{orch_message}\n" + \
+                        "After validation, provide specific feedback addressing the user's request.\n"
+        else:
+            augmented = f"{validation_prompt}\n\n--- USER MESSAGE (ORCHESTRATOR) ---\n{orch_message}\n"
+
+        # Track token impact
+        base_tokens = self.context_manager.estimate_tokens(validation_prompt)
+        augmented_tokens = self.context_manager.estimate_tokens(augmented)
+        tokens_added = augmented_tokens - base_tokens
+
+        logger.debug(
+            f"Applied orchestrator context: +{tokens_added} tokens, intent={intent}"
+        )
 
         return augmented
 
@@ -1130,7 +1181,7 @@ class Orchestrator:
                         self._wait_for_resume()
 
                     # [2] PRE-PROMPT - Apply injected context
-                    if self.injected_context.get('to_claude'):
+                    if self.injected_context.get('to_impl') or self.injected_context.get('to_claude'):
                         prompt = self._apply_injected_context(prompt, self.injected_context)
 
                 # 3. Send to agent
@@ -1368,6 +1419,11 @@ class Orchestrator:
                 if self.interactive_mode:
                     if action.type == DecisionEngine.ACTION_PROCEED:
                         # Clear context on success
+                        # Clear both new and legacy keys
+                        self.injected_context.pop('to_impl', None)
+                        self.injected_context.pop('to_orch', None)
+                        self.injected_context.pop('to_orch_intent', None)
+                        # Keep legacy keys for backward compat
                         self.injected_context.pop('to_claude', None)
                         self.injected_context.pop('to_obra', None)
                     elif action.type == DecisionEngine.ACTION_ESCALATE:
