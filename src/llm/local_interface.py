@@ -198,6 +198,19 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
         except Exception as e:
             logger.warning(f"Could not verify model availability: {e}")
 
+    def get_name(self) -> str:
+        """Get LLM name for display purposes.
+
+        Returns:
+            Short name for display labels (e.g., 'ollama')
+
+        Example:
+            >>> llm = LocalLLMInterface()
+            >>> llm.get_name()
+            'ollama'
+        """
+        return 'ollama'
+
     def generate(
         self,
         prompt: str,

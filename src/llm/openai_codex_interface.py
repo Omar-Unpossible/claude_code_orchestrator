@@ -164,6 +164,19 @@ class OpenAICodexLLMPlugin(LLMPlugin):
                        'Run `codex --login` or set OPENAI_API_KEY environment variable.'
             )
 
+    def get_name(self) -> str:
+        """Get LLM name for display purposes.
+
+        Returns:
+            Short name for display labels (e.g., 'openai-codex')
+
+        Example:
+            >>> llm = OpenAICodexLLMPlugin()
+            >>> llm.get_name()
+            'openai-codex'
+        """
+        return 'openai-codex'
+
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate response using Codex CLI.
 

@@ -154,14 +154,35 @@ class Orchestrator:
         # Blue color for Obra output
         print(f"\033[34m{prefix}\033[0m {message}")
 
-    def _print_qwen(self, message: str) -> None:
-        """Print Qwen validation output with colored [QWEN] prefix.
+    def _print_orch(self, message: str) -> None:
+        """Print orchestrator output with dynamic [ORCH:model] prefix.
 
         Args:
             message: Message to display
+
+        Example:
+            >>> self._print_orch("Quality: 0.81 (PASS)")
+            [ORCH:ollama] Quality: 0.81 (PASS)
         """
-        # Yellow color for Qwen output
-        print(f"\033[33m[QWEN]\033[0m {message}")
+        llm_name = self.llm_interface.get_name() if self.llm_interface else 'unknown'
+        prefix = f"[ORCH:{llm_name}]"
+        # Yellow color for orchestrator output
+        print(f"\033[33m{prefix}\033[0m {message}")
+
+    def _print_impl(self, message: str) -> None:
+        """Print implementer output with dynamic [IMPL:model] prefix.
+
+        Args:
+            message: Message to display
+
+        Example:
+            >>> self._print_impl("Response received (1234 chars)")
+            [IMPL:claude-code] Response received (1234 chars)
+        """
+        agent_name = getattr(self.agent, 'name', 'claude-code')  # Fallback
+        prefix = f"[IMPL:{agent_name}]"
+        # Green color for implementer output
+        print(f"\033[32m{prefix}\033[0m {message}")
 
     # Interactive Mode Helper Methods (Phase 2)
 
@@ -1192,16 +1213,17 @@ class Orchestrator:
                     continue
 
                 # 5. Quality control
-                self._print_qwen("Validating response...")
+                self._print_orch("Validating response...")
                 quality_result = self.quality_controller.validate_output(
                     response,
                     self.current_task,
                     {'language': 'python'}
                 )
                 gate_status = "PASS" if quality_result.passes_gate else "FAIL"
-                # Phase 1: Streaming log for Qwen validation
-                logger.info(f"[QWEN] Quality: {quality_result.overall_score:.2f} ({gate_status})")
-                self._print_qwen(f"  Quality: {quality_result.overall_score:.2f} ({gate_status})")
+                # Phase 1: Streaming log for orchestrator validation
+                llm_name = self.llm_interface.get_name() if self.llm_interface else 'unknown'
+                logger.info(f"[ORCH:{llm_name}] Quality: {quality_result.overall_score:.2f} ({gate_status})")
+                self._print_orch(f"  Quality: {quality_result.overall_score:.2f} ({gate_status})")
 
                 # 6. Confidence scoring
                 confidence = self.confidence_scorer.score_response(
@@ -1215,7 +1237,7 @@ class Orchestrator:
                     self.latest_quality_score = quality_result.overall_score
                     self.latest_confidence = confidence
 
-                self._print_qwen(f"  Confidence: {confidence:.2f}")
+                self._print_orch(f"  Confidence: {confidence:.2f}")
 
                 # BUG-TETRIS-002 FIX: Record interaction to database
                 try:
