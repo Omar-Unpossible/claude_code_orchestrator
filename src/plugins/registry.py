@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 class AgentRegistry:
     """Registry for agent plugins with decorator-based registration.
 
+    **Singleton Pattern**: This registry operates at the class level using
+    class methods and class attributes. Do NOT instantiate this class - use
+    AgentRegistry.register(), AgentRegistry.get(), etc. directly as class
+    methods. The registry maintains global state shared across all access points.
+
     This registry enables runtime discovery and instantiation of agents
     based on configuration, without hardcoding agent types.
 
@@ -33,10 +38,13 @@ class AgentRegistry:
         ... class MyAgent(AgentPlugin):
         ...     pass
         ...
-        >>> # Later, load agent from config
+        >>> # Later, load agent from config (use class method, NOT instance)
         >>> agent_class = AgentRegistry.get('my-agent')
         >>> agent = agent_class()
         >>> agent.initialize(config)
+        >>>
+        >>> # WRONG: Do not instantiate registry
+        >>> # registry = AgentRegistry()  # Don't do this!
     """
 
     _agents: Dict[str, Type[AgentPlugin]] = {}
@@ -219,6 +227,11 @@ class AgentRegistry:
 class LLMRegistry:
     """Registry for LLM plugins with decorator-based registration.
 
+    **Singleton Pattern**: This registry operates at the class level using
+    class methods and class attributes. Do NOT instantiate this class - use
+    LLMRegistry.register(), LLMRegistry.get(), etc. directly as class methods.
+    The registry maintains global state shared across all access points.
+
     Similar to AgentRegistry but for LLM providers (Ollama, llama.cpp, etc.).
 
     Thread-safe for concurrent registration and retrieval.
@@ -229,9 +242,12 @@ class LLMRegistry:
         ... class MyLLM(LLMPlugin):
         ...     pass
         ...
-        >>> # Later
+        >>> # Later (use class method, NOT instance)
         >>> llm_class = LLMRegistry.get('my-llm')
         >>> llm = llm_class()
+        >>>
+        >>> # WRONG: Do not instantiate registry
+        >>> # registry = LLMRegistry()  # Don't do this!
     """
 
     _llms: Dict[str, Type[LLMPlugin]] = {}

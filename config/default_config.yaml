@@ -2,7 +2,10 @@
 # This file provides sensible defaults for all settings.
 # Override in config/config.yaml or via environment variables.
 
-# Local LLM Configuration (Ollama)
+# LLM Configuration (Orchestrator)
+# Two options: local (ollama) or remote (openai-codex)
+
+# OPTION A: Local LLM (Ollama with Qwen) - Hardware deployment
 llm:
   type: ollama  # LLM provider type (matches LLMRegistry)
   model: qwen2.5-coder:32b  # Model to use
@@ -11,6 +14,18 @@ llm:
   timeout: 30  # Timeout for generation (seconds)
   max_tokens: 4096  # Maximum tokens to generate
   context_length: 32768  # Model context window size
+
+# OPTION B: Remote LLM (OpenAI Codex CLI) - Subscription or API key deployment
+# Uncomment and configure to use:
+# llm:
+#   type: openai-codex  # LLM provider type (matches LLMRegistry)
+#   codex_command: codex  # CLI command (or full path: /usr/local/bin/codex)
+#   model: codex-mini-latest  # Model: codex-mini-latest, gpt-5-codex, o3, gpt-5, o4-mini
+#   full_auto: true  # Use --full-auto for automatic execution
+#   json_output: false  # Use --json for JSONL output
+#   timeout: 120  # Timeout for CLI subprocess (seconds)
+#   retry_attempts: 3  # Number of retry attempts on failure
+#   # Authentication: OPENAI_API_KEY env var or `codex --login` (OAuth)
 
 # Agent Configuration
 agent:

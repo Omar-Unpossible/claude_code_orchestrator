@@ -27,6 +27,7 @@ except ImportError:
     TIKTOKEN_AVAILABLE = False
 
 from src.plugins.base import LLMPlugin
+from src.plugins.registry import register_llm
 from src.plugins.exceptions import (
     LLMException,
     LLMConnectionException,
@@ -39,6 +40,7 @@ from src.utils.retry_manager import RetryManager, RetryConfig, create_retry_mana
 logger = logging.getLogger(__name__)
 
 
+@register_llm('ollama')
 class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attributes
     """Interface to local LLM service via Ollama.
 

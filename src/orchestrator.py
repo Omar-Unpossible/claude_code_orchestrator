@@ -22,12 +22,13 @@ from threading import RLock
 from src.core.config import Config
 from src.core.state import StateManager
 from src.core.models import Task, ProjectState, TaskStatus
-from src.core.exceptions import OrchestratorException
+from src.core.exceptions import OrchestratorException, TaskStoppedException
 
 # Component imports
 from src.plugins.registry import AgentRegistry, LLMRegistry
-from src.plugins.exceptions import AgentException  # Phase 4, Task 4.2: For retry logic
+from src.plugins.exceptions import AgentException, PluginNotFoundError
 import src.agents  # Import to register agent plugins
+import src.llm  # Import to register LLM plugins
 from src.llm.local_interface import LocalLLMInterface
 from src.llm.response_validator import ResponseValidator
 from src.llm.prompt_generator import PromptGenerator
@@ -126,6 +127,21 @@ class Orchestrator:
         # Complexity estimation config
         self._enable_complexity_estimation = self.config.get('enable_complexity_estimation', False)
 
+        # Interactive mode attributes (Phase 2)
+        self.interactive_mode: bool = False
+        self.command_processor = None  # Initialized when interactive mode enabled
+        self.input_manager = None  # Initialized when interactive mode enabled
+        self.paused: bool = False
+        self.injected_context: Dict[str, Any] = {}
+        self.stop_requested: bool = False
+
+        # Status tracking for interactive /status command
+        self.current_task_id: Optional[int] = None
+        self.current_iteration: int = 0
+        self.latest_quality_score: float = 0.0
+        self.latest_confidence: float = 0.0
+        self.max_turns: int = 10
+
         logger.info("Orchestrator created")
 
     def _print_obra(self, message: str, prefix: str = "[OBRA]") -> None:
@@ -146,6 +162,128 @@ class Orchestrator:
         """
         # Yellow color for Qwen output
         print(f"\033[33m[QWEN]\033[0m {message}")
+
+    # Interactive Mode Helper Methods (Phase 2)
+
+    def _initialize_interactive_mode(self) -> None:
+        """Initialize interactive mode components.
+
+        Creates CommandProcessor and InputManager for interactive command injection.
+        """
+        try:
+            from src.utils.command_processor import CommandProcessor
+            from src.utils.input_manager import InputManager
+
+            self.interactive_mode = True
+            self.command_processor = CommandProcessor(self)
+            self.input_manager = InputManager()
+            self.input_manager.start_listening()
+
+            logger.info("Interactive mode initialized successfully")
+        except (OSError, IOError) as e:
+            logger.error(f"Cannot start interactive mode: {e}")
+            logger.warning("Falling back to non-interactive mode")
+            self.interactive_mode = False
+
+    def _check_interactive_commands(self) -> None:
+        """Check and process any queued commands from user input.
+
+        Called at the start of each iteration to handle user commands.
+        """
+        if not self.interactive_mode or not self.input_manager:
+            return
+
+        # Get command from queue (non-blocking)
+        command = self.input_manager.get_command(timeout=0.1)
+        if command:
+            result = self.command_processor.execute_command(command)
+
+            # Display result
+            if 'success' in result:
+                print(f"\033[32m✓\033[0m {result['message']}")
+            elif 'error' in result:
+                print(f"\033[31m✗\033[0m {result['error']}")
+                if 'message' in result:
+                    print(f"  {result['message']}")
+
+    def _wait_for_resume(self) -> None:
+        """Block execution until user types /resume.
+
+        Called when paused flag is set.
+        """
+        logger.info("[INTERACTIVE] Execution paused. Type /resume to continue.")
+        print(f"\n\033[33m⏸️  PAUSED\033[0m - Type /resume to continue")
+
+        while self.paused and not self.stop_requested:
+            # Check for commands
+            command = self.input_manager.get_command(timeout=0.5)
+            if command:
+                result = self.command_processor.execute_command(command)
+
+                # Display result
+                if 'success' in result:
+                    print(f"\033[32m✓\033[0m {result['message']}")
+                elif 'error' in result:
+                    print(f"\033[31m✗\033[0m {result['error']}")
+                    if 'message' in result:
+                        print(f"  {result['message']}")
+
+                # Check if we should continue
+                if not self.paused:
+                    logger.info("[INTERACTIVE] Execution resumed")
+                    print(f"\033[32m▶️  RESUMED\033[0m")
+                    break
+
+    def _apply_injected_context(self, base_prompt: str, context: Dict[str, Any]) -> str:
+        """Merge user-injected context into prompt.
+
+        Tracks token impact on context window.
+
+        Args:
+            base_prompt: Base prompt from PromptGenerator
+            context: Injected context dict
+
+        Returns:
+            Augmented prompt with user guidance
+        """
+        injected_text = context.get('to_claude', '')
+        if not injected_text:
+            return base_prompt
+
+        # Build augmented prompt
+        augmented = f"{base_prompt}\n\n--- USER GUIDANCE ---\n{injected_text}\n"
+
+        # Track token impact
+        base_tokens = self.context_manager.estimate_tokens(base_prompt)
+        augmented_tokens = self.context_manager.estimate_tokens(augmented)
+        tokens_added = augmented_tokens - base_tokens
+
+        logger.info(f"Injected context added {tokens_added} tokens")
+
+        # Warn if approaching context window limit
+        if hasattr(self, 'current_session_id') and self.current_session_id:
+            session = self.state_manager.get_session_record(self.current_session_id)
+            if session:
+                total_tokens = session.total_tokens + tokens_added
+                limit = self.context_manager.limit
+                usage_pct = (total_tokens / limit) * 100
+
+                if usage_pct > 70:
+                    logger.warning(
+                        f"Context window usage: {usage_pct:.1f}% ({total_tokens}/{limit} tokens). "
+                        f"Injected context may trigger refresh soon."
+                    )
+
+        return augmented
+
+    def _cleanup_interactive_mode(self) -> None:
+        """Cleanup interactive mode components.
+
+        Stops InputManager thread and cleans up resources.
+        """
+        if self.input_manager:
+            self.input_manager.stop_listening()
+            logger.info("Interactive mode cleaned up")
 
     def initialize(self) -> None:
         """Initialize all components.
@@ -205,15 +343,25 @@ class Orchestrator:
         logger.info("Utilities initialized")
 
     def _initialize_llm(self) -> None:
-        """Initialize LLM interface."""
+        """Initialize LLM interface from registry."""
+        llm_type = self.config.get('llm.type', 'ollama')  # Default to ollama
         llm_config = self.config.get('llm', {})
 
-        # Map api_url to endpoint for LocalLLMInterface compatibility
+        # Map api_url to endpoint for backward compatibility
         if 'api_url' in llm_config and 'endpoint' not in llm_config:
             llm_config['endpoint'] = llm_config['api_url']
 
-        # Create instance then initialize with config
-        self.llm_interface = LocalLLMInterface()
+        # Get LLM class from registry (like agent does)
+        try:
+            llm_class = LLMRegistry.get(llm_type)
+        except PluginNotFoundError as e:
+            logger.error(f"LLM type '{llm_type}' not found in registry")
+            raise OrchestratorException(
+                f"Invalid LLM type: {llm_type}. Available: {LLMRegistry.list()}"
+            ) from e
+
+        # Create instance and initialize
+        self.llm_interface = llm_class()
         self.llm_interface.initialize(llm_config)
 
         # Set LLM for components that need it
@@ -550,7 +698,7 @@ class Orchestrator:
             'results': results
         }
 
-    def execute_task(self, task_id: int, max_iterations: int = 10, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def execute_task(self, task_id: int, max_iterations: int = 10, context: Optional[Dict[str, Any]] = None, stream: bool = False, interactive: bool = False) -> Dict[str, Any]:
         """Execute a single task with optional complexity estimation.
 
         Automatically creates temporary session for tracking if not in milestone context.
@@ -569,6 +717,8 @@ class Orchestrator:
             task_id: Task ID to execute
             max_iterations: Maximum iterations before giving up
             context: Optional execution context
+            stream: Enable real-time streaming output (Phase 1)
+            interactive: Enable interactive mode with command injection (Phase 2)
 
         Returns:
             Dictionary with execution results:
@@ -580,6 +730,7 @@ class Orchestrator:
 
         Raises:
             OrchestratorException: If execution fails
+            TaskStoppedException: If user requests stop via /stop command
         """
         with self._lock:
             if self._state not in [OrchestratorState.INITIALIZED, OrchestratorState.RUNNING]:
@@ -613,6 +764,27 @@ class Orchestrator:
                 # Initialize file watcher if needed
                 if not self.file_watcher:
                     self._initialize_monitoring()
+
+                # Initialize streaming handler if stream=True (Phase 1)
+                streaming_handler = None
+                if stream:
+                    from src.utils.streaming_handler import StreamingHandler
+                    streaming_handler = StreamingHandler()
+                    logger.addHandler(streaming_handler)
+                    logger.info("[STREAMING] Real-time output enabled")
+
+                # Initialize interactive mode if interactive=True (Phase 2)
+                if interactive:
+                    # Interactive mode requires streaming
+                    if not stream:
+                        logger.warning("Interactive mode requires streaming, enabling automatically")
+                        if not streaming_handler:
+                            from src.utils.streaming_handler import StreamingHandler
+                            streaming_handler = StreamingHandler()
+                            logger.addHandler(streaming_handler)
+
+                    self._initialize_interactive_mode()
+                    logger.info("[INTERACTIVE] Interactive mode enabled")
 
                 # Create temporary session if not in milestone context
                 if not in_milestone_session:
@@ -752,11 +924,33 @@ class Orchestrator:
                 )
                 return result
 
+            except TaskStoppedException as e:
+                # Phase 2: Handle user-requested stop gracefully
+                logger.info(f"Task stopped by user: {e}")
+                self.state_manager.update_task_status(
+                    task_id=task_id,
+                    status=TaskStatus.PAUSED
+                )
+                return {
+                    'status': 'stopped',
+                    'iterations': e.context_data.get('iterations_completed', 0),
+                    'message': 'Task stopped by user'
+                }
+
             except Exception as e:
                 logger.error(f"TASK ERROR: task_id={task_id}, error={e}", exc_info=True)
                 raise
 
             finally:
+                # Phase 2: Clean up interactive mode (if enabled)
+                if interactive:
+                    self._cleanup_interactive_mode()
+
+                # Clean up streaming handler (Phase 1)
+                if streaming_handler:
+                    logger.removeHandler(streaming_handler)
+                    logger.debug("[STREAMING] Handler removed")
+
                 # Clean up temporary session if we created one
                 if cleanup_temp_session and temp_session_id:
                     try:
@@ -895,13 +1089,40 @@ class Orchestrator:
 """
                             logger.info(f"SESSION REFRESH: session_id={session_id[:8]}..., summary_chars={len(context_summary):,}")
 
+                # Phase 2: Interactive mode integration - Check for stop/pause/commands
+                if self.interactive_mode:
+                    # Update status tracking for /status command
+                    self.current_task_id = task.id
+                    self.current_iteration = iteration
+                    self.max_turns = max_turns
+
+                    # [1] START - Check for stop/pause/commands
+                    self._check_interactive_commands()
+
+                    if self.stop_requested:
+                        raise TaskStoppedException(
+                            "User requested stop",
+                            context={'task_id': task.id, 'iterations_completed': iteration - 1}
+                        )
+
+                    if self.paused:
+                        self._wait_for_resume()
+
+                    # [2] PRE-PROMPT - Apply injected context
+                    if self.injected_context.get('to_claude'):
+                        prompt = self._apply_injected_context(prompt, self.injected_context)
+
                 # 3. Send to agent
                 logger.info(f"AGENT SEND: task_id={self.current_task.id}, iteration={iteration}, prompt_chars={len(prompt):,}")
+                # Phase 1: Streaming log for Obra→Claude
+                logger.info(f"[OBRA→CLAUDE] Iteration {iteration}/{max_iterations} | Prompt: {len(prompt):,} chars")
                 self._print_obra(f"Sending prompt to Claude Code...", "[OBRA→CLAUDE]")
                 # Phase 4, Task 4.2: Pass context with max_turns (if present) and task_id
                 agent_context = context.copy() if context else {}
                 agent_context['task_id'] = self.current_task.id
                 response = self.agent.send_prompt(prompt, context=agent_context)
+                # Phase 1: Streaming log for Claude→Obra
+                logger.info(f"[CLAUDE→OBRA] Response received | {len(response):,} chars")
                 self._print_obra(f"Response received ({len(response)} chars)")
 
                 # Phase 2, Task 2.4: Update session usage tracking
@@ -978,6 +1199,8 @@ class Orchestrator:
                     {'language': 'python'}
                 )
                 gate_status = "PASS" if quality_result.passes_gate else "FAIL"
+                # Phase 1: Streaming log for Qwen validation
+                logger.info(f"[QWEN] Quality: {quality_result.overall_score:.2f} ({gate_status})")
                 self._print_qwen(f"  Quality: {quality_result.overall_score:.2f} ({gate_status})")
 
                 # 6. Confidence scoring
@@ -986,6 +1209,12 @@ class Orchestrator:
                     self.current_task,
                     {'validation': is_valid, 'quality': quality_result}
                 )
+
+                # Phase 2: Update tracking variables for /status command
+                if self.interactive_mode:
+                    self.latest_quality_score = quality_result.overall_score
+                    self.latest_confidence = confidence
+
                 self._print_qwen(f"  Confidence: {confidence:.2f}")
 
                 # BUG-TETRIS-002 FIX: Record interaction to database
@@ -1084,8 +1313,45 @@ class Orchestrator:
 
                 action = self.decision_engine.decide_next_action(decision_context)
 
+                # Phase 2: Allow user to override decision
+                if self.interactive_mode and self.injected_context.get('override_decision'):
+                    override_str = self.injected_context.pop('override_decision')
+                    # Map command strings to DecisionEngine action types
+                    decision_map = {
+                        'proceed': DecisionEngine.ACTION_PROCEED,
+                        'retry': DecisionEngine.ACTION_RETRY,
+                        'clarify': DecisionEngine.ACTION_CLARIFY,
+                        'escalate': DecisionEngine.ACTION_ESCALATE,
+                        'checkpoint': DecisionEngine.ACTION_CHECKPOINT,
+                    }
+
+                    if override_str in decision_map:
+                        # Create new action with overridden type
+                        from src.orchestration.decision_engine import Action
+                        action = Action(
+                            type=decision_map[override_str],
+                            confidence=1.0,  # User override has full confidence
+                            explanation=f"User override: {override_str}",
+                            metadata={'user_override': True},
+                            timestamp=datetime.now(UTC)
+                        )
+                        logger.info(f"[USER OVERRIDE] Decision changed to: {action.type}")
+
+                # Phase 1: Streaming log for decision
+                logger.info(f"[OBRA] Decision: {action.type} | Confidence: {action.confidence:.2f}")
                 logger.info(f"Decision: {action.type} (confidence: {action.confidence:.2f})")
                 self._print_obra(f"Decision: {action.type}")
+
+                # Phase 2: Clear injected context based on decision (persist through RETRY)
+                if self.interactive_mode:
+                    if action.type == DecisionEngine.ACTION_PROCEED:
+                        # Clear context on success
+                        self.injected_context.pop('to_claude', None)
+                        self.injected_context.pop('to_obra', None)
+                    elif action.type == DecisionEngine.ACTION_ESCALATE:
+                        # Clear context on escalation (user will re-inject if needed)
+                        self.injected_context.clear()
+                    # For RETRY and CLARIFY, preserve context for next attempt
 
                 # 8. Handle decision
                 if action.type == DecisionEngine.ACTION_PROCEED:

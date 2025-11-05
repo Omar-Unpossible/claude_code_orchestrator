@@ -5,8 +5,10 @@ Provides configurable test double for LLM providers.
 
 from typing import Dict, Any, Iterator
 from src.plugins.base import LLMPlugin
+from src.plugins.registry import register_llm
 
 
+@register_llm('mock')
 class MockLLM(LLMPlugin):
     """Configurable mock LLM for testing.
 

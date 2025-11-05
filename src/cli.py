@@ -321,8 +321,10 @@ def task_list(ctx, project: Optional[int], status: Optional[str]):
 @task.command('execute')
 @click.argument('task_id', type=int)
 @click.option('--max-iterations', '-i', type=int, default=10, help='Max iterations')
+@click.option('--stream', is_flag=True, help='Enable real-time streaming output')
+@click.option('--interactive', is_flag=True, help='Enable interactive mode with command injection')
 @click.pass_context
-def task_execute(ctx, task_id: int, max_iterations: int):
+def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interactive: bool):
     """Execute a single task."""
     try:
         config = ctx.obj['config']
@@ -333,8 +335,13 @@ def task_execute(ctx, task_id: int, max_iterations: int):
 
         click.echo(f"Executing task #{task_id}...")
 
-        # Execute task
-        result = orchestrator.execute_task(task_id, max_iterations=max_iterations)
+        # Execute task (Phase 2: added interactive parameter)
+        result = orchestrator.execute_task(
+            task_id,
+            max_iterations=max_iterations,
+            stream=stream,
+            interactive=interactive
+        )
 
         # Display results
         click.echo("\n" + "=" * 80)

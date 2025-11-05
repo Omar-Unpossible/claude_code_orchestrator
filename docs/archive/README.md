@@ -2,8 +2,8 @@
 
 This folder contains archived documentation that has been superseded, completed, or is no longer actively maintained.
 
-**Archive Date**: 2025-11-03
-**Archived As Part Of**: PHASE_6 completion and documentation reorganization
+**Archive Date**: 2025-11-03 (initial), 2025-11-04 (project cleanup)
+**Archived As Part Of**: PHASE_6 completion, documentation reorganization, and post-production cleanup
 
 ---
 
@@ -81,6 +81,76 @@ Old technical design documents that have been replaced by more comprehensive arc
 
 ---
 
+### `/architecture/` (Added 2025-11-04)
+**Superseded architecture analysis documents**
+
+Analysis and investigation documents that were created during development but are no longer needed for reference.
+
+**Archived Files**:
+- `DANGEROUS_MODE_IMPLEMENTATION.md` - Dangerous mode implementation details (now integrated into M8)
+- `LLM_PARAMETER_FLOW.md` - LLM parameter flow analysis (superseded by current implementation)
+- `PARAMETER_REVIEW_ANALYSIS.md` - Parameter review analysis (completed)
+- `SESSION_MANAGEMENT_FINDINGS.md` - Session management findings (integrated into PHASE_4 fixes)
+
+**Why Archived**: These analysis documents were created during implementation and their insights have been integrated into the codebase. Current session management architecture is documented in `docs/guides/SESSION_MANAGEMENT_GUIDE.md` and ADR-007.
+
+---
+
+### `/development/tetris-test/` (Added 2025-11-04)
+**Completed TETRIS game test documentation**
+
+Test plans, milestones, and summaries for the TETRIS game real-world orchestration test.
+
+**Archived Files**:
+- `TETRIS_GAME_TEST_PLAN.md` - Test plan for TETRIS orchestration test
+- `TETRIS_MILESTONE_PLAN.md` - Milestone planning for TETRIS test
+- `TETRIS_MILESTONE_SUMMARY.md` - Completion summary for TETRIS test
+- `TETRIS_TEST_BUG_FIX_PLAN.md` - Bug fix plan from TETRIS testing
+- `TETRIS_TEST_QUICK_START.md` - Quick start guide for TETRIS test
+
+**Why Archived**: The TETRIS test was a one-time real-world validation test completed in November 2025. All bugs found have been fixed and integrated into PHASE_4 validation results.
+
+---
+
+### `/troubleshooting/` (Added 2025-11-04)
+**Completed bug fix documentation**
+
+Bug fix documentation for issues that have been resolved.
+
+**Archived Files**:
+- `BUG_FIXES_2025-11-02.md` - Initial 10 bug fixes from first real orchestration testing
+
+**Why Archived**: These bugs have been fixed and integrated into the codebase. Current bug tracking is done through git commits and phase reports.
+
+---
+
+### Project Root Archives (Added 2025-11-04)
+**Task completion summaries moved from project root**
+
+**Archived Files**:
+- `TASK_4.4_COMPLETION_SUMMARY.md` - Task 4.4 completion summary
+- `TASK_5.3_COMPLETION_SUMMARY.md` - Task 5.3 completion summary
+
+**Why Archived**: These were temporary completion summaries for specific tasks that should not be in the project root. Completed work is now tracked in phase-reports.
+
+---
+
+### Additional Development Plans (Added 2025-11-04)
+**More completed development plans and summaries**
+
+**Archived Files**:
+- `BUG_FIX_PLAN_PHASE4.md` - PHASE_4 bug fix planning (completed, see phase-reports)
+- `CLARIFICATION_LOOP_FIX_PLAN.md` - Clarification loop fix plan (completed)
+- `DECISION_LOGIC_SIMPLIFICATION_PLAN.md` - Decision logic simplification plan (completed)
+- `DECISION_LOGIC_SIMPLIFICATION_SUMMARY.md` - Decision logic simplification summary (completed)
+- `HEADLESS_MODE_GAP_ANALYSIS.md` - Headless mode gap analysis (completed, integrated into M8)
+- `HEADLESS_MODE_ENHANCEMENT_SUMMARY.md` - Headless mode enhancement summary (completed)
+- `REAL_ORCHESTRATION_DEBUG_PLAN.md` - Real orchestration debugging plan (completed)
+
+**Why Archived**: These plans and analyses have been completed and their outcomes integrated into the codebase. Results are documented in phase-reports and milestone summaries.
+
+---
+
 ## Current Active Documentation
 
 For current, active documentation, see:
@@ -91,18 +161,21 @@ For current, active documentation, see:
 - `docs/architecture/data_flow.md` - Data flow diagrams
 
 ### Development
-- `docs/development/IMPLEMENTATION_PLAN.md` - M0-M7 main implementation plan
-- `docs/development/LLM_FIRST_IMPLEMENTATION_PLAN.yaml` - Current PHASE-based plan (PHASE_6 complete)
+- `docs/development/IMPLEMENTATION_PLAN.md` - M0-M9 main implementation plan
 - `docs/development/TEST_GUIDELINES.md` - Critical testing guidelines
 - `docs/development/DATABASE_MIGRATIONS.md` - Database migration guide
 - `docs/development/CLAUDE_CODE_LOCAL_AGENT_PLAN.md` - M8 local agent plan
-- `docs/development/REAL_ORCHESTRATION_DEBUG_PLAN.md` - Debugging reference
+- `docs/development/M9_IMPLEMENTATION_PLAN.md` - M9 core enhancements plan
+- `docs/development/INTERACTIVE_STREAMING_IMPLEMENTATION_PLAN.md` - Interactive streaming plan
 - `docs/development/WSL2_TEST_CRASH_POSTMORTEM.md` - WSL2 testing issues reference
+- `docs/development/phase-reports/` - Active phase completion reports
 
 ### Guides
 - `docs/guides/GETTING_STARTED.md` - Quick start guide
 - `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md` - Windows 11 + Hyper-V setup
+- `docs/guides/SESSION_MANAGEMENT_GUIDE.md` - Session management best practices
 - `docs/guides/PROMPT_ENGINEERING_GUIDE.md` - LLM-First prompt engineering guide
+- `docs/guides/CONFIGURATION_PROFILES_GUIDE.md` - Configuration profiles guide
 - `docs/guides/AGENT_SELECTION_GUIDE.md` - Agent selection and configuration
 
 ### Design
@@ -112,8 +185,13 @@ For current, active documentation, see:
 ### Decisions
 - `docs/decisions/ADR-003-file-watcher-thread-cleanup.md` - File watcher cleanup
 - `docs/decisions/ADR-004-local-agent-architecture.md` - Local agent design
-- `docs/decisions/ADR-005-claude-driven-parallelization.md` - Parallelization approach
+- `docs/decisions/ADR-005-claude-driven-parallelization.md` - Parallelization approach (planned)
 - `docs/decisions/ADR-006-llm-first-prompts.md` - Hybrid prompt format decision
+- `docs/decisions/ADR-007-headless-mode-enhancements.md` - Headless mode architecture
+- `docs/decisions/ADR-008-retry-logic.md` - Retry logic with exponential backoff
+- `docs/decisions/ADR-009-task-dependencies.md` - Task dependency system
+- `docs/decisions/ADR-010-git-integration.md` - Git auto-integration
+- `docs/decisions/ADR-011-interactive-streaming-interface.md` - Interactive command injection
 
 ---
 
@@ -133,5 +211,5 @@ ls docs/archive/implementation-plans/
 
 ---
 
-**Last Updated**: 2025-11-03
-**Archived By**: Documentation cleanup following PHASE_6 completion
+**Last Updated**: 2025-11-04
+**Archived By**: Documentation cleanup following PHASE_6 completion and post-production project cleanup

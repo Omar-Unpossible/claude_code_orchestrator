@@ -525,6 +525,21 @@ class RateLimitHit(OrchestrationException):
         )
 
 
+class TaskStoppedException(OrchestrationException):
+    """Raised when user requests task stop via /stop command.
+
+    This is used for flow control in interactive mode, not an error condition.
+    The task is gracefully stopped after completing the current turn.
+
+    Example:
+        >>> raise TaskStoppedException(
+        ...     'User requested stop',
+        ...     context={'task_id': 123, 'iterations_completed': 5}
+        ... )
+    """
+    pass
+
+
 # Monitoring Exceptions
 
 class MonitoringException(OrchestratorException):

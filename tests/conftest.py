@@ -20,7 +20,8 @@ def test_config():
         'database': {'url': 'sqlite:///:memory:'},
         'agent': {'type': 'claude-code-local', 'config': {}},
         'llm': {
-            'provider': 'mock',
+            'type': 'mock',  # LLM type for registry lookup
+            'provider': 'mock',  # Legacy field for backward compatibility
             'model': 'test',
             'base_url': 'http://localhost:11434'
         },
@@ -66,7 +67,27 @@ def reset_registries():
     This ensures tests don't interfere with each other through
     shared registry state.
     """
+    # Setup: Manually re-register core plugins at start of each test
+    # (needed because decorators only run once on module import)
+    from src.plugins.registry import register_agent, register_llm
+    from src.agents.mock_agent import MockAgent
+    from src.agents.claude_code_local import ClaudeCodeLocalAgent
+    from src.llm.local_interface import LocalLLMInterface
+    from src.llm.openai_codex_interface import OpenAICodexLLMPlugin
+    from tests.mocks.mock_llm import MockLLM
+
+    # Re-register agents
+    register_agent('mock')(MockAgent)
+    register_agent('claude-code-local')(ClaudeCodeLocalAgent)
+    register_agent('local')(ClaudeCodeLocalAgent)  # Alias
+
+    # Re-register LLMs
+    register_llm('ollama')(LocalLLMInterface)
+    register_llm('openai-codex')(OpenAICodexLLMPlugin)
+    register_llm('mock')(MockLLM)
+
     yield
+
     # Teardown: clear registries after test
     AgentRegistry.clear()
     LLMRegistry.clear()

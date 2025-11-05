@@ -1,6 +1,6 @@
-# Default configuration for Claude Code Orchestrator
-# This file provides sensible defaults for all settings.
-# Override in config/config.yaml or via environment variables.
+# Configuration for Claude Code Orchestrator
+# Supports both local LLM (Ollama) and remote LLM (OpenAI Codex) orchestration
+# See config/default_config.yaml for all options
 
 # Local LLM Configuration (Ollama)
 llm:

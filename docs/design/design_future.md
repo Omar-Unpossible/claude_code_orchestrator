@@ -4,6 +4,37 @@ Selling point -- LLM-optimized best practices implemented by our company (optimi
 
 Hardware
 
+Obra Setup / Netcode
+	Remove hard-coded IP addresses
+	Robust network setup instructions
+		Automatic detection of network configuration
+		Dynamic assignment of IP addresses
+		Support for various network topologies (e.g., LAN, WAN, VPN)
+		Comprehensive error handling and troubleshooting guides
+
+Project startup - Create and instruct rAI to create workflow / maintain (Claude.MD)
+	Changelog
+	Testing guidelines
+	Documentation guidelines
+		Code Comments
+		README
+		API
+	Code guidelines
+		Style guide
+		Design patterns
+		Performance considerations
+		Security best practices
+		Version control practices
+	Docs folders
+		Archive
+		Design
+		Architecture
+		Workplans
+		Business_dev
+		Decisions
+		Guides
+		Research
+
 Recovery
 	Auto-save project state at regular intervals
 		Save LLM conversation history
