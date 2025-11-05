@@ -335,6 +335,9 @@ class TestAgentRegistry:
 
     def test_list_agents(self):
         """Test listing all registered agents."""
+        # Clear registry first to avoid interference from auto-registered agents
+        AgentRegistry.clear()
+
         AgentRegistry.register('agent1', MockAgent)
         AgentRegistry.register('agent2', EchoAgent)
 
@@ -580,6 +583,9 @@ class TestRegistryEdgeCases:
 
     def test_registry_clear(self):
         """Test clearing registries."""
+        # Clear registry first to start fresh
+        AgentRegistry.clear()
+
         AgentRegistry.register('test1', MockAgent)
         AgentRegistry.register('test2', EchoAgent)
         assert len(AgentRegistry.list()) == 2
