@@ -18,11 +18,17 @@ Add `--stream` and `--interactive` flags to Obra CLI for real-time visibility an
 ./venv/bin/python -m src.cli task execute 3 --stream --interactive
 ```
 
-**Commands**:
-- `/to-claude <message>` - Inject guidance into next prompt
+**Commands** (NEW: Dynamic labels + orchestrator messaging):
+- `/to-impl <message>` - Send message to implementer (Claude Code)
+  - Aliases: `/to-claude` (legacy), `/to-implementer`
+- `/to-orch <message>` - Send message to orchestrator (Qwen/Codex)
+  - Aliases: `/to-obra` (legacy), `/to-orchestrator`
+  - Auto-detects intent: validation guidance, decision hints, feedback requests
 - `/pause` / `/resume` - Pause/resume execution
 - `/override-decision RETRY` - Override Obra's decision
 - `/status` - Show current metrics
+
+**Display**: Shows actual LLM in use (`[ORCH:ollama]` or `[ORCH:openai-codex]`)
 
 ---
 
