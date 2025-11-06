@@ -65,7 +65,12 @@ class InteractiveMode:
             'status': self.cmd_status,
             'use': self.cmd_use,
             'history': self.cmd_history,
-            'clear': self.cmd_clear
+            'clear': self.cmd_clear,
+            '/to-orch': self.cmd_to_orch,
+            '/to-obra': self.cmd_to_orch,  # Alias
+            '/to-impl': self.cmd_to_impl,
+            '/to-claude': self.cmd_to_impl,  # Alias
+            'llm': self.cmd_llm,
         }
 
     def run(self) -> None:
@@ -180,6 +185,18 @@ class InteractiveMode:
         print("  clear                   - Clear screen")
         print()
 
+        print("Natural Language Commands (NEW!):")
+        print("  /to-orch <message>      - Ask orchestrator's LLM for help/advice")
+        print("  /to-impl <message>      - Send task directly to Claude Code agent")
+        print("  llm show                - Show current LLM provider and model")
+        print("  llm list                - List available LLM providers")
+        print("  llm switch <provider>   - Switch LLM provider (ollama, openai-codex)")
+        print("  Examples:")
+        print("    /to-orch How should I break down my Tetris feature?")
+        print("    llm switch openai-codex gpt-4")
+        print("    /to-impl Create a README.md for this project")
+        print()
+
         print("Project Management:")
         print("  project create <name>   - Create a new project")
         print("  project list            - List all projects")
@@ -198,6 +215,26 @@ class InteractiveMode:
         print("  run                     - Run orchestrator continuously")
         print("  stop                    - Stop continuous run")
         print("  status                  - Show orchestrator status")
+        print()
+
+        print("Interactive Task Execution Commands:")
+        print("  Additional commands during 'execute <id> --interactive':")
+        print("    /pause                    - Pause execution")
+        print("    /resume                   - Resume paused execution")
+        print("    /override-decision <dec>  - Override decision (proceed/retry/clarify/escalate)")
+        print("    /stop                     - Stop execution gracefully")
+        print("  Note: /to-orch and /to-impl work both in REPL and during execution!")
+        print()
+
+        print("CLI-Only Commands (exit and use CLI):")
+        print("  Epic Management:")
+        print("    python -m src.cli epic create/list/show/execute")
+        print("  Story Management:")
+        print("    python -m src.cli story create/list/show/move")
+        print("  Milestone Management:")
+        print("    python -m src.cli milestone create/check/achieve/list")
+        print()
+        print("  Tip: Run 'python -m src.cli <command> --help' for detailed usage")
         print()
 
     def cmd_exit(self, args: List[str]) -> None:
@@ -283,7 +320,7 @@ class InteractiveMode:
             print("-" * 80)
             for p in projects:
                 current = " (current)" if p.id == self.current_project else ""
-                print(f"  #{p.id}: {p.name}{current}")
+                print(f"  #{p.id}: {p.project_name}{current}")
                 print(f"       {p.description}")
                 print(f"       Status: {p.status}")
                 print()
@@ -305,10 +342,10 @@ class InteractiveMode:
                 print(f"✗ Project #{project_id} not found")
                 return
 
-            print(f"\nProject #{project.id}: {project.name}")
+            print(f"\nProject #{project.id}: {project.project_name}")
             print("=" * 80)
             print(f"Description: {project.description}")
-            print(f"Working directory: {project.working_dir}")
+            print(f"Working directory: {project.working_directory}")
             print(f"Status: {project.status}")
             print(f"Created: {project.created_at}")
             print(f"Updated: {project.updated_at}")
@@ -548,9 +585,241 @@ class InteractiveMode:
                 return
 
             self.current_project = project_id
-            print(f"✓ Using project #{project_id}: {project.name}")
+            print(f"✓ Using project #{project_id}: {project.project_name}")
 
         except ValueError:
             print("✗ Invalid project ID")
         except Exception as e:
             print(f"✗ Failed to set project: {e}")
+
+    def cmd_to_orch(self, args: List[str]) -> None:
+        """Send natural language message to orchestrator's LLM.
+
+        Args:
+            args: Message to send (space-separated words)
+        """
+        if not args:
+            print("Usage: /to-orch <your message>")
+            print("Example: /to-orch How should I structure my Tetris game tasks?")
+            return
+
+        try:
+            message = ' '.join(args)
+            print(f"\n[You → Orchestrator]: {message}")
+            print("\n[Orchestrator thinking...]")
+
+            # Send to orchestrator's LLM
+            if not self.orchestrator or not hasattr(self.orchestrator, 'llm_interface'):
+                print("✗ Orchestrator LLM not available")
+                return
+
+            # Create a conversational prompt
+            prompt = f"""You are Obra, the Claude Code Orchestrator assistant. The user is in the interactive REPL and has asked you:
+
+"{message}"
+
+Provide a helpful, concise response. You can:
+- Answer questions about Obra features and workflows
+- Help plan work breakdown (epics, stories, tasks)
+- Suggest task dependencies and execution order
+- Explain best practices for orchestration
+- Analyze project structure and suggest improvements
+
+Keep responses clear and actionable. If recommending commands, show the exact syntax."""
+
+            response = self.orchestrator.llm_interface.send_prompt(prompt)
+
+            print(f"\n[Orchestrator]: {response}\n")
+
+        except Exception as e:
+            print(f"\n✗ Failed to communicate with orchestrator: {e}\n")
+            logger.exception("Error in /to-orch command")
+
+    def cmd_to_impl(self, args: List[str]) -> None:
+        """Send natural language message to Claude Code agent.
+
+        Args:
+            args: Message to send (space-separated words)
+        """
+        if not args:
+            print("Usage: /to-impl <your message>")
+            print("Example: /to-impl Create a README for my Tetris project")
+            return
+
+        if not self.current_project:
+            print("✗ No project selected. Use 'use <project_id>' first")
+            return
+
+        try:
+            message = ' '.join(args)
+            print(f"\n[You → Claude Code]: {message}")
+            print("\n[Claude Code working...]")
+
+            # Get project info for context
+            project = self.state_manager.get_project(self.current_project)
+            if not project:
+                print(f"✗ Project #{self.current_project} not found")
+                return
+
+            # Send directly to agent
+            if not self.orchestrator or not hasattr(self.orchestrator, 'agent'):
+                print("✗ Agent not available")
+                return
+
+            # Invoke agent with the message
+            agent_response = self.orchestrator.agent.send_prompt(
+                prompt=message,
+                context={'working_dir': project.working_directory}
+            )
+
+            print(f"\n[Claude Code]: Task started\n")
+            print(agent_response)
+            print()
+
+        except Exception as e:
+            print(f"\n✗ Failed to communicate with agent: {e}\n")
+            logger.exception("Error in /to-impl command")
+
+    def cmd_llm(self, args: List[str]) -> None:
+        """Manage LLM provider and model selection.
+
+        Args:
+            args: Subcommand and arguments
+        """
+        if not args:
+            print("Usage: llm <show|list|switch> [provider] [model]")
+            print("\nExamples:")
+            print("  llm show                        - Show current LLM info")
+            print("  llm list                        - List available LLM providers")
+            print("  llm switch ollama               - Switch to Ollama (keeps current model)")
+            print("  llm switch ollama qwen2.5-coder:7b  - Switch to Ollama with specific model")
+            print("  llm switch openai-codex gpt-4   - Switch to OpenAI Codex with GPT-4")
+            return
+
+        subcommand = args[0].lower()
+
+        if subcommand == 'show':
+            self._llm_show()
+        elif subcommand == 'list':
+            self._llm_list()
+        elif subcommand == 'switch':
+            if len(args) < 2:
+                print("✗ Usage: llm switch <provider> [model]")
+                return
+            provider = args[1]
+            model = args[2] if len(args) > 2 else None
+            self._llm_switch(provider, model)
+        else:
+            print(f"✗ Unknown llm subcommand: {subcommand}")
+            print("Valid subcommands: show, list, switch")
+
+    def _llm_show(self) -> None:
+        """Show current LLM provider and model."""
+        try:
+            if not self.orchestrator or not hasattr(self.orchestrator, 'llm_interface'):
+                print("✗ LLM not initialized")
+                return
+
+            llm = self.orchestrator.llm_interface
+
+            # Get provider type from config
+            provider = self.config.get('llm.type', 'unknown')
+            model = self.config.get('llm.model', 'unknown')
+
+            print("\nCurrent LLM Configuration:")
+            print("=" * 60)
+            print(f"Provider: {provider}")
+            print(f"Model: {model}")
+
+            if provider == 'ollama':
+                api_url = self.config.get('llm.api_url', 'unknown')
+                temperature = self.config.get('llm.temperature', 'unknown')
+                print(f"API URL: {api_url}")
+                print(f"Temperature: {temperature}")
+            elif provider == 'openai-codex':
+                temperature = self.config.get('llm.temperature', 'unknown')
+                print(f"Temperature: {temperature}")
+
+            print()
+
+        except Exception as e:
+            print(f"✗ Failed to show LLM info: {e}")
+            logger.exception("Error in llm show")
+
+    def _llm_list(self) -> None:
+        """List available LLM providers."""
+        try:
+            from src.plugins.registry import LLMRegistry
+
+            providers = LLMRegistry.list()
+
+            print("\nAvailable LLM Providers:")
+            print("=" * 60)
+            for provider in providers:
+                print(f"  • {provider}")
+
+            print("\nCommon Models:")
+            print("  Ollama:")
+            print("    - qwen2.5-coder:32b (recommended, 32B params)")
+            print("    - qwen2.5-coder:7b (faster, 7B params)")
+            print("    - codellama:13b")
+            print("    - deepseek-coder:6.7b")
+            print("  OpenAI Codex:")
+            print("    - gpt-4 (most capable)")
+            print("    - gpt-3.5-turbo (faster, cheaper)")
+            print()
+
+        except Exception as e:
+            print(f"✗ Failed to list LLMs: {e}")
+            logger.exception("Error in llm list")
+
+    def _llm_switch(self, provider: str, model: Optional[str]) -> None:
+        """Switch to a different LLM provider/model.
+
+        Args:
+            provider: LLM provider name (ollama, openai-codex)
+            model: Optional model name
+        """
+        try:
+            from src.plugins.registry import LLMRegistry
+            from src.core.exceptions import PluginNotFoundError
+
+            # Validate provider exists
+            try:
+                LLMRegistry.get(provider)
+            except PluginNotFoundError:
+                print(f"✗ Unknown LLM provider: {provider}")
+                print(f"Available: {LLMRegistry.list()}")
+                return
+
+            # Update config
+            self.config._config['llm']['type'] = provider
+            if model:
+                self.config._config['llm']['model'] = model
+
+            # Reinitialize LLM
+            print(f"\n[Switching to {provider}" + (f" with model {model}" if model else "") + "...]")
+
+            llm_config = self.config.get('llm', {})
+            llm_class = LLMRegistry.get(provider)
+
+            # Create new instance
+            new_llm = llm_class()
+            new_llm.initialize(llm_config)
+
+            # Replace in orchestrator
+            self.orchestrator.llm_interface = new_llm
+            self.orchestrator.context_manager.llm_interface = new_llm
+            self.orchestrator.confidence_scorer.llm_interface = new_llm
+
+            # Update prompt generator
+            if hasattr(self.orchestrator, 'prompt_generator'):
+                self.orchestrator.prompt_generator.llm_interface = new_llm
+
+            print(f"✓ Switched to {provider}" + (f" ({model})" if model else ""))
+            print(f"  /to-orch will now use this LLM")
+            print()
+
+        except Exception as e:
+            print(f"\n✗ Failed to switch LLM: {e}\n")
+            logger.exception("Error in llm switch")
