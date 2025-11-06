@@ -782,7 +782,7 @@ Keep responses clear and actionable. If recommending commands, show the exact sy
         """
         try:
             from src.plugins.registry import LLMRegistry
-            from src.core.exceptions import PluginNotFoundError
+            from src.plugins.exceptions import PluginNotFoundError
 
             # Validate provider exists
             try:
