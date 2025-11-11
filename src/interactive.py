@@ -131,70 +131,113 @@ class InteractiveMode:
         print("Goodbye!")
 
     def _show_welcome(self) -> None:
-        """Show welcome message."""
+        """Show welcome message (v1.5.0)."""
         print("=" * 80)
-        print("Claude Code Orchestrator - Interactive Mode")
+        print("Claude Code Orchestrator - Interactive Mode (v1.5.0)")
         print("=" * 80)
         print()
-        print("Type 'help' for available commands")
+        print("💬 Type naturally to talk to the orchestrator")
+        print("⚡ Use built-in commands: help, project, task, execute, status")
+        print("🔧 Slash commands: /to-impl, /to-orch (prefix with /)")
         print()
 
     def _execute_command(self, user_input: str) -> None:
-        """Parse and execute a command.
+        """Parse and execute a command (v1.5.0: Natural language routing).
+
+        v1.5.0 Behavior:
+        - Input starting with '/' → Slash command (must be valid)
+        - Input NOT starting with '/' → Check if it's a built-in command, else send to orchestrator
 
         Args:
             user_input: User's input string
         """
-        # Parse command
-        try:
-            parts = shlex.split(user_input)
-        except ValueError:
-            print("✗ Invalid command syntax")
+        user_input = user_input.strip()
+        if not user_input:
             return
 
-        if not parts:
-            return
-
-        command = parts[0].lower()
-        args = parts[1:]
-
-        # Execute command
-        if command in self.commands:
+        # v1.5.0: Check if it's a slash command
+        if user_input.startswith('/'):
+            # Parse slash command
             try:
-                self.commands[command](args)
-            except Exception as e:
-                print(f"✗ Command failed: {e}")
+                parts = shlex.split(user_input)
+            except ValueError:
+                print("✗ Invalid command syntax")
+                return
+
+            command = parts[0].lower()
+            args = parts[1:]
+
+            # Execute slash command
+            if command in self.commands:
+                try:
+                    self.commands[command](args)
+                except Exception as e:
+                    print(f"✗ Command failed: {e}")
+            else:
+                print(f"✗ Unknown slash command: {command}")
+                print("Type /help for available slash commands")
         else:
-            print(f"✗ Unknown command: {command}")
-            print("Type 'help' for available commands")
+            # Not a slash command - parse normally
+            try:
+                parts = shlex.split(user_input)
+            except ValueError:
+                print("✗ Invalid command syntax")
+                return
+
+            if not parts:
+                return
+
+            command = parts[0].lower()
+            args = parts[1:]
+
+            # Check if it's a built-in command (help, exit, project, task, etc.)
+            if command in self.commands and not command.startswith('/'):
+                try:
+                    self.commands[command](args)
+                except Exception as e:
+                    print(f"✗ Command failed: {e}")
+            else:
+                # Not a built-in command - route to orchestrator (v1.5.0)
+                print(f"→ Routing to orchestrator: {user_input}")
+                self.cmd_to_orch([user_input])
 
     # ========================================================================
     # Built-in Commands
     # ========================================================================
 
     def cmd_help(self, args: List[str]) -> None:
-        """Show help message."""
-        print("\nAvailable Commands:")
+        """Show help message (v1.5.0)."""
+        print("\nAvailable Commands (v1.5.0):")
         print("=" * 80)
         print()
 
-        print("General:")
+        print("💬 Natural Language (v1.5.0 - NEW DEFAULT!):")
+        print("  <any natural text>      - Automatically sent to orchestrator for guidance")
+        print("  Examples:")
+        print("    Display the current project and plan")
+        print("    How should I break down my authentication feature?")
+        print("    What's the status of my tasks?")
+        print()
+
+        print("⚡ General Commands:")
         print("  help                    - Show this help message")
         print("  exit, quit              - Exit interactive mode")
         print("  history                 - Show command history")
         print("  clear                   - Clear screen")
         print()
 
-        print("Natural Language Commands (NEW!):")
-        print("  /to-orch <message>      - Ask orchestrator's LLM for help/advice")
+        print("🔧 Slash Commands (must start with /):")
+        print("  /to-orch <message>      - Explicitly send to orchestrator LLM")
         print("  /to-impl <message>      - Send task directly to Claude Code agent")
+        print("  Examples:")
+        print("    /to-impl Create a README.md for this project")
+        print("    /to-orch Analyze the quality of the last response")
+        print()
+
+        print("🔌 LLM Management:")
         print("  llm show                - Show current LLM provider and model")
         print("  llm list                - List available LLM providers")
         print("  llm switch <provider>   - Switch LLM provider (ollama, openai-codex)")
-        print("  Examples:")
-        print("    /to-orch How should I break down my Tetris feature?")
-        print("    llm switch openai-codex gpt-4")
-        print("    /to-impl Create a README.md for this project")
         print()
 
         print("Project Management:")
