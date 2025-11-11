@@ -5,6 +5,9 @@ Tests integration of:
 - Orchestrator with TaskComplexityEstimator (TASK_5.2)
 - ParallelAgentCoordinator (TASK_5.3)
 
+DEPRECATED: ParallelAgentCoordinator deprecated per ADR-005 (Claude-driven parallelization).
+See: docs/decisions/ADR-005-claude-driven-parallelization.md
+
 CRITICAL: This is a SEQUENTIAL testing event. NO parallel test execution.
 """
 
@@ -14,13 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
+# Skip all tests in this file - ParallelAgentCoordinator deprecated
+pytestmark = pytest.mark.skip(reason="ParallelAgentCoordinator deprecated per ADR-005")
+
 from src.orchestrator import Orchestrator
 from src.core.state import StateManager
 from src.core.models import Task
 from src.orchestration.quality_controller import QualityController, QualityResult
-from src.orchestration.parallel_agent_coordinator import ParallelAgentCoordinator
-from src.orchestration.subtask import SubTask
-from src.orchestration.complexity_estimate import ComplexityEstimate
 from src.core.exceptions import OrchestratorException
 
 

@@ -42,8 +42,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TestResult:
-    """Result of a test scenario execution."""
+class ScenarioResult:
+    """Result of a test scenario execution.
+
+    Note: Renamed from TestResult to avoid pytest collection (classes starting with 'Test'
+    are collected as test classes, but dataclasses have __init__ which pytest rejects).
+    """
     scenario_id: int
     scenario_name: str
     status: str  # PASSED, FAILED, SKIPPED
@@ -64,7 +68,7 @@ class RunthroughTester:
         self.config_path = config_path
         self.config: Optional[Config] = None
         self.state: Optional[StateManager] = None
-        self.test_results: List[TestResult] = []
+        self.test_results: List[ScenarioResult] = []
         self.test_dir = Path("/tmp/obra_test_run")
         self.workspace_dir = self.test_dir / "workspace"
         self.start_time = datetime.now()
@@ -250,7 +254,7 @@ logging:
         logger.info("Teardown complete")
         logger.info("")
 
-    def run_scenario_1(self) -> TestResult:
+    def run_scenario_1(self) -> ScenarioResult:
         """Scenario 1: Happy Path - Complete Task."""
         scenario_name = "Happy Path - Complete Task"
         logger.info(f"\n{'=' * 80}")
@@ -451,7 +455,7 @@ def test_divide_by_zero():
         end_time = time.time()
         duration = end_time - start_time
 
-        return TestResult(
+        return ScenarioResult(
             scenario_id=1,
             scenario_name=scenario_name,
             status=status,
@@ -464,7 +468,7 @@ def test_divide_by_zero():
             artifacts=artifacts
         )
 
-    def run_scenario_2(self) -> TestResult:
+    def run_scenario_2(self) -> ScenarioResult:
         """Scenario 2: Quality Control - Low Quality Response."""
         scenario_name = "Quality Control - Low Quality Response"
         logger.info(f"\n{'=' * 80}")
@@ -522,7 +526,7 @@ def test_divide_by_zero():
             status = "FAILED"
 
         end_time = time.time()
-        return TestResult(
+        return ScenarioResult(
             scenario_id=2,
             scenario_name=scenario_name,
             status=status,
@@ -535,7 +539,7 @@ def test_divide_by_zero():
             artifacts=[]
         )
 
-    def run_all_scenarios(self) -> List[TestResult]:
+    def run_all_scenarios(self) -> List[ScenarioResult]:
         """Run all test scenarios."""
         scenarios = [
             self.run_scenario_1,

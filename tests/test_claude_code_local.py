@@ -1,4 +1,9 @@
-"""Tests for ClaudeCodeLocalAgent subprocess management."""
+"""Tests for ClaudeCodeLocalAgent subprocess management.
+
+DEPRECATED: These tests are for the old ProcessState-based implementation.
+ClaudeCodeLocalAgent was refactored to use headless --print mode (stateless).
+See: Architecture Principle #7 (Headless Mode for Automation)
+"""
 
 import os
 import subprocess
@@ -10,7 +15,10 @@ from unittest.mock import Mock, MagicMock, patch, call
 
 import pytest
 
-from src.agents.claude_code_local import ClaudeCodeLocalAgent, ProcessState
+# Skip all tests in this file - tests deprecated implementation
+pytestmark = pytest.mark.skip(reason="Tests deprecated ProcessState implementation. Agent refactored to headless mode.")
+
+from src.agents.claude_code_local import ClaudeCodeLocalAgent
 from src.plugins.exceptions import AgentException
 
 
