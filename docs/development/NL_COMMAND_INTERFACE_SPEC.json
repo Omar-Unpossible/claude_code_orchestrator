@@ -1,0 +1,822 @@
+{
+  "specification_version": "1.0.0",
+  "feature_name": "Natural Language Command Interface",
+  "feature_id": "nl-command-v1",
+  "epic_type": "EPIC",
+  "estimated_stories": 5,
+  "estimated_sessions": 8,
+
+  "executive_summary": {
+    "problem": "Users must use exact command syntax or receive informational responses. No natural language command execution exists.",
+    "solution": "Implement hybrid NL interface with automatic intent detection, entity extraction, and command execution via LLM plugins.",
+    "approach": "Option 1 (NL Command Parser) + Option 3 (Hybrid Auto-Detection) = Unified NL Interface",
+    "benefits": [
+      "Natural conversation with Obra - no syntax memorization required",
+      "Auto-detect commands vs questions - seamless UX",
+      "Plugin-agnostic LLM integration - works with Qwen, OpenAI, Claude, etc.",
+      "Schema-aware entity extraction - understands Obra data model",
+      "Graceful degradation - asks for clarification when uncertain"
+    ]
+  },
+
+  "architecture": {
+    "design_pattern": "Pipeline Architecture with Plugin-Based LLM",
+    "data_flow": [
+      "User NL Input → IntentClassifier (LLM) → Intent + Confidence",
+      "Intent + Message → EntityExtractor (LLM) → Structured Entities",
+      "Entities → CommandValidator → Validated Command",
+      "Validated Command → CommandExecutor (StateManager) → Results",
+      "Results → ResponseFormatter → User-Friendly Response"
+    ],
+    "components": [
+      {
+        "name": "IntentClassifier",
+        "responsibility": "Classify user intent as COMMAND, QUESTION, or CLARIFICATION_NEEDED",
+        "inputs": ["user_message", "conversation_context"],
+        "outputs": ["intent_type", "confidence_score", "detected_entities"],
+        "llm_required": true,
+        "plugin_agnostic": true
+      },
+      {
+        "name": "EntityExtractor",
+        "responsibility": "Extract structured entities from NL using schema knowledge",
+        "inputs": ["user_message", "intent_type", "obra_schema"],
+        "outputs": ["entities", "extraction_confidence"],
+        "llm_required": true,
+        "plugin_agnostic": true,
+        "schema_awareness": ["TaskType", "Epic", "Story", "Task", "Subtask", "Milestone"]
+      },
+      {
+        "name": "CommandValidator",
+        "responsibility": "Validate extracted entities against business rules",
+        "inputs": ["entities", "intent_type"],
+        "outputs": ["validation_result", "errors", "warnings"],
+        "llm_required": false,
+        "validation_rules": [
+          "epic_id exists if story references epic",
+          "story_id exists if task references story",
+          "no circular dependencies",
+          "required fields present",
+          "field types match schema"
+        ]
+      },
+      {
+        "name": "CommandExecutor",
+        "responsibility": "Execute validated commands via StateManager",
+        "inputs": ["validated_command"],
+        "outputs": ["execution_result", "created_ids", "errors"],
+        "llm_required": false,
+        "statemanager_methods": [
+          "create_epic",
+          "create_story",
+          "create_task",
+          "update_task",
+          "create_milestone",
+          "list_tasks",
+          "get_task",
+          "execute_epic"
+        ]
+      },
+      {
+        "name": "ResponseFormatter",
+        "responsibility": "Generate human-friendly responses from execution results",
+        "inputs": ["execution_result", "intent_type"],
+        "outputs": ["formatted_response"],
+        "llm_required": false,
+        "response_types": ["success", "error", "confirmation_required", "clarification_needed"]
+      },
+      {
+        "name": "NLCommandProcessor",
+        "responsibility": "Orchestrate entire NL processing pipeline",
+        "inputs": ["user_message", "session_context"],
+        "outputs": ["response", "updated_context"],
+        "llm_required": false,
+        "coordinates": ["IntentClassifier", "EntityExtractor", "CommandValidator", "CommandExecutor", "ResponseFormatter"]
+      }
+    ],
+    "plugin_integration": {
+      "llm_plugin_usage": "Uses existing LLMPlugin interface for all LLM operations",
+      "configuration_path": "llm.orchestrator",
+      "fallback_strategy": "Rule-based pattern matching if LLM unavailable",
+      "supported_providers": ["Ollama (Qwen)", "OpenAI (GPT-4, Codex)", "Anthropic (Claude)", "Custom"]
+    }
+  },
+
+  "implementation_plan": {
+    "stories": [
+      {
+        "story_id": 1,
+        "title": "Intent Classification Engine",
+        "user_story": "As a user, I want Obra to automatically detect whether my message is a command or question, so I don't have to use specific syntax",
+        "acceptance_criteria": [
+          "IntentClassifier correctly identifies COMMAND intent with >90% accuracy",
+          "IntentClassifier correctly identifies QUESTION intent with >90% accuracy",
+          "Returns CLARIFICATION_NEEDED when confidence < 70%",
+          "Works with multiple LLM plugins (Qwen, OpenAI tested)",
+          "Responds in <2 seconds for 95th percentile"
+        ],
+        "tasks": [
+          {
+            "title": "Design intent classification prompt templates",
+            "description": "Create prompt templates for intent classification that work across LLM providers",
+            "deliverables": ["prompts/intent_classification.j2"]
+          },
+          {
+            "title": "Implement IntentClassifier class",
+            "description": "Core classification logic using LLMPlugin",
+            "deliverables": ["src/nl/intent_classifier.py"],
+            "dependencies": []
+          },
+          {
+            "title": "Add confidence scoring logic",
+            "description": "Implement confidence threshold and CLARIFICATION_NEEDED handling",
+            "deliverables": ["Confidence calculation in IntentClassifier"],
+            "dependencies": ["Implement IntentClassifier class"]
+          },
+          {
+            "title": "Write unit tests for IntentClassifier",
+            "description": "Test with mock LLM plugin and various input cases",
+            "deliverables": ["tests/test_intent_classifier.py"],
+            "test_coverage_target": 95
+          }
+        ],
+        "test_criteria": {
+          "unit_tests": "tests/test_intent_classifier.py",
+          "integration_tests": "tests/integration/test_nl_intent.py",
+          "test_cases": [
+            {
+              "input": "Create an epic called User Authentication",
+              "expected_intent": "COMMAND",
+              "expected_confidence": ">0.9"
+            },
+            {
+              "input": "How do I create an epic?",
+              "expected_intent": "QUESTION",
+              "expected_confidence": ">0.9"
+            },
+            {
+              "input": "Maybe add something",
+              "expected_intent": "CLARIFICATION_NEEDED",
+              "expected_confidence": "<0.7"
+            }
+          ]
+        }
+      },
+      {
+        "story_id": 2,
+        "title": "Schema-Aware Entity Extraction",
+        "user_story": "As a user, I want Obra to understand epic/story/task details from my natural language, so I can describe work items conversationally",
+        "acceptance_criteria": [
+          "EntityExtractor extracts epic title, description, and metadata",
+          "EntityExtractor extracts story details and epic_id references",
+          "EntityExtractor extracts task details and story_id/epic_id references",
+          "Handles multi-item commands (e.g., 'create 3 stories...')",
+          "Schema validation catches invalid references"
+        ],
+        "tasks": [
+          {
+            "title": "Create Obra schema representation for LLM",
+            "description": "JSON schema describing TaskType, Epic, Story, Task models for LLM context",
+            "deliverables": ["src/nl/schemas/obra_schema.json"]
+          },
+          {
+            "title": "Design entity extraction prompt templates",
+            "description": "Prompt templates that include schema context for accurate extraction",
+            "deliverables": ["prompts/entity_extraction.j2"]
+          },
+          {
+            "title": "Implement EntityExtractor class",
+            "description": "LLM-based entity extraction with schema awareness",
+            "deliverables": ["src/nl/entity_extractor.py"],
+            "dependencies": ["Create Obra schema representation"]
+          },
+          {
+            "title": "Add multi-item extraction support",
+            "description": "Handle commands creating multiple epics/stories/tasks in one message",
+            "deliverables": ["Multi-item parsing in EntityExtractor"],
+            "dependencies": ["Implement EntityExtractor class"]
+          },
+          {
+            "title": "Write unit tests for EntityExtractor",
+            "description": "Test extraction accuracy with various NL inputs",
+            "deliverables": ["tests/test_entity_extractor.py"],
+            "test_coverage_target": 95
+          }
+        ],
+        "test_criteria": {
+          "unit_tests": "tests/test_entity_extractor.py",
+          "integration_tests": "tests/integration/test_nl_extraction.py",
+          "test_cases": [
+            {
+              "input": "Create an epic called 'User Auth' with description 'Complete authentication system'",
+              "expected_entities": {
+                "entity_type": "epic",
+                "title": "User Auth",
+                "description": "Complete authentication system"
+              }
+            },
+            {
+              "input": "Add 3 stories to the User Auth epic: login, signup, and MFA",
+              "expected_entities": {
+                "entity_type": "story",
+                "count": 3,
+                "epic_reference": "User Auth",
+                "titles": ["login", "signup", "MFA"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "story_id": 3,
+        "title": "Command Validation and Execution",
+        "user_story": "As a user, I want my natural language commands to be validated and executed safely, so I can trust Obra to create work items correctly",
+        "acceptance_criteria": [
+          "CommandValidator checks all business rules before execution",
+          "CommandExecutor calls correct StateManager methods",
+          "Validation errors returned with helpful messages",
+          "Destructive operations require confirmation",
+          "Transaction rollback on execution errors"
+        ],
+        "tasks": [
+          {
+            "title": "Implement CommandValidator class",
+            "description": "Validate extracted entities against business rules and schema",
+            "deliverables": ["src/nl/command_validator.py"]
+          },
+          {
+            "title": "Implement CommandExecutor class",
+            "description": "Map validated commands to StateManager method calls",
+            "deliverables": ["src/nl/command_executor.py"],
+            "dependencies": []
+          },
+          {
+            "title": "Add confirmation workflow for destructive operations",
+            "description": "Detect destructive ops (delete, update) and require user confirmation",
+            "deliverables": ["Confirmation logic in CommandExecutor"],
+            "dependencies": ["Implement CommandExecutor class"]
+          },
+          {
+            "title": "Add transaction safety and rollback",
+            "description": "Wrap executions in transactions with automatic rollback on error",
+            "deliverables": ["Transaction handling in CommandExecutor"],
+            "dependencies": ["Implement CommandExecutor class"]
+          },
+          {
+            "title": "Write unit tests for validation and execution",
+            "description": "Test validation rules and StateManager integration",
+            "deliverables": ["tests/test_command_validator.py", "tests/test_command_executor.py"],
+            "test_coverage_target": 95
+          }
+        ],
+        "test_criteria": {
+          "unit_tests": "tests/test_command_validator.py, tests/test_command_executor.py",
+          "integration_tests": "tests/integration/test_nl_execution.py",
+          "test_cases": [
+            {
+              "scenario": "Valid epic creation",
+              "input": {"entity_type": "epic", "title": "New Feature"},
+              "expected_result": "Epic created successfully"
+            },
+            {
+              "scenario": "Invalid story reference (epic doesn't exist)",
+              "input": {"entity_type": "story", "epic_id": 9999, "title": "Story"},
+              "expected_result": "Validation error: Epic 9999 not found"
+            },
+            {
+              "scenario": "Circular dependency detection",
+              "input": {"entity_type": "task", "dependencies": [1, 2], "id": 1},
+              "expected_result": "Validation error: Circular dependency detected"
+            }
+          ]
+        }
+      },
+      {
+        "story_id": 4,
+        "title": "Response Formatting and User Feedback",
+        "user_story": "As a user, I want clear, actionable responses from Obra after executing commands, so I know exactly what happened",
+        "acceptance_criteria": [
+          "Success messages show created IDs and next actions",
+          "Error messages are human-friendly with recovery suggestions",
+          "Clarification requests are specific and actionable",
+          "Confirmation prompts clearly state what will happen",
+          "Responses use color coding (green=success, red=error, yellow=warning)"
+        ],
+        "tasks": [
+          {
+            "title": "Implement ResponseFormatter class",
+            "description": "Generate human-friendly responses from execution results",
+            "deliverables": ["src/nl/response_formatter.py"]
+          },
+          {
+            "title": "Add response templates for all scenarios",
+            "description": "Templates for success, error, confirmation, clarification",
+            "deliverables": ["prompts/responses/*.j2"]
+          },
+          {
+            "title": "Integrate colorama for colored output",
+            "description": "Color-coded responses in interactive terminal",
+            "deliverables": ["Color formatting in ResponseFormatter"],
+            "dependencies": ["Implement ResponseFormatter class"]
+          },
+          {
+            "title": "Write unit tests for ResponseFormatter",
+            "description": "Test response generation for all scenarios",
+            "deliverables": ["tests/test_response_formatter.py"],
+            "test_coverage_target": 95
+          }
+        ],
+        "test_criteria": {
+          "unit_tests": "tests/test_response_formatter.py",
+          "test_cases": [
+            {
+              "scenario": "Successful epic creation",
+              "input": {"result": "success", "epic_id": 5, "title": "User Auth"},
+              "expected_output": "✓ Created Epic #5: User Auth"
+            },
+            {
+              "scenario": "Validation error",
+              "input": {"result": "error", "error": "Epic not found"},
+              "expected_output": "✗ Error: Epic not found. Try listing epics with 'show epics'"
+            }
+          ]
+        }
+      },
+      {
+        "story_id": 5,
+        "title": "NL Command Pipeline Integration",
+        "user_story": "As a user, I want seamless NL command processing in interactive mode, so I can work with Obra naturally",
+        "acceptance_criteria": [
+          "NLCommandProcessor integrates with existing CommandProcessor",
+          "Interactive mode routes messages through NL pipeline",
+          "Conversation context preserved across turns",
+          "Graceful fallback to informational responses for pure questions",
+          "Performance: <3 seconds end-to-end for 95th percentile"
+        ],
+        "tasks": [
+          {
+            "title": "Implement NLCommandProcessor orchestrator",
+            "description": "Coordinate all NL components in pipeline",
+            "deliverables": ["src/nl/nl_command_processor.py"]
+          },
+          {
+            "title": "Integrate NLCommandProcessor with CommandProcessor",
+            "description": "Route non-slash-command messages through NL pipeline",
+            "deliverables": ["Updated src/utils/command_processor.py"],
+            "dependencies": ["Implement NLCommandProcessor"]
+          },
+          {
+            "title": "Add conversation context management",
+            "description": "Track conversation history for multi-turn interactions",
+            "deliverables": ["Context tracking in NLCommandProcessor"],
+            "dependencies": ["Implement NLCommandProcessor"]
+          },
+          {
+            "title": "Add configuration options for NL features",
+            "description": "Config to enable/disable NL, set confidence thresholds, LLM provider",
+            "deliverables": ["Config schema updates, default config"]
+          },
+          {
+            "title": "Write integration tests for full pipeline",
+            "description": "End-to-end tests simulating user interactions",
+            "deliverables": ["tests/integration/test_nl_pipeline.py"],
+            "test_coverage_target": 90
+          },
+          {
+            "title": "Write user documentation",
+            "description": "Guide on using NL commands, examples, limitations",
+            "deliverables": ["docs/guides/NL_COMMAND_GUIDE.md"]
+          }
+        ],
+        "test_criteria": {
+          "integration_tests": "tests/integration/test_nl_pipeline.py",
+          "e2e_scenarios": [
+            {
+              "scenario": "Create epic + stories in conversation",
+              "turns": [
+                {"user": "Create an epic for user authentication", "expected": "Epic created"},
+                {"user": "Add 3 stories: login, signup, MFA", "expected": "3 stories created under epic"}
+              ]
+            },
+            {
+              "scenario": "Question + command mixed",
+              "turns": [
+                {"user": "How many epics do I have?", "expected": "Informational response"},
+                {"user": "Create one more epic for admin dashboard", "expected": "Epic created"}
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "execution_order": [1, 2, 3, 4, 5],
+    "dependencies_graph": {
+      "story_1": [],
+      "story_2": [],
+      "story_3": ["story_1", "story_2"],
+      "story_4": ["story_3"],
+      "story_5": ["story_1", "story_2", "story_3", "story_4"]
+    }
+  },
+
+  "technical_specifications": {
+    "file_structure": {
+      "new_module": "src/nl/",
+      "files": [
+        "src/nl/__init__.py",
+        "src/nl/intent_classifier.py",
+        "src/nl/entity_extractor.py",
+        "src/nl/command_validator.py",
+        "src/nl/command_executor.py",
+        "src/nl/response_formatter.py",
+        "src/nl/nl_command_processor.py",
+        "src/nl/schemas/obra_schema.json",
+        "prompts/intent_classification.j2",
+        "prompts/entity_extraction.j2",
+        "prompts/responses/*.j2",
+        "tests/test_intent_classifier.py",
+        "tests/test_entity_extractor.py",
+        "tests/test_command_validator.py",
+        "tests/test_command_executor.py",
+        "tests/test_response_formatter.py",
+        "tests/test_nl_command_processor.py",
+        "tests/integration/test_nl_pipeline.py",
+        "docs/guides/NL_COMMAND_GUIDE.md"
+      ]
+    },
+    "api_contracts": {
+      "IntentClassifier": {
+        "class_name": "IntentClassifier",
+        "constructor": {
+          "parameters": [
+            {"name": "llm_plugin", "type": "LLMPlugin", "required": true},
+            {"name": "confidence_threshold", "type": "float", "default": 0.7}
+          ]
+        },
+        "methods": [
+          {
+            "name": "classify",
+            "parameters": [
+              {"name": "message", "type": "str", "required": true},
+              {"name": "context", "type": "dict", "required": false}
+            ],
+            "returns": {
+              "type": "IntentResult",
+              "fields": {
+                "intent": "Literal['COMMAND', 'QUESTION', 'CLARIFICATION_NEEDED']",
+                "confidence": "float",
+                "detected_entities": "dict"
+              }
+            }
+          }
+        ]
+      },
+      "EntityExtractor": {
+        "class_name": "EntityExtractor",
+        "constructor": {
+          "parameters": [
+            {"name": "llm_plugin", "type": "LLMPlugin", "required": true},
+            {"name": "schema_path", "type": "str", "required": true}
+          ]
+        },
+        "methods": [
+          {
+            "name": "extract",
+            "parameters": [
+              {"name": "message", "type": "str", "required": true},
+              {"name": "intent", "type": "str", "required": true}
+            ],
+            "returns": {
+              "type": "ExtractedEntities",
+              "fields": {
+                "entity_type": "Literal['epic', 'story', 'task', 'subtask', 'milestone']",
+                "entities": "List[dict]",
+                "confidence": "float"
+              }
+            }
+          }
+        ]
+      },
+      "CommandValidator": {
+        "class_name": "CommandValidator",
+        "constructor": {
+          "parameters": [
+            {"name": "state_manager", "type": "StateManager", "required": true}
+          ]
+        },
+        "methods": [
+          {
+            "name": "validate",
+            "parameters": [
+              {"name": "entities", "type": "ExtractedEntities", "required": true}
+            ],
+            "returns": {
+              "type": "ValidationResult",
+              "fields": {
+                "valid": "bool",
+                "errors": "List[str]",
+                "warnings": "List[str]",
+                "validated_command": "dict"
+              }
+            }
+          }
+        ]
+      },
+      "CommandExecutor": {
+        "class_name": "CommandExecutor",
+        "constructor": {
+          "parameters": [
+            {"name": "state_manager", "type": "StateManager", "required": true}
+          ]
+        },
+        "methods": [
+          {
+            "name": "execute",
+            "parameters": [
+              {"name": "validated_command", "type": "dict", "required": true}
+            ],
+            "returns": {
+              "type": "ExecutionResult",
+              "fields": {
+                "success": "bool",
+                "created_ids": "List[int]",
+                "errors": "List[str]",
+                "results": "dict"
+              }
+            }
+          }
+        ]
+      },
+      "ResponseFormatter": {
+        "class_name": "ResponseFormatter",
+        "constructor": {
+          "parameters": []
+        },
+        "methods": [
+          {
+            "name": "format",
+            "parameters": [
+              {"name": "execution_result", "type": "ExecutionResult", "required": true},
+              {"name": "intent", "type": "str", "required": true}
+            ],
+            "returns": {
+              "type": "str",
+              "description": "Formatted response with color codes"
+            }
+          }
+        ]
+      },
+      "NLCommandProcessor": {
+        "class_name": "NLCommandProcessor",
+        "constructor": {
+          "parameters": [
+            {"name": "llm_plugin", "type": "LLMPlugin", "required": true},
+            {"name": "state_manager", "type": "StateManager", "required": true},
+            {"name": "config", "type": "Config", "required": true}
+          ]
+        },
+        "methods": [
+          {
+            "name": "process",
+            "parameters": [
+              {"name": "message", "type": "str", "required": true},
+              {"name": "context", "type": "dict", "required": false}
+            ],
+            "returns": {
+              "type": "NLResponse",
+              "fields": {
+                "response": "str",
+                "intent": "str",
+                "success": "bool",
+                "updated_context": "dict"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "configuration_schema": {
+      "nl_commands": {
+        "enabled": {"type": "bool", "default": true},
+        "llm_provider": {"type": "str", "default": "ollama"},
+        "confidence_threshold": {"type": "float", "default": 0.7},
+        "max_context_turns": {"type": "int", "default": 10},
+        "require_confirmation_for": {
+          "type": "array",
+          "default": ["delete", "update", "execute"],
+          "description": "Operations requiring user confirmation"
+        },
+        "fallback_to_info": {
+          "type": "bool",
+          "default": true,
+          "description": "Fallback to informational response for pure questions"
+        }
+      }
+    }
+  },
+
+  "testing_strategy": {
+    "test_levels": [
+      {
+        "level": "unit",
+        "coverage_target": 95,
+        "files": [
+          "tests/test_intent_classifier.py",
+          "tests/test_entity_extractor.py",
+          "tests/test_command_validator.py",
+          "tests/test_command_executor.py",
+          "tests/test_response_formatter.py",
+          "tests/test_nl_command_processor.py"
+        ],
+        "mock_strategy": "Mock LLMPlugin and StateManager for isolated testing"
+      },
+      {
+        "level": "integration",
+        "coverage_target": 90,
+        "files": [
+          "tests/integration/test_nl_pipeline.py",
+          "tests/integration/test_nl_intent.py",
+          "tests/integration/test_nl_extraction.py",
+          "tests/integration/test_nl_execution.py"
+        ],
+        "mock_strategy": "Use real LLMPlugin with test fixtures, mock StateManager database"
+      },
+      {
+        "level": "e2e",
+        "coverage_target": 80,
+        "files": [
+          "tests/e2e/test_nl_interactive_mode.py"
+        ],
+        "mock_strategy": "Full stack with real database (test DB), real LLM"
+      }
+    ],
+    "test_data": {
+      "intent_classification_samples": 50,
+      "entity_extraction_samples": 100,
+      "validation_edge_cases": 30,
+      "execution_scenarios": 40
+    },
+    "performance_benchmarks": {
+      "intent_classification_latency_p95": "2s",
+      "entity_extraction_latency_p95": "2.5s",
+      "end_to_end_latency_p95": "3s",
+      "accuracy_targets": {
+        "intent_classification": 0.95,
+        "entity_extraction": 0.90
+      }
+    }
+  },
+
+  "migration_and_rollout": {
+    "backward_compatibility": {
+      "existing_slash_commands": "No changes - continue to work",
+      "existing_conversational_mode": "Enhanced with NL execution, fallback to info responses",
+      "config_migration": "Add nl_commands section to default config, optional for users"
+    },
+    "rollout_phases": [
+      {
+        "phase": 1,
+        "name": "Alpha - Internal Testing",
+        "features": ["Intent classification", "Basic entity extraction"],
+        "users": "Development team only",
+        "success_criteria": "90% intent accuracy on test set"
+      },
+      {
+        "phase": 2,
+        "name": "Beta - Limited Release",
+        "features": ["Full NL pipeline", "Epic/Story/Task creation"],
+        "users": "Opt-in via config flag",
+        "success_criteria": "No critical bugs, 85% user satisfaction"
+      },
+      {
+        "phase": 3,
+        "name": "GA - General Availability",
+        "features": ["All NL commands", "Multi-turn conversations"],
+        "users": "All users (enabled by default)",
+        "success_criteria": "95% uptime, <3s p95 latency"
+      }
+    ],
+    "feature_flags": {
+      "nl_commands.enabled": "Master kill switch",
+      "nl_commands.experimental_features": "For testing new capabilities"
+    }
+  },
+
+  "success_metrics": {
+    "quantitative": [
+      {"metric": "Intent classification accuracy", "target": ">95%"},
+      {"metric": "Entity extraction accuracy", "target": ">90%"},
+      {"metric": "End-to-end success rate", "target": ">85%"},
+      {"metric": "P95 latency", "target": "<3s"},
+      {"metric": "Test coverage", "target": ">90%"}
+    ],
+    "qualitative": [
+      {"metric": "User satisfaction", "target": "Positive feedback from 80%+ users"},
+      {"metric": "Reduced syntax errors", "target": "50% reduction in command syntax errors"},
+      {"metric": "Adoption rate", "target": "60%+ users prefer NL over slash commands"}
+    ]
+  },
+
+  "risks_and_mitigations": {
+    "risks": [
+      {
+        "risk": "LLM hallucinations creating incorrect entities",
+        "severity": "high",
+        "mitigation": "Multi-stage validation, confidence thresholds, confirmation for all creates",
+        "fallback": "If confidence <70%, ask for clarification instead of guessing"
+      },
+      {
+        "risk": "Latency exceeds user tolerance (>5s)",
+        "severity": "medium",
+        "mitigation": "Optimize prompts, cache schema context, parallel LLM calls where possible",
+        "fallback": "Show loading indicator, allow users to cancel"
+      },
+      {
+        "risk": "Plugin compatibility issues across LLM providers",
+        "severity": "medium",
+        "mitigation": "Test with Qwen, OpenAI, Claude during development, abstract prompts",
+        "fallback": "Provider-specific prompt templates if needed"
+      },
+      {
+        "risk": "User confusion between command and question modes",
+        "severity": "low",
+        "mitigation": "Clear feedback on what action was taken, option to undo",
+        "fallback": "User can disable NL execution via config"
+      }
+    ]
+  },
+
+  "recommendations": {
+    "hybrid_approach": {
+      "decision": "RECOMMENDED - Implement Option 1 + Option 3 (Unified NL Interface)",
+      "rationale": [
+        "Option 3 (hybrid auto-detection) is strictly better UX than forcing users to choose modes",
+        "Intent classification solves both command execution and question answering",
+        "No additional complexity - same LLM call determines intent",
+        "Graceful degradation: uncertain intent → ask for clarification"
+      ],
+      "implementation": "IntentClassifier outputs COMMAND, QUESTION, or CLARIFICATION_NEEDED. Pipeline routes accordingly."
+    },
+    "option_3_features_to_include": [
+      {
+        "feature": "Automatic intent detection",
+        "reason": "Seamless UX - user doesn't think about modes"
+      },
+      {
+        "feature": "Context-aware disambiguation",
+        "reason": "Use conversation history to resolve ambiguous references ('add it to that epic')"
+      },
+      {
+        "feature": "Confirmation for destructive operations",
+        "reason": "Safety - prevent accidental deletes/updates"
+      },
+      {
+        "feature": "Graceful degradation",
+        "reason": "Ask for clarification rather than guessing when uncertain"
+      }
+    ],
+    "llm_optimization": {
+      "recommendation": "Use smaller, faster models for intent classification, more capable models for entity extraction",
+      "rationale": "Intent classification is simple (3-way classification), entity extraction is complex (schema-aware generation)",
+      "implementation": "Config allows separate LLM providers: llm.intent_provider, llm.extraction_provider"
+    },
+    "future_enhancements": [
+      "Multi-modal input (voice → text → NL processing)",
+      "Learning from user corrections (feedback loop)",
+      "Template/macro expansion ('create standard API epic' → expands predefined template)",
+      "Integration with external tools (GitHub issues, Jira) via NL"
+    ]
+  },
+
+  "deliverables": {
+    "code": [
+      "src/nl/ module with 6 core classes",
+      "Updated src/utils/command_processor.py for NL integration",
+      "Prompt templates in prompts/",
+      "Configuration schema updates"
+    ],
+    "tests": [
+      "6 unit test files (95% coverage)",
+      "4 integration test files (90% coverage)",
+      "1 E2E test file (80% coverage)"
+    ],
+    "documentation": [
+      "docs/guides/NL_COMMAND_GUIDE.md - User guide",
+      "docs/architecture/NL_COMMAND_ARCHITECTURE.md - Technical architecture",
+      "ADR-014-natural-language-command-interface.md - Architecture decision record"
+    ],
+    "configuration": [
+      "Default config with nl_commands section",
+      "Migration guide for existing users"
+    ]
+  },
+
+  "estimated_effort": {
+    "total_stories": 5,
+    "total_tasks": 24,
+    "estimated_hours": 120,
+    "estimated_sessions": 8,
+    "timeline_weeks": 3,
+    "team_size": 1
+  }
+}

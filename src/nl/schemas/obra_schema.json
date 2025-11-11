@@ -1,0 +1,399 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Obra Work Item Schema",
+  "description": "Schema defining the structure of work items (epic, story, task, subtask) in Obra orchestration system",
+  "version": "1.0.0",
+
+  "definitions": {
+    "epic": {
+      "type": "object",
+      "description": "Large feature spanning multiple stories (3-15 orchestration sessions)",
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Epic name (concise, 2-8 words)",
+          "minLength": 1,
+          "maxLength": 512,
+          "examples": [
+            "User Authentication System",
+            "Admin Dashboard",
+            "Payment Processing"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed epic description explaining scope and goals",
+          "examples": [
+            "Complete authentication system with OAuth, MFA, and session management",
+            "Administrative interface for system configuration and user management"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority level (1=highest, 10=lowest)",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        }
+      }
+    },
+
+    "story": {
+      "type": "object",
+      "description": "User-facing deliverable completed in one orchestration session",
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Story title (user story format recommended: 'As a... I want... so that...')",
+          "minLength": 1,
+          "maxLength": 512,
+          "examples": [
+            "User Login",
+            "As a user, I want to log in with email/password so that I can access the system",
+            "OAuth Integration"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed story description with acceptance criteria",
+          "examples": [
+            "Users can log in using email and password. Password must be validated and session created on success.",
+            "Integrate OAuth 2.0 for Google, GitHub, and Microsoft sign-in"
+          ]
+        },
+        "epic_id": {
+          "type": "integer",
+          "description": "ID of parent epic (required if story belongs to epic)",
+          "minimum": 1
+        },
+        "epic_reference": {
+          "type": "string",
+          "description": "Name of parent epic (will be resolved to epic_id)",
+          "examples": ["User Authentication System", "Admin Dashboard"]
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority level (1=highest, 10=lowest)",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        }
+      }
+    },
+
+    "task": {
+      "type": "object",
+      "description": "Technical work implementing a story (default work item type)",
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Task title (concise, action-oriented)",
+          "minLength": 1,
+          "maxLength": 512,
+          "examples": [
+            "Create login API endpoint",
+            "Implement password hashing",
+            "Write unit tests for auth service"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed task description with technical requirements",
+          "examples": [
+            "Create POST /api/auth/login endpoint that validates credentials and returns JWT token",
+            "Use bcrypt to hash passwords with salt rounds=10"
+          ]
+        },
+        "story_id": {
+          "type": "integer",
+          "description": "ID of parent story (if task belongs to story)",
+          "minimum": 1
+        },
+        "story_reference": {
+          "type": "string",
+          "description": "Name/title of parent story (will be resolved to story_id)",
+          "examples": ["User Login", "OAuth Integration"]
+        },
+        "epic_id": {
+          "type": "integer",
+          "description": "ID of parent epic (if task belongs directly to epic without story)",
+          "minimum": 1
+        },
+        "epic_reference": {
+          "type": "string",
+          "description": "Name of parent epic (will be resolved to epic_id)",
+          "examples": ["User Authentication System"]
+        },
+        "parent_task_id": {
+          "type": "integer",
+          "description": "ID of parent task (for subtask hierarchy)",
+          "minimum": 1
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "List of task IDs that must complete before this task",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "examples": [[1, 2, 3], [5]]
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority level (1=highest, 10=lowest)",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        }
+      }
+    },
+
+    "subtask": {
+      "type": "object",
+      "description": "Granular step within a task (uses parent_task_id to link to parent)",
+      "required": ["title", "parent_task_id"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Subtask title (very specific, small scope)",
+          "minLength": 1,
+          "maxLength": 512,
+          "examples": [
+            "Define User model schema",
+            "Write test for password validation",
+            "Add error handling for invalid credentials"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed subtask description",
+          "examples": [
+            "Define User SQLAlchemy model with email, password_hash, created_at fields"
+          ]
+        },
+        "parent_task_id": {
+          "type": "integer",
+          "description": "ID of parent task (REQUIRED for subtasks)",
+          "minimum": 1
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority level (1=highest, 10=lowest)",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        }
+      }
+    },
+
+    "milestone": {
+      "type": "object",
+      "description": "Zero-duration checkpoint achieved when required epics complete",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Milestone name",
+          "minLength": 1,
+          "maxLength": 255,
+          "examples": [
+            "Authentication Complete",
+            "MVP Launch",
+            "Beta Release"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this milestone represents",
+          "examples": [
+            "All user authentication features completed and tested",
+            "Minimum viable product ready for beta users"
+          ]
+        },
+        "required_epic_ids": {
+          "type": "array",
+          "description": "List of epic IDs that must complete for this milestone",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "target_date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Target completion date (ISO 8601 format)",
+          "examples": ["2025-12-31T23:59:59Z"]
+        }
+      }
+    }
+  },
+
+  "hierarchy": {
+    "description": "Work item hierarchy in Obra",
+    "levels": [
+      {
+        "level": 1,
+        "type": "epic",
+        "description": "Large feature (3-15 sessions)",
+        "contains": ["story", "task"]
+      },
+      {
+        "level": 2,
+        "type": "story",
+        "description": "User deliverable (1 session)",
+        "parent": "epic",
+        "contains": ["task"]
+      },
+      {
+        "level": 3,
+        "type": "task",
+        "description": "Technical work (default)",
+        "parent": ["story", "epic"],
+        "contains": ["subtask"]
+      },
+      {
+        "level": 4,
+        "type": "subtask",
+        "description": "Granular step",
+        "parent": "task"
+      }
+    ],
+    "notes": [
+      "Epic contains Stories (user deliverables)",
+      "Story contains Tasks (technical implementation)",
+      "Task can contain Subtasks (granular steps)",
+      "Task can belong to Story or Epic directly",
+      "Subtask MUST have parent_task_id",
+      "Milestone is achieved when all required_epic_ids complete"
+    ]
+  },
+
+  "extraction_guidelines": {
+    "title_extraction": {
+      "rules": [
+        "Extract exact title if quoted ('Epic Name') or clearly stated",
+        "Infer concise title from description if not explicit",
+        "Use proper case (Title Case), not ALL CAPS or lowercase"
+      ],
+      "examples": [
+        {
+          "input": "Create an epic called 'User Authentication'",
+          "extracted_title": "User Authentication"
+        },
+        {
+          "input": "Add epic for user auth system",
+          "extracted_title": "User Auth System"
+        }
+      ]
+    },
+
+    "description_extraction": {
+      "rules": [
+        "Extract full description if provided",
+        "Generate meaningful description from context if not explicit",
+        "Include technical details, requirements, acceptance criteria"
+      ],
+      "examples": [
+        {
+          "input": "Create epic for user auth with OAuth and MFA",
+          "extracted_description": "User authentication system with OAuth integration and multi-factor authentication support"
+        }
+      ]
+    },
+
+    "reference_resolution": {
+      "rules": [
+        "epic_reference/story_reference are names, not IDs",
+        "Use epic_id/story_id when numeric ID is specified",
+        "Use epic_reference/story_reference when name is specified",
+        "System will resolve references to IDs during validation"
+      ],
+      "examples": [
+        {
+          "input": "Add story to epic 5",
+          "extracted": {"epic_id": 5}
+        },
+        {
+          "input": "Add story to User Auth epic",
+          "extracted": {"epic_reference": "User Auth"}
+        }
+      ]
+    },
+
+    "multi_item_extraction": {
+      "rules": [
+        "When count specified ('3 stories'), create N entities",
+        "When list provided ('login, signup, MFA'), create N entities",
+        "Apply common properties (epic_id, priority) to all items",
+        "Each item gets unique title from list"
+      ],
+      "examples": [
+        {
+          "input": "Add 3 stories to epic User Auth: login, signup, MFA",
+          "extracted": {
+            "entity_type": "story",
+            "count": 3,
+            "entities": [
+              {"title": "Login", "epic_reference": "User Auth"},
+              {"title": "Signup", "epic_reference": "User Auth"},
+              {"title": "MFA", "epic_reference": "User Auth"}
+            ]
+          }
+        }
+      ]
+    },
+
+    "priority_extraction": {
+      "rules": [
+        "Extract numeric priority if specified (1-10)",
+        "Map keywords: critical=1, high=3, medium=5, low=7, optional=9",
+        "Default to 5 if not specified"
+      ],
+      "examples": [
+        {
+          "input": "Create high priority epic",
+          "extracted_priority": 3
+        },
+        {
+          "input": "Add low priority task",
+          "extracted_priority": 7
+        }
+      ]
+    }
+  },
+
+  "common_patterns": {
+    "create_epic": {
+      "examples": [
+        "Create an epic called User Authentication",
+        "Add epic for admin dashboard",
+        "New epic: Payment Processing"
+      ]
+    },
+    "create_story": {
+      "examples": [
+        "Add story for user login to User Auth epic",
+        "Create 3 stories under epic 5: login, signup, MFA",
+        "As a user, I want to log in so I can access the system"
+      ]
+    },
+    "create_task": {
+      "examples": [
+        "Add task: Create login API endpoint",
+        "Create task under User Login story",
+        "Task: Implement password hashing for login story"
+      ]
+    },
+    "create_subtask": {
+      "examples": [
+        "Add subtask to task 7: Write unit tests",
+        "Break down task 5 into subtasks",
+        "Subtask: Define User model schema"
+      ]
+    }
+  }
+}
