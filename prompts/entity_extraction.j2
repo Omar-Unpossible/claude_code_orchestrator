@@ -4,7 +4,14 @@ The user wants to {{ intent_type }} work items. Extract the precise details they
 
 ## Obra Work Item Schema
 
-Obra uses an Agile/Scrum hierarchy:
+Obra uses an Agile/Scrum hierarchy within Projects:
+
+### Project
+- **Purpose**: Top-level container for all work (epics, stories, tasks)
+- **Required**: project_name
+- **Optional**: description, working_directory
+- **Query keywords**: "current project", "show project", "what project"
+- **Example**: "My Authentication System" - Contains all auth-related work
 
 ### Epic
 - **Purpose**: Large feature spanning multiple stories (3-15 sessions)
@@ -111,7 +118,19 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 
 ## Examples
 
-### Example 1: Single Epic
+### Example 1: Project Query (NEW!)
+Input: "What is the current project?"
+Output:
+```json
+{
+  "entity_type": "project",
+  "entities": [],
+  "confidence": 0.92,
+  "reasoning": "Query for current project information, no specific project details to extract"
+}
+```
+
+### Example 2: Single Epic
 Input: "Create an epic called User Authentication with OAuth and MFA support"
 Output:
 ```json
@@ -128,7 +147,7 @@ Output:
 }
 ```
 
-### Example 2: Multiple Stories with Epic Reference
+### Example 3: Multiple Stories with Epic Reference
 Input: "Add 3 stories to User Auth epic: login, signup, and MFA"
 Output:
 ```json

@@ -300,7 +300,7 @@ class EntityExtractor:
             raise ValueError(f"Missing required fields in response: {missing_fields}")
 
         # Validate entity_type
-        valid_types = ['epic', 'story', 'task', 'subtask', 'milestone']
+        valid_types = ['project', 'epic', 'story', 'task', 'subtask', 'milestone']
         if data['entity_type'] not in valid_types:
             raise ValueError(
                 f"Invalid entity_type: {data['entity_type']}. "

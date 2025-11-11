@@ -239,6 +239,10 @@ class NLCommandProcessor:
                 f"(confidence={extracted.confidence:.2f})"
             )
 
+            # Special handling for project queries (no entities = query current project)
+            if extracted.entity_type == 'project' and not extracted.entities:
+                return self._handle_project_query(message, context, project_id)
+
             # Step 3: Validate entities
             validation_result = self.command_validator.validate(extracted)
 
@@ -438,6 +442,89 @@ class NLCommandProcessor:
             context.update(external_context)
 
         return context
+
+    def _handle_project_query(
+        self,
+        message: str,
+        context: Dict[str, Any],
+        project_id: Optional[int]
+    ) -> NLResponse:
+        """Handle project-level queries (show current project, list projects, etc.).
+
+        Args:
+            message: User message
+            context: Current conversation context
+            project_id: Project ID to query (or None for current)
+
+        Returns:
+            NLResponse with project information
+        """
+        try:
+            # Use provided project_id or get from context
+            proj_id = project_id or context.get('project_id')
+
+            if proj_id:
+                # Query specific project
+                project = self.state_manager.get_project(proj_id)
+                if not project:
+                    response = f"✗ Project #{proj_id} not found"
+                    return NLResponse(
+                        response=response,
+                        intent='COMMAND',
+                        success=False
+                    )
+
+                # Get project stats
+                epics = self.state_manager.list_tasks(
+                    project_id=proj_id,
+                    task_type='epic'
+                )
+                tasks = self.state_manager.list_tasks(project_id=proj_id)
+
+                response = f"""✓ Current Project: {project.project_name} (ID: {proj_id})
+  Status: {project.status}
+  Created: {project.created_at.strftime('%Y-%m-%d')}
+  Working Directory: {project.working_directory or 'Not set'}
+
+  📊 Stats:
+    • Epics: {len([e for e in epics if hasattr(e, 'task_type')])}
+    • Tasks: {len(tasks)}
+"""
+
+                return NLResponse(
+                    response=response,
+                    intent='COMMAND',
+                    success=True,
+                    execution_result={'project_id': proj_id}
+                )
+            else:
+                # List all projects
+                projects = self.state_manager.list_projects()
+                if not projects:
+                    response = "✗ No projects found. Create one with '/project create <name>'"
+                    return NLResponse(
+                        response=response,
+                        intent='COMMAND',
+                        success=False
+                    )
+
+                response = "📋 Projects:\n"
+                for p in projects[:10]:  # Limit to 10
+                    response += f"  • #{p.id}: {p.project_name} ({p.status})\n"
+
+                return NLResponse(
+                    response=response,
+                    intent='COMMAND',
+                    success=True
+                )
+
+        except Exception as e:
+            logger.exception(f"Project query failed: {e}")
+            return NLResponse(
+                response=f"✗ Error querying project: {e}",
+                intent='COMMAND',
+                success=False
+            )
 
     def _update_conversation_context(
         self,
