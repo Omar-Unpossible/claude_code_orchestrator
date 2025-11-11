@@ -21,7 +21,7 @@ from threading import RLock
 
 from src.core.config import Config
 from src.core.state import StateManager
-from src.core.models import Task, ProjectState, TaskStatus
+from src.core.models import Task, ProjectState, TaskStatus, TaskType
 from src.core.exceptions import OrchestratorException, TaskStoppedException
 
 # Component imports
@@ -122,7 +122,7 @@ class Orchestrator:
         self.current_task: Optional[Task] = None
         self._iteration_count = 0
         self._start_time: Optional[datetime] = None
-        self._current_milestone_id: Optional[int] = None
+        self._current_epic_id: Optional[int] = None
 
         # Complexity estimation config
         self._enable_complexity_estimation = self.config.get('enable_complexity_estimation', False)
@@ -536,18 +536,18 @@ class Orchestrator:
     # SESSION MANAGEMENT (Phase 2, Task 2.4)
     # =========================================================================
 
-    def _start_milestone_session(self, project_id: int, milestone_id: Optional[int] = None) -> str:
-        """Start new session for milestone execution.
+    def _start_epic_session(self, project_id: int, milestone_id: Optional[int] = None) -> str:
+        """Start new session for epic execution.
 
         Args:
             project_id: Project ID
-            milestone_id: Optional milestone ID
+            milestone_id: Optional epic ID (DB column still named milestone_id)
 
         Returns:
             str: New session_id (UUID)
 
         Example:
-            >>> session_id = orchestrator._start_milestone_session(
+            >>> session_id = orchestrator._start_epic_session(
             ...     project_id=1,
             ...     milestone_id=5
             ... )
@@ -576,15 +576,15 @@ class Orchestrator:
 
         return session_id
 
-    def _end_milestone_session(self, session_id: str, milestone_id: Optional[int] = None) -> None:
+    def _end_epic_session(self, session_id: str, milestone_id: Optional[int] = None) -> None:
         """End session and save summary.
 
         Args:
             session_id: Session to end
-            milestone_id: Optional milestone ID for summary context
+            milestone_id: Optional epic ID for summary context (DB column still named milestone_id)
 
         Example:
-            >>> orchestrator._end_milestone_session(
+            >>> orchestrator._end_epic_session(
             ...     session_id="550e8400-e29b-41d4-a716-446655440001",
             ...     milestone_id=5
             ... )
@@ -621,18 +621,18 @@ class Orchestrator:
             except:
                 pass
 
-    def _build_milestone_context(self, project_id: int, milestone_id: Optional[int] = None) -> str:
-        """Build context for milestone including workplan and previous summary.
+    def _build_epic_context(self, project_id: int, milestone_id: Optional[int] = None) -> str:
+        """Build context for epic including workplan and previous summary.
 
         Args:
             project_id: Project ID
-            milestone_id: Optional milestone ID
+            milestone_id: Optional epic ID (DB column still named milestone_id)
 
         Returns:
-            str: Formatted context for milestone execution
+            str: Formatted context for epic execution
 
         Example:
-            >>> context = orchestrator._build_milestone_context(
+            >>> context = orchestrator._build_epic_context(
             ...     project_id=1,
             ...     milestone_id=5
             ... )
@@ -664,109 +664,127 @@ class Orchestrator:
 
         return "\n".join(context_parts)
 
-    def execute_milestone(
+    def execute_epic(
         self,
         project_id: int,
-        task_ids: List[int],
-        milestone_id: Optional[int] = None,
-        max_iterations_per_task: int = 10
+        epic_id: int,
+        max_iterations_per_story: int = 10
     ) -> Dict[str, Any]:
-        """Execute multiple tasks in a milestone with session management.
+        """Execute all stories in an Epic with session management (ADR-013).
+
+        Epic: Large feature spanning multiple stories (3-15 sessions).
+        This method orchestrates the execution of all stories within an epic.
 
         Session lifecycle:
-        1. Start new session
-        2. Build milestone context (workplan + previous summary)
-        3. Execute all tasks in session
-        4. End session and generate summary
+        1. Validate epic exists and is type EPIC
+        2. Get all stories for this epic
+        3. Start epic session
+        4. Build epic context (workplan + previous summary)
+        5. Execute all stories in session
+        6. End session and generate summary
 
         Args:
             project_id: Project ID
-            task_ids: List of task IDs to execute
-            milestone_id: Optional milestone ID
-            max_iterations_per_task: Max iterations per task
+            epic_id: Epic task ID (must be TaskType.EPIC)
+            max_iterations_per_story: Max iterations per story
 
         Returns:
             Dictionary with execution results:
-            - milestone_id: Optional[int]
+            - epic_id: int
             - session_id: str
-            - tasks_completed: int
-            - tasks_failed: int
+            - stories_completed: int
+            - stories_failed: int
+            - total_stories: int
             - results: List[Dict]
 
+        Raises:
+            ValueError: If epic doesn't exist or is not type EPIC
+
         Example:
-            >>> result = orchestrator.execute_milestone(
+            >>> result = orchestrator.execute_epic(
             ...     project_id=1,
-            ...     task_ids=[10, 11, 12],
-            ...     milestone_id=5
+            ...     epic_id=5
             ... )
         """
+        # Validate epic
+        epic = self.state_manager.get_task(epic_id)
+        if not epic:
+            raise ValueError(f"Epic {epic_id} does not exist")
+        if epic.task_type != TaskType.EPIC:
+            raise ValueError(f"Task {epic_id} is not an Epic (type={epic.task_type.value})")
+
+        # Get all stories in epic
+        stories = self.state_manager.get_epic_stories(epic_id)
+        story_ids = [s.id for s in stories]
+
         logger.info(
-            f"MILESTONE START: milestone_id={milestone_id}, "
-            f"project_id={project_id}, num_tasks={len(task_ids)}"
+            f"EPIC START: epic_id={epic_id}, "
+            f"project_id={project_id}, num_stories={len(stories)}"
         )
 
         # Start session
-        session_id = self._start_milestone_session(project_id, milestone_id)
+        session_id = self._start_epic_session(project_id, epic_id)
 
-        # Build milestone context
-        milestone_context = self._build_milestone_context(project_id, milestone_id)
+        # Build epic context
+        epic_context = self._build_epic_context(project_id, epic_id)
 
         # Store context for task injection
-        self._current_milestone_context = milestone_context
-        self._current_milestone_first_task = task_ids[0] if task_ids else None
-        self._current_milestone_id = milestone_id
+        self._current_epic_context = epic_context
+        self._current_epic_first_task = story_ids[0] if story_ids else None
+        self._current_epic_id = epic_id
 
         results = []
-        tasks_completed = 0
-        tasks_failed = 0
+        stories_completed = 0
+        stories_failed = 0
 
         try:
-            # Execute all tasks in session
-            for task_id in task_ids:
+            # Execute all stories in session
+            for story_id in story_ids:
                 try:
-                    logger.info(f"Executing task {task_id} in session {session_id[:8]}...")
+                    logger.info(f"Executing story {story_id} in epic {epic_id}...")
 
                     result = self.execute_task(
-                        task_id=task_id,
-                        max_iterations=max_iterations_per_task
+                        task_id=story_id,
+                        max_iterations=max_iterations_per_story
                     )
 
                     results.append(result)
 
                     if result.get('status') == 'completed':
-                        tasks_completed += 1
+                        stories_completed += 1
                     else:
-                        tasks_failed += 1
+                        stories_failed += 1
 
                 except Exception as e:
-                    logger.error(f"Task {task_id} failed: {e}")
+                    logger.error(f"Story {story_id} failed: {e}")
                     results.append({
-                        'task_id': task_id,
+                        'task_id': story_id,
                         'status': 'failed',
                         'error': str(e)
                     })
-                    tasks_failed += 1
+                    stories_failed += 1
 
             # End session
-            self._end_milestone_session(session_id, milestone_id)
+            self._end_epic_session(session_id, epic_id)
 
         finally:
             # Clean up context
-            self._current_milestone_context = None
-            self._current_milestone_first_task = None
-            self._current_milestone_id = None
+            self._current_epic_context = None
+            self._current_epic_first_task = None
+            self._current_epic_id = None
 
         logger.info(
-            f"MILESTONE END: milestone_id={milestone_id}, "
-            f"completed={tasks_completed}, failed={tasks_failed}, "
+            f"EPIC END: epic_id={epic_id}, "
+            f"completed={stories_completed}, failed={stories_failed}, "
             f"session_id={session_id[:8]}..."
         )
 
         return {
-            'milestone_id': milestone_id,
+            'epic_id': epic_id,
             'session_id': session_id,
-            'tasks_completed': tasks_completed,
-            'tasks_failed': tasks_failed,
+            'stories_completed': stories_completed,
+            'stories_failed': stories_failed,
+            'total_stories': len(stories),
             'results': results
         }
 
@@ -813,8 +831,8 @@ class Orchestrator:
                 )
 
             # BUG-PHASE4-002 FIX: Create temporary session for standalone execution
-            # Check if we're already in a milestone session
-            in_milestone_session = hasattr(self, 'current_session_id') and self.current_session_id is not None
+            # Check if we're already in an epic session
+            in_epic_session = hasattr(self, 'current_session_id') and self.current_session_id is not None
             temp_session_id = None
             old_agent_session_id = None
             cleanup_temp_session = False
@@ -860,8 +878,8 @@ class Orchestrator:
                     self._initialize_interactive_mode()
                     logger.info("[INTERACTIVE] Interactive mode enabled")
 
-                # Create temporary session if not in milestone context
-                if not in_milestone_session:
+                # Create temporary session if not in epic context
+                if not in_epic_session:
                     # Generate temporary session UUID
                     temp_session_id = str(uuid.uuid4())
 
@@ -1134,19 +1152,19 @@ class Orchestrator:
                     prompt_context
                 )
 
-                # Phase 2, Task 2.4: Inject milestone context on first task, first iteration
+                # Phase 2, Task 2.4: Inject epic context on first task, first iteration
                 if (iteration == 1 and
-                    hasattr(self, '_current_milestone_context') and
-                    hasattr(self, '_current_milestone_first_task') and
-                    self._current_milestone_first_task == task.id):
+                    hasattr(self, '_current_epic_context') and
+                    hasattr(self, '_current_epic_first_task') and
+                    self._current_epic_first_task == task.id):
 
-                    prompt = f"""[MILESTONE CONTEXT]
-{self._current_milestone_context}
+                    prompt = f"""[EPIC CONTEXT]
+{self._current_epic_context}
 
 [CURRENT TASK]
 {prompt}
 """
-                    logger.info("Injected milestone context into first task")
+                    logger.info("Injected epic context into first task")
 
                 # Phase 3, Task 3.2: Check context window before execution
                 if self.agent.use_session_persistence and hasattr(self.agent, 'session_id'):
@@ -1868,8 +1886,8 @@ DO NOT repeat the raw interaction data - synthesize and summarize it.
                     recovery="Ensure agent has session_id attribute set"
                 )
 
-            # Get current milestone_id (if exists, else None)
-            milestone_id = self._current_milestone_id
+            # Get current epic_id (if exists, else None) - DB column still named milestone_id
+            milestone_id = self._current_epic_id
 
             # Generate summary using existing method
             summary = self._generate_session_summary(old_session_id, milestone_id)

@@ -368,6 +368,9 @@ class Config:
         # Validate agent configuration
         self._validate_agent_config()
 
+        # Validate documentation configuration (ADR-015)
+        self._validate_documentation_config()
+
         logger.debug("Configuration validation passed")
         return True
 
@@ -920,6 +923,98 @@ class Config:
             profiles.append(profile_file.stem)
 
         return sorted(profiles)
+
+    def _validate_documentation_config(self) -> None:
+        """Validate documentation maintenance configuration (ADR-015).
+
+        Rules:
+        - triggers.periodic.interval must be 'daily', 'weekly', or 'monthly'
+        - freshness_thresholds must be positive integers
+        - freshness_thresholds.critical < important < normal
+        - task_config.priority must be 1-10
+        - maintenance_targets must be valid paths
+
+        Raises:
+            ConfigValidationException: If validation fails
+        """
+        doc_config = self.get('documentation', {})
+
+        # If documentation disabled, skip validation
+        if not doc_config.get('enabled', False):
+            logger.debug("Documentation maintenance disabled, skipping validation")
+            return
+
+        # Validate periodic interval
+        periodic_config = doc_config.get('triggers', {}).get('periodic', {})
+        interval = periodic_config.get('interval', 'weekly')
+        valid_intervals = ['daily', 'weekly', 'monthly']
+
+        if interval not in valid_intervals:
+            raise ConfigValidationException(
+                config_key='documentation.triggers.periodic.interval',
+                expected=f"one of {valid_intervals}",
+                got=interval
+            )
+
+        # Validate freshness thresholds
+        thresholds = doc_config.get('freshness_thresholds', {})
+
+        for key in ['critical', 'important', 'normal']:
+            value = thresholds.get(key)
+
+            if value is None:
+                raise ConfigValidationException(
+                    config_key=f'documentation.freshness_thresholds.{key}',
+                    expected="positive integer (days)",
+                    got="missing"
+                )
+
+            if not isinstance(value, int) or value <= 0:
+                raise ConfigValidationException(
+                    config_key=f'documentation.freshness_thresholds.{key}',
+                    expected="positive integer (days)",
+                    got=f"{value} ({type(value).__name__})"
+                )
+
+        # Validate threshold ordering (critical < important < normal)
+        critical = thresholds.get('critical', 30)
+        important = thresholds.get('important', 60)
+        normal = thresholds.get('normal', 90)
+
+        if not (critical < important < normal):
+            raise ConfigValidationException(
+                config_key='documentation.freshness_thresholds',
+                expected="critical < important < normal",
+                got=f"critical={critical}, important={important}, normal={normal}"
+            )
+
+        # Validate task priority
+        task_config = doc_config.get('task_config', {})
+        priority = task_config.get('priority', 3)
+
+        if not isinstance(priority, int) or priority < 1 or priority > 10:
+            raise ConfigValidationException(
+                config_key='documentation.task_config.priority',
+                expected="integer between 1 and 10",
+                got=f"{priority}"
+            )
+
+        # Validate maintenance targets (paths should exist or be valid)
+        targets = doc_config.get('maintenance_targets', [])
+
+        if not isinstance(targets, list):
+            raise ConfigValidationException(
+                config_key='documentation.maintenance_targets',
+                expected="list of file paths",
+                got=f"{type(targets).__name__}"
+            )
+
+        if len(targets) == 0:
+            logger.warning(
+                "documentation.maintenance_targets is empty - no files will be maintained"
+            )
+
+        logger.debug("Documentation configuration valid")
 
     @classmethod
     def reset(cls) -> None:

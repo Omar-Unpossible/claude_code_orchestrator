@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="claude-code-orchestrator",
-    version="1.2.0",
+    version="1.4.0",
     description="Intelligent orchestration system for Claude Code CLI",
     author="Omar",
     python_requires=">=3.10",

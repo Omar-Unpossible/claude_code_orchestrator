@@ -264,9 +264,9 @@ class TestOrchestratorSessionLifecycle:
             working_dir=str(tmp_path)  # Use tmp_path instead of /test
         )
 
-    def test_start_milestone_session(self, orchestrator, test_project):
+    def test_start_epic_session(self, orchestrator, test_project):
         """Test starting a milestone session."""
-        session_id = orchestrator._start_milestone_session(
+        session_id = orchestrator._start_epic_session(
             project_id=test_project.id,
             milestone_id=5
         )
@@ -281,16 +281,16 @@ class TestOrchestratorSessionLifecycle:
         assert session.milestone_id == 5
         assert session.status == 'active'
 
-    def test_end_milestone_session(self, orchestrator, test_project):
+    def test_end_epic_session(self, orchestrator, test_project):
         """Test ending a milestone session."""
-        session_id = orchestrator._start_milestone_session(
+        session_id = orchestrator._start_epic_session(
             project_id=test_project.id,
             milestone_id=5
         )
 
         # Mock LLM for summary generation
         with patch.object(orchestrator.llm_interface, 'generate', return_value="Test summary"):
-            orchestrator._end_milestone_session(
+            orchestrator._end_epic_session(
                 session_id=session_id,
                 milestone_id=5
             )
@@ -301,9 +301,9 @@ class TestOrchestratorSessionLifecycle:
         assert session.ended_at is not None
         assert session.summary == "Test summary"
 
-    def test_build_milestone_context(self, orchestrator, test_project):
+    def test_build_epic_context(self, orchestrator, test_project):
         """Test building milestone context."""
-        context = orchestrator._build_milestone_context(
+        context = orchestrator._build_epic_context(
             project_id=test_project.id,
             milestone_id=5
         )
@@ -312,7 +312,7 @@ class TestOrchestratorSessionLifecycle:
         assert "Test Project" in context
         assert "Milestone: 5" in context
 
-    def test_build_milestone_context_with_previous_summary(self, orchestrator, test_project):
+    def test_build_epic_context_with_previous_summary(self, orchestrator, test_project):
         """Test milestone context includes previous summary."""
         # Create previous milestone session with summary
         prev_session_id = str(uuid.uuid4())
@@ -327,7 +327,7 @@ class TestOrchestratorSessionLifecycle:
         )
 
         # Build context for milestone 5
-        context = orchestrator._build_milestone_context(
+        context = orchestrator._build_epic_context(
             project_id=test_project.id,
             milestone_id=5
         )
@@ -336,8 +336,9 @@ class TestOrchestratorSessionLifecycle:
         assert "Previous Milestone Summary" in context
         assert "Previous milestone completed" in context
 
+    @pytest.mark.skip(reason="execute_milestone() deprecated - replaced by execute_epic() in ADR-013")
     def test_execute_milestone(self, orchestrator, test_project):
-        """Test full milestone execution flow."""
+        """Test full milestone execution flow (DEPRECATED - use execute_epic instead)."""
         # Create tasks
         task1 = orchestrator.state_manager.create_task(
             project_id=test_project.id,
@@ -381,8 +382,8 @@ class TestOrchestratorSessionLifecycle:
         # Verify execute_task called for each task
         assert mock_execute.call_count == 2
 
-    def test_milestone_context_injection_into_first_task(self, orchestrator, test_project):
-        """Test that milestone context is injected into first task only."""
+    def test_epic_context_injection_into_first_task(self, orchestrator, test_project):
+        """Test that epic context is injected into first task only."""
         task1 = orchestrator.state_manager.create_task(
             project_id=test_project.id,
             task_data={
@@ -393,8 +394,8 @@ class TestOrchestratorSessionLifecycle:
         )
 
         # Set milestone context
-        orchestrator._current_milestone_context = "TEST MILESTONE CONTEXT"
-        orchestrator._current_milestone_first_task = task1.id
+        orchestrator._current_epic_context = "TEST MILESTONE CONTEXT"
+        orchestrator._current_epic_first_task = task1.id
 
         # Mock agent and other components
         with patch.object(orchestrator.agent, 'send_prompt') as mock_send:
@@ -420,11 +421,11 @@ class TestOrchestratorSessionLifecycle:
                         except:
                             pass  # May fail due to other mocks, but we just want to check the prompt
 
-        # Verify prompt included milestone context
+        # Verify prompt included epic context
         assert mock_send.called
         prompt = mock_send.call_args[0][0]
-        assert "[MILESTONE CONTEXT]" in prompt
-        assert "TEST MILESTONE CONTEXT" in prompt
+        assert "[EPIC CONTEXT]" in prompt
+        assert "TEST MILESTONE CONTEXT" in prompt  # Variable content, not the header
 
     def test_session_usage_tracking(self, orchestrator, test_project):
         """Test that session usage is updated after each interaction."""

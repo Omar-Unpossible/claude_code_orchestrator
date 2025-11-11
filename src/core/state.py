@@ -25,9 +25,9 @@ from src.core.models import (
     Base, ProjectState, Task, Interaction, Checkpoint,
     BreakpointEvent, UsageTracking, FileState, PatternLearning,
     ParameterEffectiveness, PromptRuleViolation, ComplexityEstimate,
-    ParallelAgentAttempt, SessionRecord, ContextWindowUsage,
+    ParallelAgentAttempt, SessionRecord, ContextWindowUsage, Milestone,
     TaskStatus, TaskAssignee, InteractionSource, BreakpointSeverity,
-    ProjectStatus
+    ProjectStatus, TaskType
 )
 from src.core.exceptions import (
     StateManagerException, DatabaseException, TransactionException,
@@ -99,6 +99,9 @@ class StateManager:
         # Thread-local session
         self._session: Optional[Session] = None
 
+        # Config reference for documentation hooks (ADR-015)
+        self._config: Optional[Any] = None
+
         # Transaction depth tracking (for nested transaction support)
         self._transaction_depth = 0
 
@@ -148,6 +151,18 @@ class StateManager:
             if cls._instance and cls._instance._session:
                 cls._instance._session.close()
             cls._instance = None
+
+    def set_config(self, config: Any) -> None:
+        """Set config reference for documentation hooks (ADR-015).
+
+        Args:
+            config: Config instance
+
+        Example:
+            >>> state_manager.set_config(config)
+        """
+        self._config = config
+        logger.debug("Config reference set in StateManager")
 
     def _get_session(self) -> Session:
         """Get or create session for current thread.
@@ -369,6 +384,9 @@ class StateManager:
                 - assigned_to (optional, default CLAUDE_CODE)
                 - dependencies (optional, list of task IDs)
                 - context (optional, dict)
+                - task_type (optional, default TASK) - ADR-013
+                - epic_id (optional) - ADR-013
+                - story_id (optional) - ADR-013
 
         Returns:
             Created Task
@@ -388,7 +406,14 @@ class StateManager:
                         dependencies=task_data.get('dependencies', []),
                         context=task_data.get('context', {}),
                         status=TaskStatus.PENDING,
-                        parent_task_id=task_data.get('parent_task_id')
+                        parent_task_id=task_data.get('parent_task_id'),
+                        task_type=task_data.get('task_type', TaskType.TASK),
+                        epic_id=task_data.get('epic_id'),
+                        story_id=task_data.get('story_id'),
+                        # ADR-015: Documentation maintenance fields
+                        requires_adr=task_data.get('requires_adr', False),
+                        has_architectural_changes=task_data.get('has_architectural_changes', False),
+                        changes_summary=task_data.get('changes_summary', None)
                     )
                     session = self._get_session()
                     session.add(task)
@@ -731,6 +756,384 @@ class StateManager:
             >>> tasks = state_manager.get_tasks_by_project(1)
         """
         return self.get_project_tasks(project_id)
+
+    # ============================================================================
+    # Agile/Scrum Hierarchy Methods (ADR-013)
+    # ============================================================================
+
+    def create_epic(
+        self,
+        project_id: int,
+        title: str,
+        description: str,
+        **kwargs
+    ) -> int:
+        """Create an Epic task.
+
+        Epic: Large feature spanning multiple stories (3-15 sessions).
+
+        Args:
+            project_id: Project ID
+            title: Epic title
+            description: Epic description
+            **kwargs: Additional task fields (priority, context, etc.)
+
+        Returns:
+            Epic task ID
+
+        Example:
+            >>> epic_id = state.create_epic(1, "User Auth System", "OAuth + MFA")
+        """
+        with self._lock:
+            task_data = {
+                'title': title,
+                'description': description,
+                'task_type': TaskType.EPIC,
+                **kwargs
+            }
+            task = self.create_task(project_id, task_data)
+            logger.info(f"Created epic {task.id}: {title}")
+            return task.id
+
+    def create_story(
+        self,
+        project_id: int,
+        epic_id: int,
+        title: str,
+        description: str,
+        **kwargs
+    ) -> int:
+        """Create a Story task under an Epic.
+
+        Story: User-facing deliverable (1 orchestration session).
+
+        Args:
+            project_id: Project ID
+            epic_id: Parent epic ID
+            title: Story title
+            description: Story description
+            **kwargs: Additional task fields
+
+        Returns:
+            Story task ID
+
+        Raises:
+            ValueError: If epic doesn't exist or is not type EPIC
+
+        Example:
+            >>> story_id = state.create_story(1, epic_id, "Email login", "As a user...")
+        """
+        with self._lock:
+            # Validate epic
+            epic = self.get_task(epic_id)
+            if not epic:
+                raise ValueError(f"Epic {epic_id} does not exist")
+            if epic.task_type != TaskType.EPIC:
+                raise ValueError(f"Task {epic_id} is not an Epic (type={epic.task_type.value})")
+
+            task_data = {
+                'title': title,
+                'description': description,
+                'task_type': TaskType.STORY,
+                'epic_id': epic_id,
+                **kwargs
+            }
+            task = self.create_task(project_id, task_data)
+            logger.info(f"Created story {task.id} under epic {epic_id}: {title}")
+            return task.id
+
+    def get_epic_stories(self, epic_id: int) -> List[Task]:
+        """Get all stories belonging to an epic.
+
+        Args:
+            epic_id: Epic task ID
+
+        Returns:
+            List of Story tasks
+
+        Example:
+            >>> stories = state.get_epic_stories(1)
+        """
+        with self._lock:
+            session = self._get_session()
+            tasks = session.query(Task).filter(
+                Task.epic_id == epic_id,
+                Task.task_type == TaskType.STORY,
+                Task.is_deleted == False
+            ).all()
+            return tasks
+
+    def complete_epic(self, epic_id: int) -> None:
+        """Mark epic as complete and trigger documentation maintenance.
+
+        ADR-015: Automatically creates documentation maintenance task if:
+        - requires_adr or has_architectural_changes is True
+        - documentation.enabled is True in config
+
+        Args:
+            epic_id: Epic task ID
+
+        Raises:
+            ValueError: If epic doesn't exist or is not type EPIC
+            DatabaseException: If database operation fails
+
+        Example:
+            >>> state.complete_epic(5)
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+
+                    # Get epic
+                    epic = session.query(Task).filter(
+                        Task.id == epic_id,
+                        Task.is_deleted == False
+                    ).first()
+
+                    if not epic:
+                        raise ValueError(f"Epic {epic_id} does not exist")
+                    if epic.task_type != TaskType.EPIC:
+                        raise ValueError(f"Task {epic_id} is not an Epic (type={epic.task_type.value})")
+
+                    # Mark epic complete
+                    epic.status = TaskStatus.COMPLETED
+                    epic.completed_at = datetime.now(UTC)
+                    logger.info(f"Epic {epic_id} completed: {epic.title}")
+
+                    # Check if documentation maintenance is enabled
+                    doc_enabled = self._config.get('documentation.enabled', False) if hasattr(self, '_config') else False
+
+                    if doc_enabled and (epic.requires_adr or epic.has_architectural_changes):
+                        # Import here to avoid circular dependency
+                        from src.utils.documentation_manager import DocumentationManager
+
+                        doc_mgr = DocumentationManager(self, self._config)
+
+                        # Get epic stories for context
+                        stories = self.get_epic_stories(epic_id)
+
+                        # Determine maintenance scope
+                        scope = 'comprehensive' if (epic.requires_adr or epic.has_architectural_changes) else 'lightweight'
+
+                        # Create maintenance task
+                        context = {
+                            'epic_id': epic_id,
+                            'epic_title': epic.title,
+                            'epic_description': epic.description,
+                            'changes': epic.changes_summary or 'No changes summary provided',
+                            'stories': [{'id': s.id, 'title': s.title} for s in stories],
+                            'project_id': epic.project_id
+                        }
+
+                        try:
+                            maintenance_task_id = doc_mgr.create_maintenance_task(
+                                trigger='epic_complete',
+                                scope=scope,
+                                context=context
+                            )
+
+                            if maintenance_task_id > 0:
+                                logger.info(
+                                    f"Created documentation maintenance task {maintenance_task_id} "
+                                    f"for epic {epic_id}"
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to create documentation maintenance task: {e}")
+                            # Don't fail epic completion if doc task creation fails
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='complete_epic',
+                    details=str(e)
+                ) from e
+
+    def get_story_tasks(self, story_id: int) -> List[Task]:
+        """Get all tasks implementing a story.
+
+        Args:
+            story_id: Story task ID
+
+        Returns:
+            List of Task objects
+
+        Example:
+            >>> tasks = state.get_story_tasks(1)
+        """
+        with self._lock:
+            session = self._get_session()
+            tasks = session.query(Task).filter(
+                Task.story_id == story_id,
+                Task.task_type == TaskType.TASK,
+                Task.is_deleted == False
+            ).all()
+            return tasks
+
+    def create_milestone(
+        self,
+        project_id: int,
+        name: str,
+        description: Optional[str] = None,
+        required_epic_ids: Optional[List[int]] = None,
+        target_date: Optional[datetime] = None,
+        version: Optional[str] = None
+    ) -> int:
+        """Create a milestone checkpoint.
+
+        Args:
+            project_id: Project ID
+            name: Milestone name
+            description: Optional description
+            required_epic_ids: Epics that must complete
+            target_date: Optional target date
+            version: Optional version string (e.g., "v1.4.0") - ADR-015
+
+        Returns:
+            Milestone ID
+
+        Example:
+            >>> milestone_id = state.create_milestone(1, "Auth Complete", epics=[1, 2], version="v1.0.0")
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    milestone = Milestone(
+                        project_id=project_id,
+                        name=name,
+                        description=description,
+                        required_epic_ids=required_epic_ids or [],
+                        target_date=target_date,
+                        version=version,
+                        achieved=False
+                    )
+                    session = self._get_session()
+                    session.add(milestone)
+                    session.flush()
+                    milestone_id = milestone.id
+                    logger.info(f"Created milestone {milestone_id}: {name}")
+                    return milestone_id
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='create_milestone',
+                    details=str(e)
+                ) from e
+
+    def get_milestone(self, milestone_id: int) -> Optional[Milestone]:
+        """Get milestone by ID.
+
+        Args:
+            milestone_id: Milestone ID
+
+        Returns:
+            Milestone or None
+
+        Example:
+            >>> milestone = state.get_milestone(1)
+        """
+        with self._lock:
+            session = self._get_session()
+            return session.query(Milestone).filter(
+                Milestone.id == milestone_id,
+                Milestone.is_deleted == False
+            ).first()
+
+    def check_milestone_completion(self, milestone_id: int) -> bool:
+        """Check if milestone requirements are met.
+
+        Args:
+            milestone_id: Milestone ID
+
+        Returns:
+            True if all required epics are completed
+
+        Example:
+            >>> if state.check_milestone_completion(1):
+            ...     state.achieve_milestone(1)
+        """
+        milestone = self.get_milestone(milestone_id)
+        if not milestone:
+            return False
+
+        return milestone.check_completion(self)
+
+    def achieve_milestone(self, milestone_id: int) -> None:
+        """Mark milestone as achieved and trigger comprehensive documentation maintenance.
+
+        ADR-015: Automatically creates comprehensive documentation maintenance task
+        when milestone is achieved (if documentation.enabled is True).
+
+        Args:
+            milestone_id: Milestone ID
+
+        Raises:
+            DatabaseException: If database operation fails
+
+        Example:
+            >>> state.achieve_milestone(1)
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    milestone = session.query(Milestone).filter(
+                        Milestone.id == milestone_id
+                    ).first()
+
+                    if not milestone:
+                        logger.warning(f"Milestone {milestone_id} not found")
+                        return
+
+                    milestone.achieved = True
+                    milestone.achieved_at = datetime.now(UTC)
+                    logger.info(f"Milestone {milestone_id} achieved: {milestone.name}")
+
+                    # Check if documentation maintenance is enabled
+                    doc_enabled = self._config.get('documentation.enabled', False) if hasattr(self, '_config') else False
+
+                    if doc_enabled:
+                        # Import here to avoid circular dependency
+                        from src.utils.documentation_manager import DocumentationManager
+
+                        doc_mgr = DocumentationManager(self, self._config)
+
+                        # Get all epics in milestone
+                        completed_epics = []
+                        for epic_id in milestone.required_epic_ids:
+                            epic = self.get_task(epic_id)
+                            if epic:
+                                completed_epics.append(epic.to_dict())
+
+                        # Create comprehensive maintenance task
+                        context = {
+                            'milestone_id': milestone_id,
+                            'milestone_name': milestone.name,
+                            'milestone_description': milestone.description,
+                            'version': milestone.version or 'Unknown',
+                            'epics': completed_epics,
+                            'project_id': milestone.project_id
+                        }
+
+                        try:
+                            maintenance_task_id = doc_mgr.create_maintenance_task(
+                                trigger='milestone_achieved',
+                                scope='comprehensive',
+                                context=context
+                            )
+
+                            if maintenance_task_id > 0:
+                                logger.info(
+                                    f"Created comprehensive documentation maintenance task {maintenance_task_id} "
+                                    f"for milestone {milestone_id}"
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to create documentation maintenance task: {e}")
+                            # Don't fail milestone achievement if doc task creation fails
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='achieve_milestone',
+                    details=str(e)
+                ) from e
 
     # Interaction Management
 

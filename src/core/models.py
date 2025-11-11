@@ -66,6 +66,14 @@ class ProjectStatus(str, enum.Enum):
     ARCHIVED = 'archived'
 
 
+class TaskType(str, enum.Enum):
+    """Task type values for Agile/Scrum hierarchy (ADR-013)."""
+    EPIC = 'epic'           # Large feature spanning multiple stories (3-15 sessions)
+    STORY = 'story'         # User-facing deliverable (1 orchestration session)
+    TASK = 'task'           # Technical work implementing story (default)
+    SUBTASK = 'subtask'     # Granular step (via parent_task_id)
+
+
 # Models
 
 class ProjectState(Base):
@@ -160,6 +168,16 @@ class Task(Base):
         index=True
     )
 
+    # Agile/Scrum hierarchy (ADR-013)
+    task_type = Column(
+        Enum(TaskType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=TaskType.TASK,
+        index=True
+    )
+    epic_id = Column(Integer, ForeignKey('task.id'), nullable=True, index=True)
+    story_id = Column(Integer, ForeignKey('task.id'), nullable=True, index=True)
+
     # Task dependencies (stored as JSON list of task IDs)
     dependencies = Column(JSON, default=list)
 
@@ -171,6 +189,12 @@ class Task(Base):
     # Retry tracking
     retry_count = Column(Integer, default=0, nullable=False)
     max_retries = Column(Integer, default=3, nullable=False)
+
+    # Documentation metadata (ADR-015: Project Infrastructure Maintenance)
+    requires_adr = Column(Boolean, default=False, nullable=False)
+    has_architectural_changes = Column(Boolean, default=False, nullable=False)
+    changes_summary = Column(Text, nullable=True)
+    documentation_status = Column(String(20), default='pending', nullable=False)
 
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -185,11 +209,16 @@ class Task(Base):
     __table_args__ = (
         CheckConstraint('priority >= 1 AND priority <= 10', name='check_priority_range'),
         Index('idx_task_project_status', 'project_id', 'status'),
+        Index('idx_task_type_status', 'task_type', 'status'),
+        Index('idx_task_epic_id', 'epic_id'),
+        Index('idx_task_story_id', 'story_id'),
+        Index('idx_task_documentation_status', 'documentation_status'),
+        Index('idx_task_requires_adr', 'requires_adr'),
     )
 
     # Relationships
     project = relationship('ProjectState', back_populates='tasks')
-    parent_task = relationship('Task', remote_side=[id], backref='subtasks')
+    parent_task = relationship('Task', remote_side=[id], foreign_keys=[parent_task_id], backref='subtasks')
     interactions = relationship('Interaction', back_populates='task', cascade='all, delete-orphan')
     breakpoint_events = relationship('BreakpointEvent', back_populates='task', cascade='all, delete-orphan')
     file_states = relationship('FileState', back_populates='task')
@@ -203,6 +232,9 @@ class Task(Base):
             'id': self.id,
             'project_id': self.project_id,
             'parent_task_id': self.parent_task_id,
+            'task_type': self.task_type.value,
+            'epic_id': self.epic_id,
+            'story_id': self.story_id,
             'title': self.title,
             'description': self.description,
             'status': self.status.value,
@@ -211,8 +243,13 @@ class Task(Base):
             'dependencies': self.dependencies,
             'context': self.context,
             'result': self.result,
+            'task_metadata': self.task_metadata,
             'retry_count': self.retry_count,
             'max_retries': self.max_retries,
+            'requires_adr': self.requires_adr,
+            'has_architectural_changes': self.has_architectural_changes,
+            'changes_summary': self.changes_summary,
+            'documentation_status': self.documentation_status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
@@ -271,6 +308,85 @@ class Task(Base):
             ...     print("Task is waiting on dependencies")
         """
         return bool(self.dependencies)
+
+
+class Milestone(Base):
+    """Milestone model - zero-duration checkpoint.
+
+    Represents significant project checkpoints (e.g., Epic completion, phase gates).
+    True milestones are NOT work items - they are binary achievement markers.
+
+    ADR-013: Corrects previous misuse of "milestone" for "group of tasks".
+    """
+    __tablename__ = 'milestone'
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey('project_state.id'), nullable=False, index=True)
+
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    target_date = Column(DateTime, nullable=True)
+
+    achieved = Column(Boolean, default=False, nullable=False, index=True)
+    achieved_at = Column(DateTime, nullable=True)
+
+    required_epic_ids = Column(JSON, default=list)
+
+    # Version tracking (ADR-015: Project Infrastructure Maintenance)
+    version = Column(String(20), nullable=True)
+
+    milestone_metadata = Column(JSON, default=dict)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index('idx_milestone_project_achieved', 'project_id', 'achieved'),
+    )
+
+    project = relationship('ProjectState', backref='milestones')
+
+    def __repr__(self):
+        status = "✓" if self.achieved else "○"
+        return f"<Milestone(id={self.id}, name='{self.name}', {status})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'project_id': self.project_id,
+            'name': self.name,
+            'description': self.description,
+            'target_date': self.target_date.isoformat() if self.target_date else None,
+            'achieved': self.achieved,
+            'achieved_at': self.achieved_at.isoformat() if self.achieved_at else None,
+            'required_epic_ids': self.required_epic_ids,
+            'version': self.version,
+            'milestone_metadata': self.milestone_metadata,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'is_deleted': self.is_deleted
+        }
+
+    def check_completion(self, state_manager) -> bool:
+        """Check if all required Epics are completed.
+
+        Args:
+            state_manager: StateManager instance to check task statuses
+
+        Returns:
+            True if all required epics are completed, False otherwise
+        """
+        if not self.required_epic_ids:
+            return False
+
+        for epic_id in self.required_epic_ids:
+            epic = state_manager.get_task(epic_id)
+            if not epic or epic.status != TaskStatus.COMPLETED:
+                return False
+
+        return True
 
 
 class Interaction(Base):

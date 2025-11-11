@@ -3,7 +3,10 @@
 This module provides command parsing and execution for interactive orchestration,
 allowing users to inject context, override decisions, and control execution flow.
 
-Part of Interactive Streaming Interface (Phase 2).
+Integrates Natural Language Command Interface (Story 5) to process non-slash-command
+input through the NL pipeline (intent classification → entity extraction → execution).
+
+Part of Interactive Streaming Interface (Phase 2) + NL Commands (v1.3).
 """
 
 import logging
@@ -44,18 +47,26 @@ HELP_TEXT = {
 class CommandProcessor:
     """Process user commands during interactive orchestration.
 
-    Parses and executes commands like /pause, /resume, /to-claude, /override-decision, etc.
+    Parses and executes slash commands (/pause, /resume, etc.) and routes
+    non-slash-command input through the Natural Language Command Interface.
+
     Thread-safe for concurrent access from input thread.
 
     Attributes:
         orchestrator: Reference to Orchestrator instance
-        commands: Registry of available commands mapped to handlers
+        commands: Registry of slash commands mapped to handlers
+        nl_processor: Optional NLCommandProcessor for natural language input
 
     Example:
         >>> processor = CommandProcessor(orchestrator)
+        >>> # Slash command
         >>> result = processor.execute_command('/pause')
         >>> print(result['message'])
         'Execution will pause after current turn'
+        >>> # Natural language command
+        >>> result = processor.execute_command('Create an epic for user auth')
+        >>> print(result['message'])
+        '✓ Created Epic #5: User Auth'
     """
 
     def __init__(self, orchestrator: 'Orchestrator'):
@@ -82,6 +93,10 @@ class CommandProcessor:
             '/help': self._help,
             '/stop': self._stop,
         }
+
+        # Initialize NL processor if enabled
+        self.nl_processor: Optional[Any] = None
+        self._initialize_nl_processor()
 
     def parse_command(self, input_str: str) -> Tuple[str, Dict[str, Any]]:
         """Parse command string into command name and arguments.
@@ -119,8 +134,58 @@ class CommandProcessor:
 
         return (command, args)
 
+    def _initialize_nl_processor(self) -> None:
+        """Initialize NL command processor if enabled in config."""
+        try:
+            # Check if NL commands are enabled
+            config = getattr(self.orchestrator, 'config', None)
+            if not config:
+                self.logger.debug("No config available, NL processor disabled")
+                return
+
+            nl_enabled = config.get('nl_commands.enabled', False)
+            if not nl_enabled:
+                self.logger.info("NL commands disabled in config")
+                return
+
+            # Import here to avoid circular dependencies
+            from nl.nl_command_processor import NLCommandProcessor
+            from plugins.registry import LLMRegistry
+
+            # Get LLM plugin
+            llm_type = config.get('nl_commands.llm_provider') or config.get('llm.type', 'ollama')
+            llm_plugin = LLMRegistry.get(llm_type)()
+
+            # Get StateManager
+            state_manager = getattr(self.orchestrator, 'state_manager', None)
+            if not state_manager:
+                self.logger.warning("No StateManager available, NL processor disabled")
+                return
+
+            # Initialize NL processor
+            confidence_threshold = config.get('nl_commands.confidence_threshold', 0.7)
+            max_context_turns = config.get('nl_commands.max_context_turns', 10)
+
+            self.nl_processor = NLCommandProcessor(
+                llm_plugin=llm_plugin,
+                state_manager=state_manager,
+                config=config,
+                confidence_threshold=confidence_threshold,
+                max_context_turns=max_context_turns
+            )
+
+            self.logger.info("NL command processor initialized successfully")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize NL processor: {e}")
+            self.nl_processor = None
+
     def execute_command(self, input_str: str) -> Dict[str, Any]:
-        """Execute a command.
+        """Execute a command (slash command or natural language).
+
+        Routes input to appropriate handler:
+        - Slash commands (/pause, /resume, etc.) → slash command handler
+        - Non-slash commands → NL command processor (if enabled)
 
         Args:
             input_str: User input string
@@ -129,14 +194,44 @@ class CommandProcessor:
             Result dict with 'success' or 'error' key and 'message'
 
         Example:
+            >>> # Slash command
             >>> result = processor.execute_command('/pause')
             >>> if 'success' in result:
             ...     print(result['message'])
+
+            >>> # Natural language command
+            >>> result = processor.execute_command('Create epic for user auth')
+            >>> print(result['message'])
+        """
+        input_str = input_str.strip()
+
+        if not input_str:
+            return {'error': 'Empty command'}
+
+        # Check if it's a slash command
+        if input_str.startswith('/'):
+            return self._execute_slash_command(input_str)
+
+        # Route to NL processor if enabled
+        if self.nl_processor:
+            return self._execute_nl_command(input_str)
+        else:
+            # NL processor not available - provide helpful message
+            return {
+                'error': 'Natural language commands not enabled',
+                'message': 'Use slash commands like /help or enable nl_commands in config'
+            }
+
+    def _execute_slash_command(self, input_str: str) -> Dict[str, Any]:
+        """Execute slash command.
+
+        Args:
+            input_str: Slash command string
+
+        Returns:
+            Result dict with 'success' or 'error' key and 'message'
         """
         command, args = self.parse_command(input_str)
-
-        if not command:
-            return {'error': 'Empty command'}
 
         if command not in self.commands:
             return {
@@ -150,6 +245,47 @@ class CommandProcessor:
             self.logger.error(f"Command execution failed: {e}", exc_info=True)
             return {
                 'error': f'Command failed: {str(e)}'
+            }
+
+    def _execute_nl_command(self, input_str: str) -> Dict[str, Any]:
+        """Execute natural language command via NL processor.
+
+        Args:
+            input_str: Natural language input
+
+        Returns:
+            Result dict with 'success' or 'error' key and 'message'
+        """
+        try:
+            # Get project_id from orchestrator if available
+            project_id = getattr(self.orchestrator, 'current_project_id', None)
+
+            # Process through NL pipeline
+            nl_response = self.nl_processor.process(
+                message=input_str,
+                context={},
+                project_id=project_id
+            )
+
+            # Convert NLResponse to command result format
+            result = {
+                'message': nl_response.response,
+                'intent': nl_response.intent
+            }
+
+            if nl_response.success:
+                result['success'] = True
+                if nl_response.execution_result:
+                    result['execution_result'] = nl_response.execution_result
+            else:
+                result['error'] = nl_response.response
+
+            return result
+
+        except Exception as e:
+            self.logger.exception(f"NL command execution failed: {e}")
+            return {
+                'error': f'NL processing failed: {str(e)}'
             }
 
     def _pause(self, args: Dict[str, Any]) -> Dict[str, Any]:

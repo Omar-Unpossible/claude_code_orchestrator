@@ -377,6 +377,740 @@ def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interacti
 
 
 # ============================================================================
+# Epic Management Commands (ADR-013)
+# ============================================================================
+
+@cli.group()
+def epic():
+    """Manage epics (large features spanning multiple stories)."""
+    pass
+
+
+@epic.command('create')
+@click.argument('title')
+@click.option('--project', '-p', type=int, required=True, help='Project ID')
+@click.option('--description', '-d', default='', help='Epic description')
+@click.option('--priority', type=int, default=5, help='Priority (1-10)')
+@click.pass_context
+def epic_create(ctx, title: str, project: int, description: str, priority: int):
+    """Create a new epic."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        epic_id = state_manager.create_epic(
+            project_id=project,
+            title=title,
+            description=description,
+            priority=priority
+        )
+
+        click.echo(f"✓ Created epic #{epic_id}: {title}")
+        click.echo(f"  Project: #{project}")
+        click.echo(f"  Priority: {priority}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to create epic: {e}", err=True)
+        sys.exit(1)
+
+
+@epic.command('execute')
+@click.argument('epic_id', type=int)
+@click.pass_context
+def epic_execute(ctx, epic_id: int):
+    """Execute all stories in an epic."""
+    try:
+        config = ctx.obj['config']
+        orchestrator = Orchestrator(config=config)
+        orchestrator.initialize()
+
+        # Get epic to find project_id
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+        epic = state_manager.get_task(epic_id)
+
+        if not epic:
+            click.echo(f"✗ Epic {epic_id} not found", err=True)
+            sys.exit(1)
+
+        click.echo(f"Executing epic #{epic_id}: {epic.title}")
+
+        result = orchestrator.execute_epic(
+            project_id=epic.project_id,
+            epic_id=epic_id
+        )
+
+        click.echo(f"✓ Epic execution complete:")
+        click.echo(f"  Stories completed: {result['stories_completed']}/{result['total_stories']}")
+        click.echo(f"  Stories failed: {result['stories_failed']}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to execute epic: {e}", err=True)
+        sys.exit(1)
+
+
+@epic.command('list')
+@click.option('--project', '-p', type=int, help='Filter by project ID')
+@click.option('--status', '-s', help='Filter by status (pending, running, completed, failed)')
+@click.pass_context
+def epic_list(ctx, project: Optional[int], status: Optional[str]):
+    """List all epics."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        # Import models
+        from src.core.models import TaskType, TaskStatus
+        from sqlalchemy import desc
+
+        # Get all epics
+        with state_manager._session_scope() as session:
+            query = session.query(Task).filter(
+                Task.task_type == TaskType.EPIC,
+                Task.is_deleted == False
+            )
+
+            if project:
+                query = query.filter(Task.project_id == project)
+            if status:
+                try:
+                    query = query.filter(Task.status == TaskStatus[status.upper()])
+                except KeyError:
+                    click.echo(f"✗ Invalid status: {status}", err=True)
+                    sys.exit(1)
+
+            epics = query.order_by(desc(Task.created_at)).all()
+
+        if not epics:
+            click.echo("No epics found")
+            return
+
+        click.echo(f"\nFound {len(epics)} epic(s):\n")
+        for epic in epics:
+            stories = state_manager.get_epic_stories(epic.id)
+            status_icon = "✓" if epic.status == TaskStatus.COMPLETED else "○"
+            click.echo(f"{status_icon} Epic #{epic.id}: {epic.title}")
+            click.echo(f"   Status: {epic.status.value} | Priority: {epic.priority}")
+            click.echo(f"   Stories: {len(stories)} | Project: #{epic.project_id}")
+            click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to list epics: {e}", err=True)
+        sys.exit(1)
+
+
+@epic.command('show')
+@click.argument('epic_id', type=int)
+@click.pass_context
+def epic_show(ctx, epic_id: int):
+    """Show detailed epic information."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType, TaskStatus
+
+        epic = state_manager.get_task(epic_id)
+        if not epic or epic.task_type != TaskType.EPIC:
+            click.echo(f"✗ Epic {epic_id} not found", err=True)
+            sys.exit(1)
+
+        stories = state_manager.get_epic_stories(epic_id)
+
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Epic #{epic.id}: {epic.title}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Status: {epic.status.value}")
+        click.echo(f"Priority: {epic.priority}/10")
+        click.echo(f"Project: #{epic.project_id}")
+        click.echo(f"Created: {epic.created_at.strftime('%Y-%m-%d %H:%M')}")
+        if epic.description:
+            click.echo(f"\nDescription:\n{epic.description}")
+
+        click.echo(f"\n{'─'*60}")
+        click.echo(f"Stories ({len(stories)}):")
+        click.echo(f"{'─'*60}")
+
+        if stories:
+            completed = sum(1 for s in stories if s.status == TaskStatus.COMPLETED)
+            click.echo(f"Progress: {completed}/{len(stories)} completed\n")
+
+            for story in stories:
+                status_icon = "✓" if story.status == TaskStatus.COMPLETED else "○"
+                click.echo(f"  {status_icon} Story #{story.id}: {story.title}")
+                click.echo(f"     Status: {story.status.value}")
+        else:
+            click.echo("  No stories yet")
+
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to show epic: {e}", err=True)
+        sys.exit(1)
+
+
+@epic.command('update')
+@click.argument('epic_id', type=int)
+@click.option('--title', '-t', help='New title')
+@click.option('--description', '-d', help='New description')
+@click.option('--priority', '-p', type=int, help='New priority (1-10)')
+@click.pass_context
+def epic_update(ctx, epic_id: int, title: Optional[str], description: Optional[str], priority: Optional[int]):
+    """Update an epic."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType
+
+        # Verify epic exists
+        epic = state_manager.get_task(epic_id)
+        if not epic or epic.task_type != TaskType.EPIC:
+            click.echo(f"✗ Epic {epic_id} not found", err=True)
+            sys.exit(1)
+
+        # Update fields
+        updates = {}
+        if title:
+            updates['title'] = title
+        if description is not None:
+            updates['description'] = description
+        if priority is not None:
+            if priority < 1 or priority > 10:
+                click.echo("✗ Priority must be between 1 and 10", err=True)
+                sys.exit(1)
+            updates['priority'] = priority
+
+        if not updates:
+            click.echo("✗ No updates specified", err=True)
+            sys.exit(1)
+
+        # Update epic
+        with state_manager._session_scope() as session:
+            for key, value in updates.items():
+                setattr(epic, key, value)
+            session.commit()
+
+        click.echo(f"✓ Updated epic #{epic_id}")
+        for key, value in updates.items():
+            click.echo(f"  {key}: {value}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to update epic: {e}", err=True)
+        sys.exit(1)
+
+
+@epic.command('delete')
+@click.argument('epic_id', type=int)
+@click.option('--hard', is_flag=True, help='Permanently delete (default is soft delete)')
+@click.pass_context
+def epic_delete(ctx, epic_id: int, hard: bool):
+    """Delete an epic."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType
+
+        # Verify epic exists
+        epic = state_manager.get_task(epic_id)
+        if not epic or epic.task_type != TaskType.EPIC:
+            click.echo(f"✗ Epic {epic_id} not found", err=True)
+            sys.exit(1)
+
+        # Delete epic
+        state_manager.delete_task(epic_id, soft=not hard)
+
+        delete_type = "permanently deleted" if hard else "soft deleted"
+        click.echo(f"✓ Epic #{epic_id} {delete_type}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to delete epic: {e}", err=True)
+        sys.exit(1)
+
+
+# ============================================================================
+# Story Management Commands (ADR-013)
+# ============================================================================
+
+@cli.group()
+def story():
+    """Manage stories (user-facing deliverables)."""
+    pass
+
+
+@story.command('create')
+@click.argument('title')
+@click.option('--epic', '-e', type=int, required=True, help='Epic ID')
+@click.option('--project', '-p', type=int, required=True, help='Project ID')
+@click.option('--description', '-d', default='', help='Story description')
+@click.pass_context
+def story_create(ctx, title: str, epic: int, project: int, description: str):
+    """Create a new story under an epic."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        story_id = state_manager.create_story(
+            project_id=project,
+            epic_id=epic,
+            title=title,
+            description=description
+        )
+
+        click.echo(f"✓ Created story #{story_id}: {title}")
+        click.echo(f"  Epic: #{epic}")
+        click.echo(f"  Project: #{project}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to create story: {e}", err=True)
+        sys.exit(1)
+
+
+@story.command('list')
+@click.option('--epic', '-e', type=int, help='Filter by epic ID')
+@click.option('--project', '-p', type=int, help='Filter by project ID')
+@click.option('--status', '-s', help='Filter by status (pending, running, completed, failed)')
+@click.pass_context
+def story_list(ctx, epic: Optional[int], project: Optional[int], status: Optional[str]):
+    """List all stories."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType, TaskStatus
+        from sqlalchemy import desc
+
+        # Get stories
+        with state_manager._session_scope() as session:
+            query = session.query(Task).filter(
+                Task.task_type == TaskType.STORY,
+                Task.is_deleted == False
+            )
+
+            if epic:
+                query = query.filter(Task.epic_id == epic)
+            if project:
+                query = query.filter(Task.project_id == project)
+            if status:
+                try:
+                    query = query.filter(Task.status == TaskStatus[status.upper()])
+                except KeyError:
+                    click.echo(f"✗ Invalid status: {status}", err=True)
+                    sys.exit(1)
+
+            stories = query.order_by(desc(Task.created_at)).all()
+
+        if not stories:
+            click.echo("No stories found")
+            return
+
+        click.echo(f"\nFound {len(stories)} story/stories:\n")
+        for story in stories:
+            status_icon = "✓" if story.status == TaskStatus.COMPLETED else "○"
+            click.echo(f"{status_icon} Story #{story.id}: {story.title}")
+            click.echo(f"   Status: {story.status.value} | Epic: #{story.epic_id} | Project: #{story.project_id}")
+            click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to list stories: {e}", err=True)
+        sys.exit(1)
+
+
+@story.command('show')
+@click.argument('story_id', type=int)
+@click.pass_context
+def story_show(ctx, story_id: int):
+    """Show detailed story information."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType, TaskStatus
+
+        story = state_manager.get_task(story_id)
+        if not story or story.task_type != TaskType.STORY:
+            click.echo(f"✗ Story {story_id} not found", err=True)
+            sys.exit(1)
+
+        # Get tasks under this story
+        tasks = state_manager.get_story_tasks(story_id)
+
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Story #{story.id}: {story.title}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Status: {story.status.value}")
+        click.echo(f"Epic: #{story.epic_id}")
+        click.echo(f"Project: #{story.project_id}")
+        click.echo(f"Created: {story.created_at.strftime('%Y-%m-%d %H:%M')}")
+        if story.description:
+            click.echo(f"\nDescription:\n{story.description}")
+
+        click.echo(f"\n{'─'*60}")
+        click.echo(f"Tasks ({len(tasks)}):")
+        click.echo(f"{'─'*60}")
+
+        if tasks:
+            completed = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+            click.echo(f"Progress: {completed}/{len(tasks)} completed\n")
+
+            for task in tasks:
+                status_icon = "✓" if task.status == TaskStatus.COMPLETED else "○"
+                click.echo(f"  {status_icon} Task #{task.id}: {task.title}")
+                click.echo(f"     Status: {task.status.value}")
+        else:
+            click.echo("  No tasks yet")
+
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to show story: {e}", err=True)
+        sys.exit(1)
+
+
+@story.command('update')
+@click.argument('story_id', type=int)
+@click.option('--title', '-t', help='New title')
+@click.option('--description', '-d', help='New description')
+@click.pass_context
+def story_update(ctx, story_id: int, title: Optional[str], description: Optional[str]):
+    """Update a story."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType
+
+        # Verify story exists
+        story = state_manager.get_task(story_id)
+        if not story or story.task_type != TaskType.STORY:
+            click.echo(f"✗ Story {story_id} not found", err=True)
+            sys.exit(1)
+
+        # Update fields
+        updates = {}
+        if title:
+            updates['title'] = title
+        if description is not None:
+            updates['description'] = description
+
+        if not updates:
+            click.echo("✗ No updates specified", err=True)
+            sys.exit(1)
+
+        # Update story
+        with state_manager._session_scope() as session:
+            for key, value in updates.items():
+                setattr(story, key, value)
+            session.commit()
+
+        click.echo(f"✓ Updated story #{story_id}")
+        for key, value in updates.items():
+            click.echo(f"  {key}: {value}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to update story: {e}", err=True)
+        sys.exit(1)
+
+
+@story.command('move')
+@click.argument('story_id', type=int)
+@click.option('--epic', '-e', type=int, required=True, help='New epic ID')
+@click.pass_context
+def story_move(ctx, story_id: int, epic: int):
+    """Move a story to a different epic."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import TaskType
+
+        # Verify story exists
+        story = state_manager.get_task(story_id)
+        if not story or story.task_type != TaskType.STORY:
+            click.echo(f"✗ Story {story_id} not found", err=True)
+            sys.exit(1)
+
+        # Verify new epic exists
+        new_epic = state_manager.get_task(epic)
+        if not new_epic or new_epic.task_type != TaskType.EPIC:
+            click.echo(f"✗ Epic {epic} not found", err=True)
+            sys.exit(1)
+
+        old_epic_id = story.epic_id
+
+        # Move story
+        with state_manager._session_scope() as session:
+            story.epic_id = epic
+            session.commit()
+
+        click.echo(f"✓ Moved story #{story_id} from epic #{old_epic_id} to epic #{epic}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to move story: {e}", err=True)
+        sys.exit(1)
+
+
+# ============================================================================
+# Milestone Management Commands (ADR-013)
+# ============================================================================
+
+@cli.group()
+def milestone():
+    """Manage milestones (zero-duration checkpoints)."""
+    pass
+
+
+@milestone.command('create')
+@click.argument('name')
+@click.option('--project', '-p', type=int, required=True, help='Project ID')
+@click.option('--description', '-d', default='', help='Milestone description')
+@click.option('--epics', help='Comma-separated epic IDs required for completion')
+@click.pass_context
+def milestone_create(ctx, name: str, project: int, description: str, epics: Optional[str]):
+    """Create a milestone checkpoint."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        required_epic_ids = []
+        if epics:
+            required_epic_ids = [int(x.strip()) for x in epics.split(',')]
+
+        milestone_id = state_manager.create_milestone(
+            project_id=project,
+            name=name,
+            description=description,
+            required_epic_ids=required_epic_ids
+        )
+
+        click.echo(f"✓ Created milestone #{milestone_id}: {name}")
+        click.echo(f"  Project: #{project}")
+        if required_epic_ids:
+            click.echo(f"  Required epics: {required_epic_ids}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to create milestone: {e}", err=True)
+        sys.exit(1)
+
+
+@milestone.command('check')
+@click.argument('milestone_id', type=int)
+@click.pass_context
+def milestone_check(ctx, milestone_id: int):
+    """Check if milestone requirements are met."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        milestone = state_manager.get_milestone(milestone_id)
+        if not milestone:
+            click.echo(f"✗ Milestone {milestone_id} not found", err=True)
+            sys.exit(1)
+
+        is_complete = state_manager.check_milestone_completion(milestone_id)
+
+        click.echo(f"Milestone #{milestone_id}: {milestone.name}")
+        click.echo(f"  Status: {'✓ Complete' if is_complete else '○ Incomplete'}")
+        click.echo(f"  Required epics: {milestone.required_epic_ids}")
+
+        if is_complete and not milestone.achieved:
+            click.echo("\n  Ready to achieve! Run: obra milestone achieve " + str(milestone_id))
+
+    except Exception as e:
+        click.echo(f"✗ Failed to check milestone: {e}", err=True)
+        sys.exit(1)
+
+
+@milestone.command('achieve')
+@click.argument('milestone_id', type=int)
+@click.pass_context
+def milestone_achieve(ctx, milestone_id: int):
+    """Mark milestone as achieved."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        # Check completion first
+        if not state_manager.check_milestone_completion(milestone_id):
+            click.echo(f"✗ Cannot achieve milestone: requirements not met", err=True)
+            sys.exit(1)
+
+        state_manager.achieve_milestone(milestone_id)
+        click.echo(f"✓ Milestone #{milestone_id} achieved!")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to achieve milestone: {e}", err=True)
+        sys.exit(1)
+
+
+@milestone.command('list')
+@click.option('--project', '-p', type=int, help='Filter by project ID')
+@click.option('--achieved', is_flag=True, help='Show only achieved milestones')
+@click.pass_context
+def milestone_list(ctx, project: Optional[int], achieved: bool):
+    """List all milestones."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import Milestone
+        from sqlalchemy import desc
+
+        # Get milestones
+        with state_manager._session_scope() as session:
+            query = session.query(Milestone)
+
+            if project:
+                query = query.filter(Milestone.project_id == project)
+            if achieved:
+                query = query.filter(Milestone.achieved_at.isnot(None))
+
+            milestones = query.order_by(desc(Milestone.created_at)).all()
+
+        if not milestones:
+            click.echo("No milestones found")
+            return
+
+        click.echo(f"\nFound {len(milestones)} milestone(s):\n")
+        for ms in milestones:
+            status_icon = "✓" if ms.achieved_at else "○"
+            click.echo(f"{status_icon} Milestone #{ms.id}: {ms.name}")
+            click.echo(f"   Project: #{ms.project_id}")
+            if ms.achieved_at:
+                click.echo(f"   Achieved: {ms.achieved_at.strftime('%Y-%m-%d %H:%M')}")
+            else:
+                click.echo(f"   Status: Not achieved")
+            click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to list milestones: {e}", err=True)
+        sys.exit(1)
+
+
+@milestone.command('show')
+@click.argument('milestone_id', type=int)
+@click.pass_context
+def milestone_show(ctx, milestone_id: int):
+    """Show detailed milestone information."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import Milestone, TaskStatus
+
+        # Get milestone
+        with state_manager._session_scope() as session:
+            ms = session.query(Milestone).filter(Milestone.id == milestone_id).first()
+
+        if not ms:
+            click.echo(f"✗ Milestone {milestone_id} not found", err=True)
+            sys.exit(1)
+
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Milestone #{ms.id}: {ms.name}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Project: #{ms.project_id}")
+        click.echo(f"Created: {ms.created_at.strftime('%Y-%m-%d %H:%M')}")
+        if ms.achieved_at:
+            click.echo(f"Achieved: {ms.achieved_at.strftime('%Y-%m-%d %H:%M')}")
+        else:
+            click.echo(f"Status: Not achieved")
+
+        if ms.description:
+            click.echo(f"\nDescription:\n{ms.description}")
+
+        # Show required epics
+        if ms.required_epic_ids:
+            click.echo(f"\n{'─'*60}")
+            click.echo(f"Required Epics ({len(ms.required_epic_ids)}):")
+            click.echo(f"{'─'*60}")
+
+            completed_epics = 0
+            for epic_id in ms.required_epic_ids:
+                epic = state_manager.get_task(epic_id)
+                if epic:
+                    status_icon = "✓" if epic.status == TaskStatus.COMPLETED else "○"
+                    click.echo(f"  {status_icon} Epic #{epic.id}: {epic.title}")
+                    click.echo(f"     Status: {epic.status.value}")
+                    if epic.status == TaskStatus.COMPLETED:
+                        completed_epics += 1
+                else:
+                    click.echo(f"  ✗ Epic #{epic_id}: Not found")
+
+            click.echo(f"\nProgress: {completed_epics}/{len(ms.required_epic_ids)} epics completed")
+        else:
+            click.echo("\nNo required epics")
+
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to show milestone: {e}", err=True)
+        sys.exit(1)
+
+
+@milestone.command('update')
+@click.argument('milestone_id', type=int)
+@click.option('--name', '-n', help='New name')
+@click.option('--description', '-d', help='New description')
+@click.pass_context
+def milestone_update(ctx, milestone_id: int, name: Optional[str], description: Optional[str]):
+    """Update a milestone."""
+    try:
+        config = ctx.obj['config']
+        db_url = config.get('database.url', 'sqlite:///orchestrator.db')
+        state_manager = StateManager.get_instance(db_url)
+
+        from src.core.models import Milestone
+
+        # Get milestone
+        with state_manager._session_scope() as session:
+            ms = session.query(Milestone).filter(Milestone.id == milestone_id).first()
+
+            if not ms:
+                click.echo(f"✗ Milestone {milestone_id} not found", err=True)
+                sys.exit(1)
+
+            # Update fields
+            updates = {}
+            if name:
+                ms.name = name
+                updates['name'] = name
+            if description is not None:
+                ms.description = description
+                updates['description'] = description
+
+            if not updates:
+                click.echo("✗ No updates specified", err=True)
+                sys.exit(1)
+
+            session.commit()
+
+        click.echo(f"✓ Updated milestone #{milestone_id}")
+        for key, value in updates.items():
+            click.echo(f"  {key}: {value}")
+
+    except Exception as e:
+        click.echo(f"✗ Failed to update milestone: {e}", err=True)
+        sys.exit(1)
+
+
+# ============================================================================
 # Orchestrator Control Commands
 # ============================================================================
 

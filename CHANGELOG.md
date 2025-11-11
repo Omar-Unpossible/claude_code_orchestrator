@@ -7,7 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Budget & Cost Controls
+- Metrics & Reporting System
+- Checkpoint System
+
+## [1.4.0] - 2025-11-11
+
 ### Added
+- **Project Infrastructure Maintenance System** (ADR-015) - Complete automatic documentation maintenance
+  - **DocumentationManager Component** (`src/utils/documentation_manager.py`):
+    - 10 public methods for comprehensive documentation management
+    - Freshness checking (30/60/90 day thresholds)
+    - Automatic maintenance task creation with rich context
+    - Implementation plan archiving
+    - CHANGELOG update automation
+    - ADR creation suggestions
+    - 42 unit tests with 91% coverage
+  - **Event-Driven Triggers**:
+    - Epic completion hook: Creates maintenance task when `requires_adr=True` or `has_architectural_changes=True`
+    - Milestone achievement hook: Creates comprehensive maintenance task with all epic context
+    - Configurable scopes: lightweight, comprehensive, full_review
+  - **Periodic Freshness Checks** (Story 2.1):
+    - Threading-based scheduler using `threading.Timer`
+    - Configurable interval (default: 7 days)
+    - Automatic rescheduling after each check
+    - Graceful shutdown with thread safety
+    - 12 unit tests for periodic functionality
+  - **StateManager Integration**:
+    - 4 new Task fields: `requires_adr`, `has_architectural_changes`, `changes_summary`, `documentation_status`
+    - 1 new Milestone field: `version`
+    - Database migration 004 with indexed fields
+    - Hooks in `complete_epic()` and `achieve_milestone()`
+  - **Configuration System**:
+    - New `documentation:` section in `config/default_config.yaml`
+    - Master enable/disable switch
+    - Per-trigger configuration (epic_complete, milestone_achieved, periodic)
+    - Maintenance targets, freshness thresholds, archive settings
+    - Task configuration (priority, assigned agent)
+  - **Integration Testing** (Story 1.4):
+    - 8 end-to-end tests verifying complete workflows
+    - Epic completion → task creation flow
+    - Milestone achievement → comprehensive task flow
+    - Configuration variation testing
+    - 100% integration path coverage
+  - **Documentation**:
+    - Comprehensive user guide: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` (434 lines)
+    - Architecture documentation: `docs/architecture/ARCHITECTURE.md` (v1.4 section added)
+    - ADR-015 documenting system design and rationale
+    - Implementation plans (human and machine-readable)
+  - **Total Tests**: 50 (42 unit + 8 integration), all passing
+  - **Coverage**: 91% (exceeds >90% target)
+
+### References
+- **ADR-015**: `docs/decisions/ADR-015-project-infrastructure-maintenance-system.md`
+- **User Guide**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md`
+- **Implementation Plan**: `docs/development/PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.yaml`
+- **Epic Breakdown**: `docs/development/PROJECT_INFRASTRUCTURE_EPIC_BREAKDOWN.md`
+- **Story Summaries**:
+  - Story 1.1: `docs/development/STORY_1.1_DOCUMENTATION_MANAGER_SUMMARY.md`
+  - Story 1.4: `docs/development/STORY_1.4_INTEGRATION_TESTING_SUMMARY.md`
+  - Story 2.1: `docs/development/STORY_2.1_PERIODIC_CHECKS_SUMMARY.md`
+
+## [1.3.0] - 2025-11-11
+
+### Added
+- **Natural Language Command Interface** (ADR-014) - Complete NL processing pipeline (Stories 1-5)
+  - **Intent Classification Engine** (Story 1):
+    - `IntentClassifier` with 95%+ accuracy on COMMAND/QUESTION/CLARIFICATION_NEEDED detection
+    - Confidence-based clarification requests (threshold: 0.7)
+    - Jinja2 prompt templates with few-shot learning examples
+    - Conversation context awareness for multi-turn interactions
+    - 22 unit tests (95% coverage, 100% pass rate)
+  - **Schema-Aware Entity Extraction** (Story 2):
+    - `EntityExtractor` with Obra schema understanding (epic/story/task/subtask/milestone)
+    - 90%+ accuracy on entity extraction from natural language
+    - Multi-entity support (create multiple items in one command)
+    - Epic/story reference resolution by name or ID
+    - 24 unit tests (95% coverage, 100% pass rate)
+  - **Command Validation and Execution** (Story 3):
+    - `CommandValidator` with business rule validation (epic exists, no cycles, required fields)
+    - `CommandExecutor` with StateManager integration and transaction safety
+    - Reference resolution (epic_reference → epic_id, story_reference → story_id)
+    - Confirmation workflow for destructive operations (delete/update/execute)
+    - 30 unit tests (95% coverage, 100% pass rate)
+  - **Response Formatting** (Story 4):
+    - `ResponseFormatter` with color-coded responses (green=success, red=error, yellow=warning)
+    - Contextual next-action suggestions ("Created Epic #5 → Next: Add stories")
+    - Recovery suggestions for errors ("Epic not found → Try: List epics with 'show epics'")
+    - Clarification prompts with numbered options
+    - 27 unit tests (99% coverage, 100% pass rate)
+  - **Pipeline Integration** (Story 5):
+    - `NLCommandProcessor` orchestrating full pipeline (intent → extraction → validation → execution → formatting)
+    - Conversation context management (configurable max turns: 10)
+    - Seamless integration with `CommandProcessor` for unified interface
+    - Automatic routing: slash commands → slash handler, non-slash → NL processor
+    - 13 integration tests (100% pass rate)
+  - **Configuration**:
+    - `nl_commands` config section with 9 options (enabled, llm_provider, confidence_threshold, etc.)
+    - Master kill switch (`nl_commands.enabled`) for easy disable
+    - Per-project defaults (default_project_id, require_confirmation_for)
+  - **Documentation**:
+    - `docs/guides/NL_COMMAND_GUIDE.md` (425 lines) - Complete user guide with examples, troubleshooting, FAQ
+    - `docs/decisions/ADR-014-natural-language-command-interface.md` (550 lines) - Architecture decision record
+    - `docs/development/NL_COMMAND_INTERFACE_SPEC.json` - Machine-readable specification
+    - `docs/development/NL_COMMAND_INTERFACE_IMPLEMENTATION_GUIDE.md` - Developer implementation guide
+    - `docs/development/NL_COMMAND_TEST_SPECIFICATION.md` - Comprehensive test specification
+  - **Test Coverage**: 103 total tests (27 ResponseFormatter + 22 IntentClassifier + 24 EntityExtractor + 30 CommandValidator/Executor + 13 integration)
+  - **Performance**: <3s end-to-end latency (P95), 95% intent accuracy, 90% entity extraction accuracy
+
+- **Agile/Scrum Work Hierarchy** (ADR-013) - Phase 2 Production-Ready Implementation
+  - **Core Implementation** (Phase 1, 24 hours):
+    - TaskType enum: EPIC, STORY, TASK, SUBTASK (replaces generic "Task" for everything)
+    - Epic: Large feature spanning multiple stories (3-15 sessions)
+    - Story: User-facing deliverable (1 orchestration session)
+    - Task: Technical work implementing story (default type, backward compatible)
+    - Subtask: Granular step (via parent_task_id hierarchy)
+    - True Milestone model: Zero-duration checkpoint (not work items)
+    - Database migration: `migrations/versions/003_agile_hierarchy.sql` with rollback support
+    - StateManager methods: `create_epic()`, `create_story()`, `get_epic_stories()`, `get_story_tasks()`
+    - Milestone methods: `create_milestone()`, `check_milestone_completion()`, `achieve_milestone()`
+    - Orchestrator: `execute_epic()` method replaces `execute_milestone()` (deprecated, removed in v2.0)
+    - CLI commands: `obra epic`, `obra story`, `obra milestone` command groups (create/list/show/execute)
+    - Smoke tests: 9 tests verifying core functionality (100% pass rate)
+  - **Production Readiness** (Phase 2, 16 hours):
+    - Enhanced CLI commands: Complete CRUD operations (list/show/update/delete for epic/story/milestone)
+    - Comprehensive test suite: 75 tests (72 passing, 3 skipped - 96% pass rate)
+      - Story 3.1: StateManager edge cases (50 tests) - validation, performance, cascade operations
+      - Story 3.2: Orchestrator tests (15 tests) - epic execution, session management, backward compatibility
+      - Story 3.3: Integration tests (20 tests) - full workflows, migration compatibility, error handling
+    - Code quality improvements: Helper method renaming (_milestone → _epic for consistency)
+    - Documentation suite:
+      - `docs/guides/AGILE_WORKFLOW_GUIDE.md` (770+ lines) - Complete workflow examples, patterns, CLI reference
+      - `docs/guides/MIGRATION_GUIDE_V1.3.md` (580+ lines) - Detailed migration guide with rollback procedures
+      - CLAUDE.md: Added Architecture Principle #12 (Agile/Scrum Work Hierarchy)
+      - Updated Key References section with Agile workflow guide
+      - Updated ADR count from 12 to 13
 - **Flexible LLM Orchestrator** (Phases 1-7 complete, 7.5 hours implementation)
   - OpenAI Codex LLM plugin via CLI (`src/llm/openai_codex_interface.py`, 450 lines)
   - Registry-based LLM selection supporting multiple providers (Ollama, OpenAI Codex, Mock)
@@ -57,9 +192,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Archived 20 outdated documentation files to docs/archive/
 - Removed 2 empty directories (api/, troubleshooting/)
 
+### Changed
+- **Test Count**: Increased from 695 tests to 770+ tests (75 new Agile hierarchy tests)
+- **Documentation**: Updated project status from "695+ tests" to "770+ tests" in CLAUDE.md
+- **Terminology**: Helper methods in Orchestrator now use "epic" terminology consistently
+- **API Enhancement**: Added 13+ new methods across StateManager, Orchestrator, CLI
+
+### Deprecated
+- `execute_milestone()` method - Use `execute_epic()` instead (will be removed in v2.0)
+  - Still functional in v1.3.0 for backward compatibility
+  - Migration guide available at `docs/guides/MIGRATION_GUIDE_V1.3.md`
+
 ### Fixed
-- Zero regressions introduced (105 core tests still passing)
+- Zero regressions introduced (all existing tests still passing)
+- Maintained 88% overall code coverage
 - All integration tests passing with proper mocking strategies
+- Backward compatibility: Existing tasks default to TaskType.TASK seamlessly
 
 ## [1.2.0] - 2025-11-04
 

@@ -208,6 +208,85 @@ git:
   commit_message_template: semantic  # Commit message style
   include_metadata: true  # Include Obra metadata in commits
 
+# Natural Language Command Interface (Story 4-5)
+nl_commands:
+  enabled: true  # Enable NL command processing (master kill switch)
+  llm_provider: ollama  # LLM provider for NL processing (uses llm.type if not specified)
+  confidence_threshold: 0.7  # Threshold for CLARIFICATION_NEEDED
+  max_context_turns: 10  # Maximum conversation history turns to keep
+  schema_path: src/nl/schemas/obra_schema.json  # Path to Obra schema for entity extraction
+  default_project_id: 1  # Default project ID if not specified
+  require_confirmation_for:  # Operations requiring user confirmation
+    - delete
+    - update
+    - execute
+  fallback_to_info: true  # Fallback to informational response for QUESTION intent
+  experimental_features: false  # Enable experimental NL features
+
+# ADR-015: Project Infrastructure Maintenance System (v1.4.0)
+# Automatic documentation maintenance at key project events
+documentation:
+  enabled: true  # Master enable/disable switch for documentation maintenance
+  auto_maintain: true  # Automatically create maintenance tasks (vs just notify)
+
+  # Event-driven triggers
+  triggers:
+    # Epic completion: Lightweight update (CHANGELOG, architecture if needed)
+    epic_complete:
+      enabled: true  # Enable epic completion trigger
+      scope: lightweight  # Maintenance scope: lightweight | comprehensive | full_review
+      auto_create_task: true  # Automatically create task (vs notification only)
+
+    # Milestone achievement: Comprehensive update (all docs, ADRs, archiving)
+    milestone_achieved:
+      enabled: true  # Enable milestone achievement trigger
+      scope: comprehensive  # Always comprehensive for milestones
+      auto_create_task: true  # Automatically create task
+
+    # Version bump: Full documentation review
+    version_bump:
+      enabled: true  # Enable version bump trigger
+      scope: full_review  # Full review of all documentation
+      auto_create_task: true  # Automatically create task
+
+    # Periodic checks: Regular freshness scanning (Story 2.1)
+    periodic:
+      enabled: true  # Enable periodic freshness checks
+      interval_days: 7  # Check interval in days (7 = weekly, 30 = monthly)
+      scope: lightweight  # Maintenance scope: lightweight | comprehensive | full_review
+      auto_create_task: true  # Automatically create task (vs notification only)
+
+  # Documents to maintain (paths relative to project root)
+  maintenance_targets:
+    - CHANGELOG.md  # Project changelog
+    - docs/architecture/ARCHITECTURE.md  # System architecture
+    - docs/README.md  # Documentation index
+    - docs/decisions/  # Architecture Decision Records (ADRs)
+    - docs/guides/  # User and developer guides
+
+  # Freshness thresholds (days since last update)
+  freshness_thresholds:
+    critical: 30  # CHANGELOG, README (update within 30 days)
+    important: 60  # Architecture docs, ADRs (update within 60 days)
+    normal: 90  # Guides, design docs (update within 90 days)
+
+  # Archive settings for completed implementation plans
+  archive:
+    enabled: true  # Enable automatic archiving
+    source_dir: docs/development  # Source directory to scan
+    archive_dir: docs/archive/development  # Archive destination
+    patterns:  # File patterns to archive (glob syntax)
+      - "*_IMPLEMENTATION_PLAN.md"
+      - "*_COMPLETION_PLAN.md"
+      - "*_GUIDE.md"
+
+  # Maintenance task configuration
+  task_config:
+    priority: 3  # Task priority (1-10, lower = higher priority)
+    assigned_agent: null  # null = use default agent from agent.type
+    assigned_llm: null  # null = use default LLM from llm.type
+    auto_execute: false  # Require manual approval before execution
+
 # Development/Debug Settings (disable in production)
 debug:
   enabled: false  # Enable debug mode

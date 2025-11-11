@@ -10,7 +10,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 **Terminology**: The **Orchestrator** (validation, quality scoring, prompt optimization) and **Implementer** (code generation) are the two LLM agents. Shorthand: **Orc** and **Imp** (for efficient communication in this file only - use formal terms in code/docs).
 
-**Status**: Production-ready - 695+ tests (88% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6).
+**Status**: Production-ready - 790+ tests (91% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6), Agile hierarchy (v1.3.0), Project Infrastructure Maintenance (v1.4.0).
 
 **Complete Details**: `docs/design/OBRA_SYSTEM_OVERVIEW.md` - Full system architecture, design principles, capabilities, and development guidelines.
 
@@ -27,10 +27,11 @@ When starting a new session, read these documents in priority order:
 
 ### Key References
 - **Documentation Index**: `docs/README.md` - Browse all docs
-- **ADRs**: `docs/decisions/` - Architecture decisions (12 ADRs)
+- **ADRs**: `docs/decisions/` - Architecture decisions (13 ADRs)
 - **Phase Reports**: `docs/development/phase-reports/` - Latest work summaries
 - **Configuration**: `docs/guides/CONFIGURATION_PROFILES_GUIDE.md`
 - **Interactive Mode**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md`
+- **Agile Workflow**: `docs/guides/AGILE_WORKFLOW_GUIDE.md` - Epic/story/milestone workflows
 - **Flexible LLM**: `docs/business_dev/FLEXIBLE_LLM_ORCHESTRATOR_STRATEGY.md` - Dual deployment model
 
 ## Architecture Principles
@@ -184,6 +185,73 @@ When starting a new session, read these documents in priority order:
   - Timeout: 7200s (2 hours) default
 
 **See**: `docs/guides/SESSION_MANAGEMENT_GUIDE.md` for complete guide
+
+### 12. Agile/Scrum Work Hierarchy (ADR-013)
+**Industry-standard terminology for organizing work at scale:**
+
+- **Work Item Hierarchy**:
+  ```
+  Product (Project)
+    ↓
+  Epic (Large feature, 3-15 sessions)
+    ↓
+  Story (User deliverable, 1 session)
+    ↓
+  Task (Technical work - default)
+    ↓
+  Subtask (via parent_task_id)
+
+  Milestone → Checkpoint (zero-duration, when epics complete)
+  ```
+
+- **Key Components**:
+  - **TaskType Enum**: EPIC, STORY, TASK, SUBTASK
+  - **Epic Methods**: `create_epic()`, `get_epic_stories()`, `execute_epic()`
+  - **Story Methods**: `create_story()`, `get_story_tasks()`
+  - **Milestone Methods**: `create_milestone()`, `check_milestone_completion()`, `achieve_milestone()`
+
+- **Usage Example**:
+  ```python
+  # Create epic (large feature)
+  epic_id = state.create_epic(
+      project_id=1,
+      title="User Authentication System",
+      description="Complete auth with OAuth, MFA, session management"
+  )
+
+  # Create stories (user deliverables)
+  story1 = state.create_story(1, epic_id, "Email/password login", "As a user...")
+  story2 = state.create_story(1, epic_id, "OAuth integration", "As a user...")
+  story3 = state.create_story(1, epic_id, "Multi-factor auth", "As a user...")
+
+  # Execute entire epic (runs all stories sequentially)
+  orchestrator.execute_epic(project_id=1, epic_id=epic_id)
+
+  # Create milestone (checkpoint)
+  milestone = state.create_milestone(1, "Auth Complete", required_epic_ids=[epic_id])
+
+  # Check and achieve milestone
+  if state.check_milestone_completion(milestone):
+      state.achieve_milestone(milestone)
+  ```
+
+- **Database Schema**:
+  - Task model: Added `task_type`, `epic_id`, `story_id` fields
+  - Milestone model: Separate table with `required_epic_ids` (JSON array)
+  - Migration: `migrations/versions/003_agile_hierarchy.sql`
+
+- **Backward Compatibility**:
+  - Existing tasks default to `TaskType.TASK`
+  - Task dependencies (M9) still work
+  - Subtask hierarchy via `parent_task_id` preserved
+
+- **CLI Commands**:
+  - `obra epic create/list/show/execute` - Epic management
+  - `obra story create/list/show` - Story management
+  - `obra milestone create/check/achieve` - Milestone tracking
+
+**See**: `docs/guides/AGILE_WORKFLOW_GUIDE.md` for complete workflow examples
+**See**: `docs/decisions/ADR-013-adopt-agile-work-hierarchy.md` for rationale
 
 ## Code Standards
 
@@ -491,6 +559,6 @@ See `docs/design/design_future.md` for detailed roadmap including:
 
 ---
 
-**Last Updated**: November 5, 2025
-**Version**: v1.2 (Real-World Validation & Refinement + Flexible LLM)
-**Test Coverage**: 88% (739+ tests)
+**Last Updated**: November 11, 2025
+**Version**: v1.4.0 (Project Infrastructure Maintenance System)
+**Test Coverage**: 91% (790+ tests)

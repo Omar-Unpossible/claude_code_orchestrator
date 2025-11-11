@@ -1,0 +1,11 @@
+{# Error Response Template #}
+{# Used for failed command execution #}
+{# Variables: error_message, recovery_suggestion, additional_errors_count #}
+
+✗ Error: {{ error_message }}
+{% if recovery_suggestion %}
+  Try: {{ recovery_suggestion }}
+{% endif %}
+{% if additional_errors_count > 0 %}
+  ({{ additional_errors_count }} more errors)
+{% endif %}

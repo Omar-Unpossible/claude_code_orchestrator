@@ -356,7 +356,7 @@ class TestOrchestratorThresholdChecks:
         # Set up orchestrator state
         orchestrator.agent = Mock()
         orchestrator.agent.session_id = test_session
-        orchestrator._current_milestone_id = 5
+        orchestrator._current_epic_id = 5
 
         # Mock LLM for summary generation
         with patch.object(orchestrator.llm_interface, 'generate', return_value="Session summary"):
@@ -393,7 +393,7 @@ class TestOrchestratorThresholdChecks:
         # Set up orchestrator state
         orchestrator.agent = Mock()
         orchestrator.agent.session_id = test_session
-        orchestrator._current_milestone_id = 5
+        orchestrator._current_epic_id = 5
 
         # Mock LLM for summary generation
         with caplog.at_level('ERROR'):
@@ -468,7 +468,7 @@ class TestSessionRefreshMechanism:
         # Set up orchestrator state
         orchestrator.agent = Mock()
         orchestrator.agent.session_id = old_session_id
-        orchestrator._current_milestone_id = 5
+        orchestrator._current_epic_id = 5
 
         # Mock LLM for summary
         with patch.object(orchestrator.llm_interface, 'generate', return_value="Detailed summary"):
@@ -562,7 +562,7 @@ class TestContextWindowIntegration:
         orchestrator.agent = Mock()
         orchestrator.agent.session_id = session_id
         orchestrator.agent.use_session_persistence = True
-        orchestrator._current_milestone_id = 1
+        orchestrator._current_epic_id = 1
 
         # Simulate multiple interactions approaching limit
         # Interaction 1: 2000 tokens (40%)

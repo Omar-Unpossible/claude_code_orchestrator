@@ -1,0 +1,11 @@
+{# Clarification Request Template #}
+{# Used when user intent is unclear (confidence < threshold) #}
+{# Variables: message, suggestions (list) #}
+
+? {{ message }}
+{% if suggestions %}
+{% for suggestion in suggestions %}
+  {{ loop.index }}. {{ suggestion }}
+{% endfor %}
+  0. Something else (please clarify)
+{% endif %}

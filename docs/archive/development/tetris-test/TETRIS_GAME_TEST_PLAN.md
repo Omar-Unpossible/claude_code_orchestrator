@@ -261,6 +261,14 @@ Test Obra's ability to orchestrate a complex, multi-session software development
 - API/code documentation
 - Development log/notes
 
+✅ **Flexible LLM Validated** (NEW - if testing both LLMs):
+- Test completes successfully with Ollama (Qwen)
+- Test completes successfully with OpenAI Codex
+- Both LLM types produce functional game
+- Quality scores differ by <20% between LLMs
+- Decision patterns are similar (within 10% distribution)
+- No LLM-specific bugs or failures
+
 ### Failure Conditions
 
 ❌ **Critical failures**:
@@ -269,10 +277,18 @@ Test Obra's ability to orchestrate a complex, multi-session software development
 - Scenes fail to load
 - No documentation produced
 
+❌ **LLM-Specific failures** (NEW):
+- One LLM completes but the other fails critically
+- Quality scores differ by >50% between LLMs
+- Different final outcomes (one succeeds, one fails)
+- LLM interface crashes or hangs consistently
+- Rate limiting prevents test completion (Codex)
+
 ❌ **Partial failures** (acceptable with good iteration):
 - Some tests fail but logic mostly works
 - Minor syntax errors in scenes
 - Incomplete documentation
+- Minor differences in LLM results (<20% quality score variance)
 
 ---
 
@@ -297,6 +313,7 @@ Test Obra's ability to orchestrate a complex, multi-session software development
    - Simplified decision logic active (Nov 2025 update)
    - Max turns settings appropriate (10-20 per task)
    - Session management enabled
+   - **LLM configured** (Ollama or OpenAI Codex) - see Quick Start guide
 
 4. ✅ Prepare test environment
    ```bash

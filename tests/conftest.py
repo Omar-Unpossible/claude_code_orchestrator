@@ -230,3 +230,44 @@ def monitor_with_cleanup():
             time.sleep(0.001)
         except Exception:
             pass
+
+
+# ============================================================================
+# Agile Hierarchy Fixtures (ADR-013)
+# ============================================================================
+
+@pytest.fixture
+def state_manager(test_config):
+    """Create StateManager with in-memory database for testing.
+
+    Uses test_config fixture to create a properly configured
+    StateManager instance for Agile hierarchy tests.
+    """
+    from src.core.state import StateManager
+
+    db_url = test_config.get('database.url', 'sqlite:///:memory:')
+    state = StateManager(db_url)
+
+    yield state
+
+    # Cleanup
+    try:
+        state.close()
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def sample_project(state_manager):
+    """Create a sample project for testing.
+
+    Creates a basic project that can be used for testing
+    epic/story/milestone creation.
+    """
+    project = state_manager.create_project(
+        name="Test Project",
+        description="Test project for Agile hierarchy tests",
+        working_dir="/tmp/test"
+    )
+
+    return project

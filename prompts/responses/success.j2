@@ -1,0 +1,15 @@
+{# Success Response Template #}
+{# Used for successful command execution #}
+{# Variables: entity_type, entity_id(s), title, next_action #}
+
+{% if created_count == 1 %}
+✓ Created {{ entity_type|title }} #{{ entity_id }}{% if title %}: {{ title }}{% endif %}
+{% if next_action %}
+  Next: {{ next_action }}
+{% endif %}
+{% else %}
+✓ Created {{ created_count }} {{ entity_type }}s: {{ created_ids|join(', ') }}
+{% if next_action %}
+  Next: {{ next_action }}
+{% endif %}
+{% endif %}

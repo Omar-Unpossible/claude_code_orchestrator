@@ -285,8 +285,8 @@ class TestFullMilestoneExecution:
         # Mock session refresh in orchestrator
         # Track if refresh was attempted
         refresh_called = []
-        original_start_session = orchestrator._start_milestone_session
-        original_end_session = orchestrator._end_milestone_session
+        original_start_session = orchestrator._start_epic_session
+        original_end_session = orchestrator._end_epic_session
 
         def mock_start_session(project_id, milestone_id):
             session_id = original_start_session(project_id, milestone_id)
@@ -296,8 +296,8 @@ class TestFullMilestoneExecution:
             refresh_called.append(session_id)
             original_end_session(session_id, milestone_id)
 
-        with patch.object(orchestrator, '_start_milestone_session', side_effect=mock_start_session):
-            with patch.object(orchestrator, '_end_milestone_session', side_effect=mock_end_session):
+        with patch.object(orchestrator, '_start_epic_session', side_effect=mock_start_session):
+            with patch.object(orchestrator, '_end_epic_session', side_effect=mock_end_session):
                 # Execute milestone
                 result = orchestrator.execute_milestone(
                     project_id=test_project.id,

@@ -4,8 +4,8 @@
 
 The Claude Code Orchestrator is a supervision system where a local LLM (Qwen 2.5 on RTX 5090) provides intelligent oversight for Claude Code CLI executing tasks in an isolated environment. This enables semi-autonomous software development with continuous validation and quality control.
 
-**Version**: 1.2.0 (M9 In Progress)
-**Last Updated**: 2025-11-02
+**Version**: 1.3.0 (Natural Language Interface Complete)
+**Last Updated**: 2025-11-11
 
 ## High-Level Architecture
 
@@ -451,7 +451,7 @@ orchestration:
 - Tiktoken (accurate token counting)
 - Ollama (local LLM)
 
-## M9: Core Enhancements (v1.2) 🚧 IN PROGRESS
+## M9: Core Enhancements (v1.2) ✅ COMPLETE
 
 **Purpose**: Reliability, workflow management, and usability improvements
 
@@ -641,26 +641,553 @@ Commit changes
 Optional: Create PR via gh CLI
 ```
 
+## v1.3 Features ✅ COMPLETE
+
+### Agile Work Hierarchy (ADR-013)
+**Purpose**: Industry-standard work breakdown structure for organizing development at scale
+
+**Components**:
+- **TaskType Enum**: EPIC, STORY, TASK, SUBTASK (replaces generic "Task")
+- **Epic**: Large feature spanning multiple stories (3-15 sessions)
+- **Story**: User-facing deliverable (1 orchestration session)
+- **Task**: Technical work implementing story (default type)
+- **Subtask**: Granular step (via parent_task_id hierarchy)
+- **Milestone**: Zero-duration checkpoint (not work items)
+
+**Data Model**:
+```python
+Task:
+  - task_type: TaskType (EPIC | STORY | TASK | SUBTASK)
+  - epic_id: Optional[int]
+  - story_id: Optional[int]
+  - parent_task_id: Optional[int]  # For subtasks
+
+Milestone:
+  - name: str
+  - description: str
+  - required_epic_ids: List[int]  # JSON array
+  - achieved: bool
+```
+
+**StateManager Methods**:
+- `create_epic()`, `create_story()`, `get_epic_stories()`, `execute_epic()`
+- `create_milestone()`, `check_milestone_completion()`, `achieve_milestone()`
+
+**CLI Commands**:
+```bash
+obra epic create/list/show/execute
+obra story create/list/show
+obra milestone create/check/achieve
+```
+
+**Backward Compatibility**: Existing tasks default to `TaskType.TASK`. Subtask hierarchy preserved via `parent_task_id`.
+
+---
+
+### Interactive Streaming Interface
+**Purpose**: Real-time command injection and human-in-the-loop control during orchestration
+
+**Components**:
+- **CommandProcessor** (`src/utils/command_processor.py`): Parses and executes interactive commands
+- **InputManager** (`src/utils/input_manager.py`): Non-blocking input with `prompt_toolkit`
+- **StreamingHandler**: Real-time output streaming from agent
+
+**Interactive Commands** (8 commands):
+```
+/pause              - Pause execution after current turn
+/resume             - Resume paused execution
+/to-impl <msg>      - Send message to implementer (Claude Code)
+/to-orch <msg>      - Send message to orchestrator (Qwen/LLM)
+/override-decision  - Override Obra's current decision
+/status             - Show task status, iteration, metrics
+/help               - Show command help
+/stop               - Stop execution gracefully
+```
+
+**Interactive Checkpoints** (6 injection points):
+1. Before agent execution
+2. After agent response
+3. Before validation
+4. After validation (if low confidence)
+5. Before decision execution
+6. On error/exception
+
+**Architecture**:
+```
+User Input Thread (non-blocking)
+    ↓
+CommandProcessor (parse /commands)
+    ↓
+Orchestrator.injected_context (dict)
+    ↓
+Next iteration incorporates context
+```
+
+**Key Features**:
+- **Last-wins policy**: New `/to-impl` replaces previous one
+- **Intent classification**: `/to-orch` categorized as validation_guidance, decision_hint, or feedback_request
+- **Thread-safe**: `prompt_toolkit` with proper input thread management
+
+---
+
+### Dynamic Agent Labels (/to-impl, /to-orch)
+**Purpose**: Flexible agent terminology that adapts to actual deployment (Claude Code, Aider, Qwen, OpenAI Codex, etc.)
+
+**Evolution**:
+- **Phase 1**: Changed `/to-claude` → `/to-impl` (implementer)
+- **Phase 2**: Changed `/to-obra` → `/to-orch` (orchestrator)
+- **Phase 3**: Added intent detection for `/to-orch` messages
+
+**Aliases** (backward compatibility):
+- `/to-claude` → `/to-impl`
+- `/to-obra` → `/to-orch`
+- `/to-implementer` → `/to-impl`
+- `/to-orchestrator` → `/to-orch`
+
+**Intent Detection** (Phase 3):
+```python
+/to-orch "Be more lenient with quality scores"
+  → Intent: validation_guidance
+  → Effect: Injected into quality scoring prompt
+
+/to-orch "Accept this even if quality is borderline"
+  → Intent: decision_hint
+  → Effect: Adjusts decision thresholds
+
+/to-orch "Review code and suggest 3 improvements"
+  → Intent: feedback_request
+  → Effect: Generates feedback sent to implementer
+```
+
+---
+
+### Flexible LLM Orchestrator
+**Purpose**: Support multiple LLM providers (local GPU, remote CLI, API-based)
+
+**Supported Providers**:
+1. **Ollama** (Local LLM): Qwen 2.5 Coder on RTX 5090 via HTTP API
+2. **OpenAI Codex CLI**: Remote subscription-based LLM via subprocess
+3. **Mock LLM**: Testing and development
+
+**LLM Plugin System**:
+```python
+@register_llm('ollama')
+class LocalLLMInterface(LLMPlugin):
+    def generate(self, prompt: str) -> str: ...
+
+@register_llm('openai-codex')
+class OpenAICodexLLMPlugin(LLMPlugin):
+    def generate(self, prompt: str) -> str: ...
+```
+
+**Configuration**:
+```yaml
+llm:
+  type: ollama  # or openai-codex, mock
+  model: qwen2.5-coder:32b
+  api_url: http://localhost:11434
+```
+
+**Dual Deployment Architecture**:
+- **Option A**: Local GPU (Ollama + Qwen) - Hardware deployment
+- **Option B**: Remote CLI (OpenAI Codex) - Subscription deployment
+
+**Provider Selection**: `LLMRegistry.get(llm_type)()` - Dynamic at runtime
+
+---
+
+### Natural Language Command Interface (ADR-014) - v1.3.0 🆕
+**Purpose**: Enable conversational interaction with Obra - create work items using natural language instead of exact command syntax
+
+**Architecture**: Multi-stage LLM pipeline
+
+```
+User Input: "Create an epic for user authentication"
+    ↓
+IntentClassifier (95% accuracy)
+    ├─ COMMAND → Entity Extraction
+    ├─ QUESTION → Forward to Claude Code
+    └─ CLARIFICATION_NEEDED → Ask user
+    ↓
+EntityExtractor (90% accuracy)
+    └─ Extract: {entity_type: 'epic', title: 'User Authentication', ...}
+    ↓
+CommandValidator
+    └─ Validate: Epic doesn't exist, no cycles, required fields present
+    ↓
+CommandExecutor
+    └─ Execute: state_manager.create_epic(...)
+    ↓
+ResponseFormatter
+    └─ Format: "✓ Created Epic #5: User Authentication"
+```
+
+**Components** (6 modules in `src/nl/`):
+1. **IntentClassifier**: COMMAND/QUESTION/CLARIFICATION_NEEDED detection
+2. **EntityExtractor**: Schema-aware entity extraction (epic/story/task/subtask)
+3. **CommandValidator**: Business rule validation (epic exists, no cycles)
+4. **CommandExecutor**: StateManager integration with transaction safety
+5. **ResponseFormatter**: Color-coded responses (green/red/yellow)
+6. **NLCommandProcessor**: Pipeline orchestrator with conversation context
+
+**Integration with CommandProcessor**:
+```python
+# Automatic routing
+if input.startswith('/'):
+    execute_slash_command(input)  # /pause, /to-impl, etc.
+else:
+    nl_processor.process(input)    # Natural language
+```
+
+**Key Features**:
+- **Conversation Context**: Maintains 10-turn history for multi-turn interactions
+- **Reference Resolution**: "Add story to the User Auth epic" → resolves epic name to ID
+- **Multi-Item Support**: "Create 3 tasks: login, signup, MFA" → 3 tasks created
+- **Confirmation Workflow**: Destructive ops (delete/update) require explicit confirmation
+- **Graceful Degradation**: Low confidence (<0.7) triggers clarification request
+
+**Configuration**:
+```yaml
+nl_commands:
+  enabled: true
+  llm_provider: ollama
+  confidence_threshold: 0.7
+  max_context_turns: 10
+  schema_path: src/nl/schemas/obra_schema.json
+  default_project_id: 1
+  require_confirmation_for: [delete, update, execute]
+  fallback_to_info: true
+```
+
+**Examples**:
+```
+> Create an epic for user authentication
+✓ Created Epic #5: User Authentication
+  Next: Add stories with 'create story in epic 5'
+
+> Add 3 stories to it: login, signup, and MFA
+✓ Created 3 storys under Epic #5: #6, #7, #8
+
+> How many epics do I have?
+Forwarding question to Claude Code: How many epics do I have?
+[Response from Claude Code]
+```
+
+**Performance**:
+- Intent classification: <2s (P95)
+- End-to-end: <3s (P95)
+- Accuracy: 95% intent, 90% entity extraction
+
+**Test Coverage**: 103 tests (27 ResponseFormatter + 22 IntentClassifier + 24 EntityExtractor + 30 CommandValidator/Executor + 13 integration)
+
+---
+
+## v1.4 Features ✅ COMPLETE
+
+### Project Infrastructure Maintenance System (ADR-015) - v1.4.0 🆕
+
+**Purpose**: Automate project documentation maintenance through event-driven triggers and periodic freshness checks.
+
+**Value**: Ensures CHANGELOG, architecture docs, ADRs, and guides stay current without manual intervention. Obra "eats its own dog food" by maintaining its own documentation.
+
+#### Components
+
+**1. DocumentationManager** (`src/utils/documentation_manager.py`)
+
+Core class for documentation maintenance with 10 public methods:
+
+```python
+class DocumentationManager:
+    # Core functionality
+    def check_documentation_freshness() -> Dict[str, DocumentStatus]
+    def create_maintenance_task(trigger, scope, context) -> int
+    def generate_maintenance_prompt(stale_docs, context) -> str
+
+    # Utility methods
+    def archive_completed_plans(epic_id) -> List[str]
+    def update_changelog(epic) -> None
+    def suggest_adr_creation(epic) -> bool
+    def check_file_freshness(path) -> DocumentStatus
+
+    # Periodic scheduling (Story 2.1)
+    def start_periodic_checks(project_id) -> bool
+    def stop_periodic_checks() -> None
+    def _run_periodic_check(project_id) -> None  # Internal
+```
+
+**2. StateManager Integration**
+
+**Hooks Added**:
+- `complete_epic()` → Creates maintenance task if `requires_adr=True` or `has_architectural_changes=True`
+- `achieve_milestone()` → Creates comprehensive maintenance task with all epic context
+
+**Database Fields Added** (Migration 004):
+```sql
+-- Task model
+ALTER TABLE tasks ADD COLUMN requires_adr BOOLEAN DEFAULT FALSE;
+ALTER TABLE tasks ADD COLUMN has_architectural_changes BOOLEAN DEFAULT FALSE;
+ALTER TABLE tasks ADD COLUMN changes_summary TEXT NULL;
+ALTER TABLE tasks ADD COLUMN documentation_status VARCHAR(20) DEFAULT 'pending';
+
+-- Milestone model
+ALTER TABLE milestones ADD COLUMN version VARCHAR(20) NULL;
+
+-- Indexes
+CREATE INDEX idx_tasks_documentation_status ON tasks(documentation_status);
+CREATE INDEX idx_tasks_requires_adr ON tasks(requires_adr) WHERE requires_adr = TRUE;
+```
+
+**3. Configuration Schema**
+
+```yaml
+documentation:
+  enabled: true  # Master switch
+  auto_maintain: true  # Create tasks vs notification only
+
+  maintenance_targets:
+    - 'CHANGELOG.md'
+    - 'docs/architecture/ARCHITECTURE.md'
+    - 'docs/README.md'
+    - 'docs/decisions/'
+    - 'docs/guides/'
+
+  freshness_thresholds:
+    critical: 30   # days (CHANGELOG, README)
+    important: 60  # days (architecture, ADRs)
+    normal: 90     # days (guides)
+
+  archive:
+    enabled: true
+    source_dir: 'docs/development'
+    archive_dir: 'docs/archive/development'
+    patterns: ['*_IMPLEMENTATION_PLAN.md', '*_COMPLETION_PLAN.md']
+
+  triggers:
+    epic_complete:
+      enabled: true
+      scope: comprehensive
+      auto_create_task: true
+
+    milestone_achieved:
+      enabled: true
+      scope: comprehensive
+      auto_create_task: true
+
+    periodic:
+      enabled: true
+      interval_days: 7
+      scope: lightweight
+      auto_create_task: true
+
+  task_config:
+    priority: 3
+    assigned_agent: 'CLAUDE_CODE'
+```
+
+#### Architecture Design
+
+**Threading Model (Periodic Checks)**:
+- Uses `threading.Timer` for scheduling
+- Daemon threads for automatic cleanup
+- Thread-safe with `threading.Lock`
+- Auto-rescheduling after each check
+- Graceful shutdown via `stop_periodic_checks()`
+
+**Data Flow**:
+
+```
+Epic Completion
+    ↓
+StateManager.complete_epic()
+    ↓
+Check requires_adr or has_architectural_changes
+    ↓
+If True → DocumentationManager.create_maintenance_task()
+    ↓
+Check freshness → Detect stale docs
+    ↓
+Generate prompt with epic context
+    ↓
+Create Task (priority=3, type=TASK)
+    ↓
+Task includes: epic details, changes, stale doc list
+```
+
+**Periodic Check Flow**:
+
+```
+start_periodic_checks(project_id)
+    ↓
+Timer starts (interval_days * 24 * 60 * 60 seconds)
+    ↓
+[After interval expires]
+    ↓
+_run_periodic_check()
+    ↓
+check_documentation_freshness()
+    ↓
+If stale docs found:
+    - auto_create_task=true → Create task
+    - auto_create_task=false → Log warning
+    ↓
+Reschedule next check (new Timer)
+    ↓
+Repeat...
+```
+
+#### Document Categorization
+
+**Critical** (30-day threshold):
+- CHANGELOG.md
+- README.md
+
+**Important** (60-day threshold):
+- docs/architecture/ARCHITECTURE.md
+- docs/decisions/*.md (ADRs)
+
+**Normal** (90-day threshold):
+- docs/guides/*.md
+- Other documentation
+
+#### Maintenance Scopes
+
+1. **Lightweight**: Quick CHANGELOG updates
+2. **Comprehensive**: CHANGELOG + architecture + ADRs + guides
+3. **Full Review**: Complete documentation audit (for milestones/releases)
+
+#### Task Context Structure
+
+```python
+{
+    'trigger': 'epic_complete',  # or 'milestone_achieved', 'periodic'
+    'scope': 'comprehensive',
+    'maintenance_context': {
+        'epic_id': 5,
+        'epic_title': 'User Authentication System',
+        'epic_description': '...',
+        'changes': 'Added OAuth, MFA, session management',
+        'stories': [
+            {'id': 10, 'title': 'OAuth integration', 'description': '...'},
+            {'id': 11, 'title': 'MFA support', 'description': '...'}
+        ],
+        'project_id': 1
+    },
+    'stale_docs': {
+        'CHANGELOG.md': {
+            'path': 'CHANGELOG.md',
+            'age_days': 45,
+            'category': 'critical',
+            'is_stale': True,
+            'threshold_days': 30
+        }
+    }
+}
+```
+
+#### Test Coverage
+
+**Total Tests**: 50 (42 unit + 8 integration)
+- **Story 1.1**: 30 unit tests (DocumentationManager core)
+- **Story 2.1**: 12 unit tests (Periodic scheduler)
+- **Story 1.4**: 8 integration tests (E2E workflows)
+
+**Coverage**: 91% (exceeds >90% target)
+
+**Integration Tests Verify**:
+1. Epic completion → maintenance task creation
+2. Milestone achievement → comprehensive task
+3. Epic without flags → no task created
+4. documentation.enabled=false → no tasks
+5. Freshness check detects stale docs correctly
+6. archive_completed_plans() moves files correctly
+7. Full workflow: create epic → complete → verify task
+8. StateManager hooks integrate properly
+
+#### Performance
+
+**Hook Execution**:
+- Epic completion hook: <100ms (P95)
+- Milestone achievement hook: <200ms (P95)
+- Freshness check (50 docs): <500ms
+
+**Periodic Checks**:
+- Timer overhead: <2KB memory
+- Thread count: 1 daemon thread per instance
+- CPU idle: ~0% when not checking
+- Check execution: <500ms (depends on doc count)
+
+#### Usage Example
+
+```python
+# Create epic with documentation flags
+epic_id = state_manager.create_epic(
+    project_id=1,
+    title="Payment Processing",
+    description="Stripe integration",
+    requires_adr=True,  # Requires ADR
+    has_architectural_changes=True,  # Architectural changes
+    changes_summary="Integrated Stripe API, added payment models, webhooks"
+)
+
+# Complete epic → maintenance task auto-created
+state_manager.complete_epic(epic_id)
+
+# Result: Task created with:
+# - Title: "Documentation: Update docs for Epic #1"
+# - Context: Full epic details, changes, stale docs
+# - Prompt: Detailed instructions with references
+```
+
+**Enable Periodic Checks**:
+
+```python
+# In orchestrator initialization
+doc_mgr = DocumentationManager(state_manager, config)
+doc_mgr.start_periodic_checks(project_id=1)
+# Checks run every 7 days, auto-reschedules
+```
+
+#### Benefits
+
+1. **Automated Reminders**: No more forgotten documentation updates
+2. **Event-Driven**: Documentation tasks created at natural project milestones
+3. **Freshness Monitoring**: Periodic checks detect drift between milestones
+4. **Configurable**: Enable/disable features, customize thresholds
+5. **Self-Maintaining**: Obra maintains its own documentation using this system
+
+#### References
+
+- **ADR-015**: `docs/decisions/ADR-015-project-infrastructure-maintenance-system.md`
+- **User Guide**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md`
+- **Implementation Plan**: `docs/development/PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.yaml`
+
+---
+
 ## Future Architecture Enhancements
 
-**v1.3** (After M9):
+**v1.5** (Next):
 - Budget & Cost Controls (P0)
 - Metrics & Reporting System (P0)
 - Checkpoint System (P0)
 - Prompt Template Library (P0)
 - Escalation Levels (P0)
+- Cron-Style Periodic Scheduling (enhancement to v1.4)
+- NL Command Multi-language Support (Spanish, French, German)
+- Voice Input (speech-to-text → NL processing)
 
-**v1.4+**:
+**v1.5+**:
 - Web UI dashboard
 - Real-time WebSocket updates
 - Multi-project orchestration
 - Pattern learning from successful tasks
+- NL Multi-action Commands ("Create epic X and add 5 stories to it")
 
 **v2.0**:
 - Distributed architecture
 - Advanced ML-based pattern learning
 - Multi-agent collaboration
+- Claude-Driven Parallelization
 
 ---
 
-**Architecture Decisions**: See `docs/decisions/ADR-*.md` for detailed rationale behind key design choices.
+**Architecture Decisions**: See `docs/decisions/ADR-*.md` for detailed rationale behind key design choices (14 ADRs total).

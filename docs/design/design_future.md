@@ -4,6 +4,23 @@ Selling point -- LLM-optimized best practices implemented by our company (optimi
 
 Hardware
 
+Obra Terminal / UI
+	Project dashboard
+		Project overview
+		Task list and status
+		Resource usage
+		Cost tracking
+		Log viewer
+		Performance metrics
+		Code editor with LLM integration
+		Real-time collaboration features
+		Integrated terminal for command-line operations
+		Customizable layout and themes
+	Visual cues 
+		Work (color-coding, icons) to indicate status of tasks, modules, tests, etc.)
+		Agent (color-coding to indicate Orc vs Imp tasks, different specialized agents, etc.)
+		Word wrapping / formatting for readability)
+
 Obra Setup / Netcode
 	Remove hard-coded IP addresses
 	Robust network setup instructions
@@ -154,12 +171,12 @@ Testing
 		Regression testing
 	LLM optimized format and instructions
 
-rAI instructions
+rAI ('Imp') instructions
 	Reponse format
 	Optimize workplan for indendent tasks, in order to deploy parallel agents
 	Is it possible to train an rAI agent to optimize workplans for parallel work, isolated testing, and LLM-optimized instructions (rather than human-optimized planning / instructions)?
 
-VD instructions
+Orch ('Orc', 'VD') instructions
 	Prompt format
 	Instruct rAI to deploy parallel agents
 	rAI response analysis template and scoring
@@ -167,6 +184,9 @@ VD instructions
 	More detail on breakpoints and escalation
 	More detail on managing budget (tokens, time, cost)
 	Instructions on how to prompt the rAI for more detail (so the VD can generate an appropriate prompt)
+	Show the user input prompt, pass to Orc for LLM-optimization, show the optimized prompt, pass to Orc again (optimized) or pass to rAI (optimized)
+	Validate that we have a layer which tracks the target LLM and its versions, so we can optimize prompts and instructions based on known capabilities and limitations of the target LLM (both Orc / Imp LLMs) --> start with generic rules (by task type, industry), allow customization by enterprise / division / user, and then also apply specific LLM version rules
+
 
 Statusing and Project Management
 	LLM-optimized planning files and status reporting

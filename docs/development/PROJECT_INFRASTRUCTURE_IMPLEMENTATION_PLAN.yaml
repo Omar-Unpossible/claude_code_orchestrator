@@ -1,0 +1,669 @@
+# Machine-Optimized Implementation Plan
+# Project Infrastructure Maintenance System v1.4.0
+# Optimized for LLM implementation by Claude Code
+
+version: "1.0"
+target_release: "v1.4.0"
+status: "planning_complete"
+date: "2025-11-11"
+
+# Quick Reference
+references:
+  adr: "docs/decisions/ADR-015-project-infrastructure-maintenance-system.md"
+  human_plan: "docs/development/PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.md"
+  epic_breakdown: "docs/development/PROJECT_INFRASTRUCTURE_EPIC_BREAKDOWN.md"
+  test_guidelines: "docs/development/TEST_GUIDELINES.md"
+
+# Implementation Phases
+phases:
+  phase1:
+    name: "Event-Driven Maintenance"
+    target: "v1.4.0 Week 1-2"
+    stories: ["1.1", "1.2", "1.3", "1.4"]
+
+  phase2:
+    name: "Periodic Freshness Checks"
+    target: "v1.4.0 Week 3"
+    stories: ["2.1", "2.2"]
+
+  phase3:
+    name: "Infrastructure Task Type"
+    target: "v1.5.0 Future"
+    stories: ["3.1", "3.2"]
+
+# Story Breakdown
+stories:
+  # ==================== PHASE 1 ====================
+
+  "1.1":
+    name: "DocumentationManager Foundation"
+    duration: "3 days"
+    priority: "P0"
+    dependencies: []
+
+    files_created:
+      - path: "src/utils/documentation_manager.py"
+        lines: 350
+        purpose: "Core documentation management logic"
+
+    implementation:
+      class: "DocumentationManager"
+      location: "src/utils/documentation_manager.py"
+      methods:
+        - name: "__init__"
+          args: ["state_manager: StateManager", "config: Config"]
+          purpose: "Initialize with StateManager and Config"
+
+        - name: "check_documentation_freshness"
+          returns: "Dict[str, DocumentStatus]"
+          purpose: "Check which docs are stale (>30/60/90 days)"
+          logic:
+            - "Get file modification times (os.path.getmtime)"
+            - "Compare against code change times (git log)"
+            - "Return dict of stale documents with staleness info"
+
+        - name: "create_maintenance_task"
+          args: ["trigger: str", "scope: str", "context: Dict[str, Any]"]
+          returns: "int"
+          purpose: "Create maintenance task with full context"
+          logic:
+            - "Create Task with type=TASK, priority=3"
+            - "Include context (epic_id, changes, stale_docs)"
+            - "Return task_id"
+
+        - name: "generate_maintenance_prompt"
+          args: ["stale_docs: List[str]", "context: Dict[str, Any]"]
+          returns: "str"
+          purpose: "Build detailed prompt for documentation maintenance"
+          includes:
+            - "Epic context (title, stories, changes)"
+            - "List of stale documents with freshness"
+            - "References to documentation patterns"
+            - "Specific update instructions"
+
+        - name: "archive_completed_plans"
+          args: ["epic_id: int"]
+          returns: "List[str]"
+          purpose: "Archive implementation plans for completed epic"
+          logic:
+            - "Scan docs/development/ for completed plans"
+            - "Move to docs/archive/development/"
+            - "Log archived files"
+            - "Return list of archived paths"
+
+        - name: "update_changelog"
+          args: ["epic: Task"]
+          returns: "None"
+          purpose: "Update CHANGELOG.md with epic completion"
+          logic:
+            - "Parse CHANGELOG.md"
+            - "Add entry under appropriate section (Added/Changed/Fixed)"
+            - "Write updated CHANGELOG"
+
+        - name: "suggest_adr_creation"
+          args: ["epic: Task"]
+          returns: "bool"
+          purpose: "Check if epic requires ADR creation"
+          logic:
+            - "Check epic.requires_adr flag"
+            - "Check epic.has_architectural_changes flag"
+            - "Check recent ADRs (avoid duplicates)"
+            - "Return boolean + suggestion text"
+
+    tests:
+      file: "tests/test_documentation_manager.py"
+      count: 20
+      coverage_target: 90
+      test_cases:
+        - "test_documentation_freshness_checking"
+        - "test_create_maintenance_task_lightweight"
+        - "test_create_maintenance_task_comprehensive"
+        - "test_generate_maintenance_prompt"
+        - "test_archive_completed_plans"
+        - "test_update_changelog"
+        - "test_suggest_adr_creation"
+        - "test_empty_directory_handling"
+        - "test_missing_files_handling"
+        - "test_invalid_epic_id"
+
+    acceptance_criteria:
+      - "Freshness check correctly identifies stale docs (>30/60/90 days)"
+      - "Maintenance task created with full context"
+      - "Prompt includes epic details and documentation references"
+      - "Archive moves files without data loss"
+      - "CHANGELOG updates preserve formatting"
+      - "Test coverage >90%"
+
+  # ----------------------------------------
+
+  "1.2":
+    name: "StateManager Integration"
+    duration: "2 days"
+    priority: "P0"
+    dependencies: ["1.1"]
+
+    files_modified:
+      - path: "src/core/models.py"
+        changes:
+          - action: "add_fields"
+            class: "Task"
+            fields:
+              - "requires_adr: Optional[bool] = Column(Boolean, default=False)"
+              - "has_architectural_changes: Optional[bool] = Column(Boolean, default=False)"
+              - "changes_summary: Optional[str] = Column(Text, nullable=True)"
+              - "documentation_status: Optional[str] = Column(String, default='pending')"
+          - action: "add_fields"
+            class: "Milestone"
+            fields:
+              - "version: Optional[str] = Column(String, nullable=True)"
+
+      - path: "src/core/state.py"
+        changes:
+          - action: "modify_method"
+            method: "complete_epic"
+            add_lines: 20
+            logic:
+              - "After marking epic complete"
+              - "Check config.get('documentation.enabled', False)"
+              - "If enabled, create DocumentationManager(self, self.config)"
+              - "Determine scope (lightweight vs comprehensive)"
+              - "Call doc_mgr.create_maintenance_task(trigger='epic_complete', ...)"
+              - "Log maintenance task creation"
+
+          - action: "modify_method"
+            method: "achieve_milestone"
+            add_lines: 20
+            logic:
+              - "After marking milestone achieved"
+              - "Check config.get('documentation.enabled', False)"
+              - "Create DocumentationManager(self, self.config)"
+              - "Get all epics in milestone"
+              - "Call doc_mgr.create_maintenance_task(trigger='milestone_achieved', ...)"
+              - "Include version in context"
+
+    files_created:
+      - path: "migrations/versions/004_documentation_fields.sql"
+        purpose: "Add documentation fields to tasks and milestones tables"
+        forward:
+          - "ALTER TABLE tasks ADD COLUMN requires_adr BOOLEAN DEFAULT FALSE;"
+          - "ALTER TABLE tasks ADD COLUMN has_architectural_changes BOOLEAN DEFAULT FALSE;"
+          - "ALTER TABLE tasks ADD COLUMN changes_summary TEXT NULL;"
+          - "ALTER TABLE tasks ADD COLUMN documentation_status VARCHAR(20) DEFAULT 'pending';"
+          - "ALTER TABLE milestones ADD COLUMN version VARCHAR(20) NULL;"
+          - "CREATE INDEX idx_tasks_documentation_status ON tasks(documentation_status);"
+          - "CREATE INDEX idx_tasks_requires_adr ON tasks(requires_adr) WHERE requires_adr = TRUE;"
+        rollback:
+          - "DROP INDEX IF EXISTS idx_tasks_requires_adr;"
+          - "DROP INDEX IF EXISTS idx_tasks_documentation_status;"
+          - "ALTER TABLE milestones DROP COLUMN version;"
+          - "ALTER TABLE tasks DROP COLUMN documentation_status;"
+          - "ALTER TABLE tasks DROP COLUMN changes_summary;"
+          - "ALTER TABLE tasks DROP COLUMN has_architectural_changes;"
+          - "ALTER TABLE tasks DROP COLUMN requires_adr;"
+
+    tests:
+      file: "tests/test_documentation_manager.py"
+      count: 15
+      coverage_target: 90
+      test_cases:
+        - "test_epic_completion_creates_maintenance_task"
+        - "test_epic_completion_skips_if_disabled"
+        - "test_milestone_achievement_creates_comprehensive_task"
+        - "test_maintenance_task_has_correct_context"
+        - "test_migration_forward_backward"
+        - "test_config_disabled_skips_maintenance"
+        - "test_missing_fields_handled_gracefully"
+
+    acceptance_criteria:
+      - "Epic completion creates maintenance task (if requires_adr or has_architectural_changes)"
+      - "Milestone achievement always creates comprehensive maintenance task"
+      - "Config documentation.enabled: false skips maintenance"
+      - "Task context includes epic_id, title, stories, changes"
+      - "Migration runs successfully (forward and backward)"
+      - "Test coverage >90%"
+
+  # ----------------------------------------
+
+  "1.3":
+    name: "Configuration System"
+    duration: "1 day"
+    priority: "P0"
+    dependencies: []
+
+    files_modified:
+      - path: "config/default_config.yaml"
+        add_section: "documentation"
+        lines: 50
+        content: |
+          documentation:
+            enabled: true
+            auto_maintain: true
+            triggers:
+              epic_complete:
+                enabled: true
+                scope: lightweight
+                auto_create_task: true
+              milestone_achieved:
+                enabled: true
+                scope: comprehensive
+                auto_create_task: true
+              version_bump:
+                enabled: true
+                scope: full_review
+                auto_create_task: true
+              periodic:
+                enabled: true
+                interval: weekly
+                scope: freshness_check
+                day_of_week: friday
+                auto_create_task: false
+            maintenance_targets:
+              - CHANGELOG.md
+              - docs/architecture/ARCHITECTURE.md
+              - docs/README.md
+              - docs/decisions/
+              - docs/guides/
+            freshness_thresholds:
+              critical: 30
+              important: 60
+              normal: 90
+            archive:
+              enabled: true
+              source_dir: docs/development
+              archive_dir: docs/archive/development
+              patterns:
+                - "*_IMPLEMENTATION_PLAN.md"
+                - "*_COMPLETION_PLAN.md"
+                - "*_GUIDE.md"
+            task_config:
+              priority: 3
+              assigned_agent: null
+              assigned_llm: null
+              auto_execute: false
+
+      - path: "src/core/config.py"
+        changes:
+          - action: "add_validation"
+            method: "_validate_documentation_config"
+            validations:
+              - "Validate triggers.periodic.interval in ['daily', 'weekly', 'monthly']"
+              - "Validate freshness_thresholds are positive integers"
+              - "Validate maintenance_targets paths exist"
+              - "Validate priority is 1-5"
+
+    tests:
+      file: "tests/test_config.py"
+      count: 10
+      test_cases:
+        - "test_documentation_config_loads"
+        - "test_documentation_config_defaults"
+        - "test_invalid_interval_rejected"
+        - "test_invalid_thresholds_rejected"
+        - "test_custom_thresholds_override"
+
+    acceptance_criteria:
+      - "Default config includes complete documentation section"
+      - "Config validation catches invalid settings"
+      - "Defaults applied when settings missing"
+      - "Test coverage 100% for config loading"
+
+  # ----------------------------------------
+
+  "1.4":
+    name: "Integration Testing"
+    duration: "2 days"
+    priority: "P0"
+    dependencies: ["1.1", "1.2", "1.3"]
+
+    files_created:
+      - path: "tests/integration/test_project_infrastructure.py"
+        lines: 250
+        purpose: "E2E tests for epic/milestone → maintenance task flow"
+
+    tests:
+      file: "tests/integration/test_project_infrastructure.py"
+      count: 8
+      test_cases:
+        - name: "test_epic_complete_creates_maintenance_task"
+          setup:
+            - "Create project, epic, 3 stories"
+            - "Mark epic as requires_adr=True"
+          action: "Execute epic completion"
+          verify:
+            - "Maintenance task created"
+            - "Task context includes epic details"
+            - "Task priority=3"
+
+        - name: "test_epic_without_flags_skips_maintenance"
+          setup:
+            - "Create epic with requires_adr=False, has_architectural_changes=False"
+          action: "Complete epic"
+          verify:
+            - "No maintenance task created"
+
+        - name: "test_milestone_achievement_comprehensive_maintenance"
+          setup:
+            - "Create milestone with 3 epics"
+            - "Mark all epics complete"
+          action: "Achieve milestone"
+          verify:
+            - "Comprehensive maintenance task created"
+            - "Context includes all 3 epics"
+            - "Version included in context"
+
+        - name: "test_configuration_disabled_skips_maintenance"
+          setup:
+            - "Set documentation.enabled: false"
+            - "Create epic with requires_adr=True"
+          action: "Complete epic"
+          verify:
+            - "No maintenance task created"
+
+        - name: "test_auto_maintain_false_notifies_only"
+          setup:
+            - "Set documentation.auto_maintain: false"
+            - "Create epic with requires_adr=True"
+          action: "Complete epic"
+          verify:
+            - "Warning logged but no task created"
+
+        - name: "test_maintenance_task_context_complete"
+          setup:
+            - "Create epic with full metadata"
+            - "changes_summary='Added API gateway'"
+          action: "Complete epic"
+          verify:
+            - "Task context includes all fields"
+            - "Prompt references epic changes"
+
+        - name: "test_epic_completion_hook_performance"
+          action: "Benchmark epic completion with documentation hook"
+          verify:
+            - "Hook execution <500ms (P95)"
+
+        - name: "test_freshness_check_performance"
+          action: "Benchmark freshness check with 50 documents"
+          verify:
+            - "Freshness check <1s"
+
+    acceptance_criteria:
+      - "All 8 integration tests pass"
+      - "Epic/milestone hooks work end-to-end"
+      - "Configuration variations handled correctly"
+      - "Performance targets met (<500ms epic, <1s milestone)"
+
+  # ==================== PHASE 2 ====================
+
+  "2.1":
+    name: "Scheduled Freshness Checks"
+    duration: "3 days"
+    priority: "P1"
+    dependencies: ["1.1", "1.2", "1.3", "1.4"]
+
+    files_modified:
+      - path: "src/utils/documentation_manager.py"
+        changes:
+          - action: "add_class"
+            class: "PeriodicScheduler"
+            methods:
+              - name: "schedule_periodic_check"
+                args: ["interval: str", "day_of_week: int"]
+                purpose: "Schedule periodic freshness checks"
+                implementation:
+                  - "Use threading.Timer for scheduling"
+                  - "Respect config.get('documentation.triggers.periodic.enabled')"
+                  - "Call check_documentation_freshness() at interval"
+                  - "If auto_create_task: true, create maintenance task"
+                  - "If auto_create_task: false, log warning"
+
+              - name: "cancel_scheduled_checks"
+                purpose: "Cancel all scheduled timers (graceful shutdown)"
+                implementation:
+                  - "Iterate over active timers"
+                  - "Call timer.cancel() for each"
+                  - "Clear timer list"
+
+    tests:
+      file: "tests/test_documentation_manager.py"
+      count: 12
+      test_cases:
+        - "test_periodic_check_detects_stale_docs"
+        - "test_periodic_check_creates_task_if_enabled"
+        - "test_periodic_check_notifies_if_auto_create_false"
+        - "test_weekly_schedule_runs_on_correct_day"
+        - "test_monthly_schedule_runs_on_first_day"
+        - "test_graceful_shutdown_cancels_timers"
+        - "test_no_stale_docs_no_task"
+        - "test_all_docs_stale_creates_task"
+
+    acceptance_criteria:
+      - "Periodic check runs at configured interval"
+      - "Stale docs detected correctly (threshold-based)"
+      - "Auto-create task works if enabled"
+      - "Notification logged if auto-create disabled"
+      - "Graceful shutdown (no orphaned threads)"
+      - "Test coverage >90%"
+
+  # ----------------------------------------
+
+  "2.2":
+    name: "Documentation"
+    duration: "2 days"
+    priority: "P1"
+    dependencies: ["2.1"]
+
+    files_created:
+      - path: "docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md"
+        lines: 400
+        sections:
+          - "Overview and benefits"
+          - "Configuration options (all settings explained)"
+          - "Event-driven triggers (epic, milestone, periodic)"
+          - "Maintenance task workflow"
+          - "Examples (epic completion, milestone achievement)"
+          - "Troubleshooting (common issues)"
+          - "FAQ"
+
+    files_modified:
+      - path: "docs/architecture/ARCHITECTURE.md"
+        add_section: "Project Infrastructure Maintenance (v1.4)"
+        lines: 150
+        content:
+          - "DocumentationManager component description"
+          - "StateManager integration (epic/milestone hooks)"
+          - "Configuration schema"
+          - "Data flow diagrams"
+
+      - path: "CHANGELOG.md"
+        add_entry: "v1.4.0"
+        lines: 30
+        content:
+          - "List all Phase 1-2 stories"
+          - "New features: event-driven, periodic checks"
+          - "Configuration section: documentation"
+          - "Test coverage: 57 new tests"
+
+      - path: "docs/README.md"
+        add_lines: 10
+        changes:
+          - "Add link to Project Infrastructure Guide"
+          - "Update documentation structure tree"
+          - "Add to 'v1.4 Features' section"
+
+    acceptance_criteria:
+      - "User guide complete with examples and troubleshooting"
+      - "Architecture doc updated with new component"
+      - "CHANGELOG reflects all Phase 1-2 changes"
+      - "Documentation index updated"
+
+# Testing Summary
+testing:
+  unit_tests:
+    total: 47
+    breakdown:
+      documentation_manager: 20
+      state_manager_integration: 15
+      configuration: 10
+      periodic_scheduler: 12
+
+  integration_tests:
+    total: 8
+    breakdown:
+      epic_milestone_flow: 5
+      configuration_variations: 2
+      performance: 1
+
+  total_tests: 55
+  coverage_target: 90
+
+  critical_tests:
+    - "test_epic_completion_creates_maintenance_task"
+    - "test_milestone_achievement_comprehensive_maintenance"
+    - "test_archive_no_data_loss"
+    - "test_changelog_update_preserves_formatting"
+    - "test_migration_forward_backward"
+
+# Performance Targets
+performance:
+  epic_completion_hook: "<500ms (P95)"
+  milestone_hook: "<1s (P95)"
+  freshness_check: "<1s"
+  task_creation: "<100ms"
+  archive_operation: "<2s"
+
+# Database Changes
+database:
+  migration_file: "migrations/versions/004_documentation_fields.sql"
+  tables_modified:
+    tasks:
+      new_fields:
+        - "requires_adr BOOLEAN DEFAULT FALSE"
+        - "has_architectural_changes BOOLEAN DEFAULT FALSE"
+        - "changes_summary TEXT NULL"
+        - "documentation_status VARCHAR(20) DEFAULT 'pending'"
+      indexes:
+        - "idx_tasks_documentation_status"
+        - "idx_tasks_requires_adr"
+    milestones:
+      new_fields:
+        - "version VARCHAR(20) NULL"
+
+# Code Size Estimates
+code_size:
+  phase1:
+    production: 430
+    tests: 465
+    config: 80
+    total: 975
+
+  phase2:
+    production: 80
+    tests: 185
+    docs: 560
+    total: 825
+
+  grand_total: 1800  # lines of code (excluding docs)
+
+# Implementation Order (Critical Path)
+critical_path:
+  - story: "1.1"
+    blocking: ["1.2", "1.4"]
+    reason: "DocumentationManager required by StateManager integration"
+
+  - story: "1.2"
+    blocking: ["1.4"]
+    reason: "StateManager hooks required for integration tests"
+
+  - story: "1.3"
+    blocking: ["1.4"]
+    reason: "Configuration required for all features"
+
+  - story: "1.4"
+    blocking: ["2.1"]
+    reason: "Phase 1 must complete before Phase 2"
+
+  - story: "2.1"
+    blocking: ["2.2"]
+    reason: "Features must complete before documentation"
+
+# Success Criteria (Release Gates)
+release_gates:
+  v1.4.0:
+    - "All 55 tests passing (47 unit + 8 integration)"
+    - "Test coverage >90% for new code"
+    - "Performance targets met (epic hook <500ms, milestone <1s)"
+    - "Configuration validation 100% coverage"
+    - "Migration tested (forward and backward)"
+    - "Documentation complete (guide + architecture + CHANGELOG)"
+    - "Zero data loss in archive operations"
+    - "Manual QA: Epic completion → maintenance task flow works"
+    - "Manual QA: Milestone achievement → comprehensive maintenance works"
+    - "Manual QA: Periodic check detects stale docs correctly"
+
+# Risk Mitigation
+risks:
+  high_priority:
+    - risk: "StateManager hook failures"
+      mitigation: "Extensive unit tests, graceful error handling, rollback on failure"
+
+    - risk: "Documentation corruption"
+      mitigation: "Backup before modification, rollback capability, verify writes"
+
+    - risk: "Archive data loss"
+      mitigation: "Test archive extensively, verify file copies, log all operations"
+
+  medium_priority:
+    - risk: "Performance degradation"
+      mitigation: "Benchmark hooks, async processing for heavy tasks"
+
+    - risk: "Thread leaks (periodic)"
+      mitigation: "Graceful shutdown, timer cancellation, tests for cleanup"
+
+# Dependencies (External)
+dependencies:
+  python_stdlib:
+    - "os" # File operations
+    - "pathlib" # Path manipulation
+    - "datetime" # Timestamps
+    - "threading" # Periodic scheduler
+    - "json" # Context serialization
+
+  internal:
+    - "src.core.state.StateManager"
+    - "src.core.config.Config"
+    - "src.core.models.Task"
+    - "src.core.models.Milestone"
+    - "src.core.models.TaskType"
+
+# Next Actions (Immediate)
+next_actions:
+  - action: "Create Epic/Story breakdown document"
+    file: "docs/development/PROJECT_INFRASTRUCTURE_EPIC_BREAKDOWN.md"
+
+  - action: "Update CHANGELOG.md with Unreleased v1.4 section"
+    file: "CHANGELOG.md"
+
+  - action: "Update docs/README.md with implementation plans"
+    file: "docs/README.md"
+
+  - action: "Begin Story 1.1: DocumentationManager Foundation"
+    start_with: "Create src/utils/documentation_manager.py skeleton"
+
+# Startup Prompt (for fresh context)
+startup_instructions: |
+  To implement Project Infrastructure Maintenance System v1.4.0:
+
+  1. Read these documents in order:
+     - docs/decisions/ADR-015-project-infrastructure-maintenance-system.md (WHY)
+     - docs/development/PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.yaml (WHAT - this file)
+     - docs/development/PROJECT_INFRASTRUCTURE_EPIC_BREAKDOWN.md (HOW)
+     - docs/development/TEST_GUIDELINES.md (TESTING RULES)
+
+  2. Start with Story 1.1: DocumentationManager Foundation
+     - Create src/utils/documentation_manager.py
+     - Implement all 7 methods (see "stories.1.1.implementation" above)
+     - Write 20 unit tests (see "stories.1.1.tests" above)
+
+  3. Follow critical path: 1.1 → 1.2 → 1.3 → 1.4 → 2.1 → 2.2
+
+  4. Check release gates before completing (see "release_gates.v1.4.0" above)

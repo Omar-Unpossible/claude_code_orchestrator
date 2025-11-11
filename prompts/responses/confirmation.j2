@@ -1,0 +1,6 @@
+{# Confirmation Request Template #}
+{# Used for destructive operations requiring confirmation #}
+{# Variables: action, entity_type, entity_id, entity_details #}
+
+⚠ This will {{ action }} {{ entity_type }}{% if entity_id %} #{{ entity_id }}{% endif %}{% if entity_details %} ({{ entity_details }}){% endif %}.
+Confirm? (y/n)
