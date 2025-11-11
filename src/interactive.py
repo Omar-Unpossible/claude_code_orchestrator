@@ -48,6 +48,7 @@ class InteractiveMode:
         self.state_manager: Optional[StateManager] = None
         self.current_project: Optional[int] = None
         self.running = False
+        self.nl_processor: Optional[Any] = None  # NL command processor for executing commands
 
         # Command history
         self.history: List[str] = []
@@ -87,6 +88,9 @@ class InteractiveMode:
 
             self.orchestrator = Orchestrator(config=self.config)
             self.orchestrator.initialize()
+
+            # Initialize NL command processor for executing user commands
+            self._initialize_nl_processor()
 
             print("✓ Orchestrator initialized")
             print()
@@ -144,6 +148,35 @@ class InteractiveMode:
         print("   Examples: /help, /project list, /task create, /execute 1")
         print("   Exception: 'exit' and 'quit' work without slash")
         print()
+
+    def _initialize_nl_processor(self) -> None:
+        """Initialize NL command processor for executing user commands."""
+        try:
+            from src.nl.nl_command_processor import NLCommandProcessor
+            from src.plugins.registry import LLMRegistry
+
+            # Get LLM plugin from orchestrator if available
+            if self.orchestrator and hasattr(self.orchestrator, 'llm_interface'):
+                llm_plugin = self.orchestrator.llm_interface
+            else:
+                # Fallback: create LLM plugin from config
+                llm_type = self.config.get('llm.type', 'ollama')
+                llm_plugin = LLMRegistry.get(llm_type)()
+
+            # Initialize NL processor
+            self.nl_processor = NLCommandProcessor(
+                llm_plugin=llm_plugin,
+                state_manager=self.state_manager,
+                config=self.config,
+                confidence_threshold=0.7,
+                max_context_turns=10
+            )
+
+            logger.info("NL command processor initialized successfully")
+
+        except Exception as e:
+            logger.warning(f"Failed to initialize NL processor: {e}")
+            self.nl_processor = None
 
     def _execute_command(self, user_input: str) -> None:
         """Parse and execute a command (v1.5.0: Natural language routing).
@@ -642,28 +675,54 @@ class InteractiveMode:
             print(f"✗ Failed to set project: {e}")
 
     def cmd_to_orch(self, args: List[str]) -> None:
-        """Send natural language message to orchestrator's LLM.
+        """Send natural language message to orchestrator for execution.
+
+        Uses NL command processor to parse intent, extract entities, and execute
+        commands. This enables actual command execution instead of just providing
+        instructions.
 
         Args:
             args: Message to send (space-separated words)
         """
         if not args:
             print("Usage: /to-orch <your message>")
-            print("Example: /to-orch How should I structure my Tetris game tasks?")
+            print("Example: What is the current project?")
+            print("Example: Create an epic for user authentication")
             return
 
         try:
             message = ' '.join(args)
             print(f"\n[You → Orchestrator]: {message}")
-            print("\n[Orchestrator thinking...]")
 
-            # Send to orchestrator's LLM
-            if not self.orchestrator or not hasattr(self.orchestrator, 'llm_interface'):
-                print("✗ Orchestrator LLM not available")
-                return
+            # Use NL processor if available (executes commands)
+            if self.nl_processor:
+                print("[Orchestrator processing...]")
 
-            # Create a conversational prompt
-            prompt = f"""You are Obra, the Claude Code Orchestrator assistant. The user is in the interactive REPL and has asked you:
+                # Build context
+                context = {}
+                if self.current_project:
+                    context['project_id'] = self.current_project
+
+                # Process through NL pipeline
+                nl_response = self.nl_processor.process(message, context=context)
+
+                # Display result
+                print(f"\n{nl_response.response}\n")
+
+                # Update current project if changed
+                if nl_response.execution_result and 'project_id' in nl_response.execution_result:
+                    self.current_project = nl_response.execution_result['project_id']
+
+            else:
+                # Fallback: LLM-only response (no execution)
+                print("[Orchestrator thinking... (NL processor unavailable)]")
+
+                if not self.orchestrator or not hasattr(self.orchestrator, 'llm_interface'):
+                    print("✗ Orchestrator LLM not available")
+                    return
+
+                # Create a conversational prompt
+                prompt = f"""You are Obra, the Claude Code Orchestrator assistant. The user is in the interactive REPL and has asked you:
 
 "{message}"
 
@@ -676,13 +735,12 @@ Provide a helpful, concise response. You can:
 
 Keep responses clear and actionable. If recommending commands, show the exact syntax."""
 
-            response = self.orchestrator.llm_interface.send_prompt(prompt)
-
-            print(f"\n[Orchestrator]: {response}\n")
+                response = self.orchestrator.llm_interface.send_prompt(prompt)
+                print(f"\n[Orchestrator]: {response}\n")
 
         except Exception as e:
-            print(f"\n✗ Failed to communicate with orchestrator: {e}\n")
-            logger.exception("Error in /to-orch command")
+            print(f"\n✗ Failed to process request: {e}\n")
+            logger.exception("Error in orchestrator command processing")
 
     def cmd_to_impl(self, args: List[str]) -> None:
         """Send natural language message to Claude Code agent.
