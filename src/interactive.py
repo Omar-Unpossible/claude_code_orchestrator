@@ -52,25 +52,28 @@ class InteractiveMode:
         # Command history
         self.history: List[str] = []
 
-        # Command mapping
+        # Command mapping (v1.5.0: ALL commands require slash prefix)
+        # Exception: 'exit' and 'quit' work without slash (universal REPL convention)
         self.commands = {
-            'help': self.cmd_help,
-            'exit': self.cmd_exit,
-            'quit': self.cmd_exit,
-            'project': self.cmd_project,
-            'task': self.cmd_task,
-            'execute': self.cmd_execute,
-            'run': self.cmd_run,
-            'stop': self.cmd_stop,
-            'status': self.cmd_status,
-            'use': self.cmd_use,
-            'history': self.cmd_history,
-            'clear': self.cmd_clear,
+            # Slash commands (required prefix)
+            '/help': self.cmd_help,
+            '/project': self.cmd_project,
+            '/task': self.cmd_task,
+            '/execute': self.cmd_execute,
+            '/run': self.cmd_run,
+            '/stop': self.cmd_stop,
+            '/status': self.cmd_status,
+            '/use': self.cmd_use,
+            '/history': self.cmd_history,
+            '/clear': self.cmd_clear,
             '/to-orch': self.cmd_to_orch,
             '/to-obra': self.cmd_to_orch,  # Alias
             '/to-impl': self.cmd_to_impl,
             '/to-claude': self.cmd_to_impl,  # Alias
-            'llm': self.cmd_llm,
+            '/llm': self.cmd_llm,
+            # Exception: exit/quit work without slash (UX convention)
+            'exit': self.cmd_exit,
+            'quit': self.cmd_exit,
         }
 
     def run(self) -> None:
@@ -131,22 +134,24 @@ class InteractiveMode:
         print("Goodbye!")
 
     def _show_welcome(self) -> None:
-        """Show welcome message (v1.5.0)."""
+        """Show welcome message (v1.5.0 - STRICT MODE)."""
         print("=" * 80)
         print("Claude Code Orchestrator - Interactive Mode (v1.5.0)")
         print("=" * 80)
         print()
-        print("💬 Type naturally to talk to the orchestrator")
-        print("⚡ Use built-in commands: help, project, task, execute, status")
-        print("🔧 Slash commands: /to-impl, /to-orch (prefix with /)")
+        print("💬 Natural Language (default): Talk naturally to the orchestrator")
+        print("⚡ Slash Commands (system): All commands require '/' prefix")
+        print("   Examples: /help, /project list, /task create, /execute 1")
+        print("   Exception: 'exit' and 'quit' work without slash")
         print()
 
     def _execute_command(self, user_input: str) -> None:
         """Parse and execute a command (v1.5.0: Natural language routing).
 
-        v1.5.0 Behavior:
-        - Input starting with '/' → Slash command (must be valid)
-        - Input NOT starting with '/' → Check if it's a built-in command, else send to orchestrator
+        v1.5.0 Behavior (STRICT):
+        - Input starting with '/' → Slash command (must be valid, else error)
+        - Input is 'exit' or 'quit' → Execute exit (UX exception)
+        - Everything else → Route to orchestrator as natural language
 
         Args:
             user_input: User's input string
@@ -177,7 +182,7 @@ class InteractiveMode:
                 print(f"✗ Unknown slash command: {command}")
                 print("Type /help for available slash commands")
         else:
-            # Not a slash command - parse normally
+            # Not a slash command - check for special exit commands
             try:
                 parts = shlex.split(user_input)
             except ValueError:
@@ -190,14 +195,11 @@ class InteractiveMode:
             command = parts[0].lower()
             args = parts[1:]
 
-            # Check if it's a built-in command (help, exit, project, task, etc.)
-            if command in self.commands and not command.startswith('/'):
-                try:
-                    self.commands[command](args)
-                except Exception as e:
-                    print(f"✗ Command failed: {e}")
+            # Special case: exit and quit work without slash (UX convention)
+            if command in ['exit', 'quit']:
+                self.commands[command](args)
             else:
-                # Not a built-in command - route to orchestrator (v1.5.0)
+                # Everything else routes to orchestrator (v1.5.0 default)
                 print(f"→ Routing to orchestrator: {user_input}")
                 self.cmd_to_orch([user_input])
 
@@ -206,58 +208,62 @@ class InteractiveMode:
     # ========================================================================
 
     def cmd_help(self, args: List[str]) -> None:
-        """Show help message (v1.5.0)."""
-        print("\nAvailable Commands (v1.5.0):")
+        """Show help message (v1.5.0 - STRICT MODE)."""
+        print("\nAvailable Commands (v1.5.0 - Strict Slash Mode):")
         print("=" * 80)
         print()
 
-        print("💬 Natural Language (v1.5.0 - NEW DEFAULT!):")
+        print("💬 Natural Language (DEFAULT - No slash needed):")
         print("  <any natural text>      - Automatically sent to orchestrator for guidance")
         print("  Examples:")
         print("    Display the current project and plan")
         print("    How should I break down my authentication feature?")
         print("    What's the status of my tasks?")
+        print("    help me create an epic for user authentication")
         print()
 
-        print("⚡ General Commands:")
-        print("  help                    - Show this help message")
+        print("⚡ Exit Commands (Special - No slash needed):")
         print("  exit, quit              - Exit interactive mode")
-        print("  history                 - Show command history")
-        print("  clear                   - Clear screen")
         print()
 
-        print("🔧 Slash Commands (must start with /):")
-        print("  /to-orch <message>      - Explicitly send to orchestrator LLM")
-        print("  /to-impl <message>      - Send task directly to Claude Code agent")
-        print("  Examples:")
-        print("    /to-impl Create a README.md for this project")
-        print("    /to-orch Analyze the quality of the last response")
+        print("🔧 System Commands (MUST start with '/'):")
+        print()
+        print("  General:")
+        print("    /help                 - Show this help message")
+        print("    /history              - Show command history")
+        print("    /clear                - Clear screen")
         print()
 
-        print("🔌 LLM Management:")
-        print("  llm show                - Show current LLM provider and model")
-        print("  llm list                - List available LLM providers")
-        print("  llm switch <provider>   - Switch LLM provider (ollama, openai-codex)")
+        print("  Orchestrator Communication:")
+        print("    /to-orch <message>    - Explicitly send to orchestrator LLM")
+        print("    /to-impl <message>    - Send task directly to Claude Code agent")
+        print("    Example: /to-impl Create a README.md for this project")
         print()
 
-        print("Project Management:")
-        print("  project create <name>   - Create a new project")
-        print("  project list            - List all projects")
-        print("  project show <id>       - Show project details")
-        print("  use <project_id>        - Set current project")
+        print("  LLM Management:")
+        print("    /llm show             - Show current LLM provider and model")
+        print("    /llm list             - List available LLM providers")
+        print("    /llm switch <provider>- Switch LLM provider")
         print()
 
-        print("Task Management:")
-        print("  task create <title>     - Create task (requires current project)")
-        print("  task list               - List tasks")
-        print("  task show <id>          - Show task details")
+        print("  Project Management:")
+        print("    /project create <name>- Create a new project")
+        print("    /project list         - List all projects")
+        print("    /project show <id>    - Show project details")
+        print("    /use <project_id>     - Set current project")
         print()
 
-        print("Execution:")
-        print("  execute <task_id>       - Execute a single task")
-        print("  run                     - Run orchestrator continuously")
-        print("  stop                    - Stop continuous run")
-        print("  status                  - Show orchestrator status")
+        print("  Task Management:")
+        print("    /task create <title>  - Create task (requires current project)")
+        print("    /task list            - List tasks")
+        print("    /task show <id>       - Show task details")
+        print()
+
+        print("  Execution:")
+        print("    /execute <task_id>    - Execute a single task")
+        print("    /run                  - Run orchestrator continuously")
+        print("    /stop                 - Stop continuous run")
+        print("    /status               - Show orchestrator status")
         print()
 
         print("Interactive Task Execution Commands:")
