@@ -4,6 +4,9 @@ This module provides a thread-safe input manager that listens for user commands
 in a separate thread, allowing the orchestrator to continue execution while
 waiting for input.
 
+v1.5.0: Updated for natural language default behavior. Slash commands only
+        appear in autocomplete when user types '/'.
+
 Part of Interactive Streaming Interface (Phase 2).
 """
 
@@ -13,26 +16,55 @@ from queue import Queue, Empty
 from typing import Optional
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import WordCompleter, Completer, Completion
+from prompt_toolkit.document import Document
 from prompt_toolkit.history import InMemoryHistory
 
 logger = logging.getLogger(__name__)
 
-# Command names for autocompletion (includes aliases)
-COMMANDS = [
+# Slash command names for autocompletion (v1.5.0)
+SLASH_COMMANDS = [
+    '/help',
+    '/status',
     '/pause',
     '/resume',
-    '/to-impl',
-    '/to-orch',
-    '/to-implementer',
-    '/to-orchestrator',
-    '/to-claude',        # Alias (show in autocomplete)
-    '/to-obra',          # Alias (show in autocomplete)
-    '/override-decision',
-    '/status',
-    '/help',
     '/stop',
+    '/to-impl',
+    '/to-claude',        # Alias
+    '/to-implementer',   # Formal
+    '/override-decision',
 ]
+
+
+class SlashCommandCompleter(Completer):
+    """Custom completer that only completes slash commands.
+
+    Only provides completions when user input starts with '/'.
+    This allows natural language input without autocomplete interference.
+    """
+
+    def get_completions(self, document: Document, complete_event):
+        """Provide tab completions for slash commands only.
+
+        Args:
+            document: Current document state
+            complete_event: Completion event
+
+        Yields:
+            Completion objects for matching slash commands
+        """
+        text = document.text_before_cursor
+
+        # Only complete if text starts with '/'
+        if text.startswith('/'):
+            word = text[1:]  # Remove leading slash for matching
+            for cmd in SLASH_COMMANDS:
+                if cmd[1:].startswith(word.lower()):  # Case-insensitive match
+                    yield Completion(
+                        cmd,
+                        start_position=-len(text),
+                        display_meta="Command"
+                    )
 
 
 class InputManager:
@@ -67,13 +99,14 @@ class InputManager:
         self.thread: Optional[threading.Thread] = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Create prompt session with history and autocomplete
+        # Create prompt session with history and autocomplete (v1.5.0)
         self.history = InMemoryHistory()
-        self.completer = WordCompleter(COMMANDS, ignore_case=True)
+        self.completer = SlashCommandCompleter()
         self.session = PromptSession(
             history=self.history,
             completer=self.completer,
             complete_while_typing=False,  # Only complete on TAB
+            bottom_toolbar="Type naturally to talk to orchestrator, or /help for commands"
         )
 
     def start_listening(self) -> None:

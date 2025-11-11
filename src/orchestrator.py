@@ -217,15 +217,28 @@ class Orchestrator:
         # Get command from queue (non-blocking)
         command = self.input_manager.get_command(timeout=0.1)
         if command:
-            result = self.command_processor.execute_command(command)
+            try:
+                result = self.command_processor.execute_command(command)
 
-            # Display result
-            if 'success' in result:
-                print(f"\033[32m✓\033[0m {result['message']}")
-            elif 'error' in result:
-                print(f"\033[31m✗\033[0m {result['error']}")
-                if 'message' in result:
-                    print(f"  {result['message']}")
+                # Display result
+                if 'success' in result:
+                    print(f"\033[32m✓\033[0m {result['message']}")
+                elif 'error' in result:
+                    print(f"\033[31m✗\033[0m {result['error']}")
+                    if 'message' in result:
+                        print(f"  {result['message']}")
+
+            except Exception as e:
+                # Catch CommandValidationError and other exceptions
+                from src.utils.command_processor import CommandValidationError
+
+                if isinstance(e, CommandValidationError):
+                    print(f"\033[31m✗ Error:\033[0m {e.message}")
+                    print(f"\033[33mAvailable commands:\033[0m {', '.join(e.available_commands)}")
+                    print("\033[2mType /help for usage information\033[0m")
+                else:
+                    print(f"\033[31m✗ Unexpected error:\033[0m {e}")
+                    logger.exception("Error processing interactive command")
 
     def _wait_for_resume(self) -> None:
         """Block execution until user types /resume.
@@ -239,15 +252,28 @@ class Orchestrator:
             # Check for commands
             command = self.input_manager.get_command(timeout=0.5)
             if command:
-                result = self.command_processor.execute_command(command)
+                try:
+                    result = self.command_processor.execute_command(command)
 
-                # Display result
-                if 'success' in result:
-                    print(f"\033[32m✓\033[0m {result['message']}")
-                elif 'error' in result:
-                    print(f"\033[31m✗\033[0m {result['error']}")
-                    if 'message' in result:
-                        print(f"  {result['message']}")
+                    # Display result
+                    if 'success' in result:
+                        print(f"\033[32m✓\033[0m {result['message']}")
+                    elif 'error' in result:
+                        print(f"\033[31m✗\033[0m {result['error']}")
+                        if 'message' in result:
+                            print(f"  {result['message']}")
+
+                except Exception as e:
+                    # Catch CommandValidationError and other exceptions
+                    from src.utils.command_processor import CommandValidationError
+
+                    if isinstance(e, CommandValidationError):
+                        print(f"\033[31m✗ Error:\033[0m {e.message}")
+                        print(f"\033[33mAvailable commands:\033[0m {', '.join(e.available_commands)}")
+                        print("\033[2mType /help for usage information\033[0m")
+                    else:
+                        print(f"\033[31m✗ Unexpected error:\033[0m {e}")
+                        logger.exception("Error processing interactive command")
 
                 # Check if we should continue
                 if not self.paused:

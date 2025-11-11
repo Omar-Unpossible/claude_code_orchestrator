@@ -12,6 +12,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Metrics & Reporting System
 - Checkpoint System
 
+## [1.5.0] - 2025-11-11
+
+### Changed - BREAKING
+- **Interactive Mode UX Improvement**: Natural text now defaults to orchestrator
+  - **Natural language messages (no slash prefix) sent directly to orchestrator** - Eliminates friction for primary use case
+  - **ALL system commands now require '/' prefix as first character** - Including `/help`, `/status`, `/pause`, `/resume`, `/stop`
+  - **Invalid slash commands rejected with helpful error message** - Shows available commands and suggests `/help`
+  - **Removed `/to-orch` command** - Natural text is default (no prefix needed)
+  - **Updated slash commands**: `/help`, `/status`, `/pause`, `/resume`, `/stop`, `/to-impl`, `/override-decision`
+  - **Prompt indicator** - No change needed (orchestrator context already clear)
+  - **Tab completion** - Updated to only complete slash commands when input starts with `/`
+  - **Bottom toolbar** - Added: "Type naturally to talk to orchestrator, or /help for commands"
+
+### Migration Guide
+**Old Syntax → New Syntax:**
+- `help` → `/help`
+- `status` → `/status`
+- `/to-orch Be more lenient` → `Be more lenient with quality`
+- `/to-impl fix bug` → `/to-impl fix bug` (unchanged)
+- `pause` → `/pause`
+- `resume` → `/resume`
+
+**Rationale:** Eliminates friction for primary use case (orchestrator communication). Asymmetry between orchestrator (default) and implementer (/to-impl) is intentional - orchestrator is primary interface for guidance.
+
+### Added
+- `CommandValidationError` exception for invalid slash commands
+- Tab completion for all slash commands (only when input starts with `/`)
+- Bottom toolbar with usage hints in InputManager
+- Comprehensive documentation in `INTERACTIVE_UX_IMPROVEMENT_PLAN.md` and `INTERACTIVE_UX_IMPLEMENTATION_CHECKLIST.md`
+
+### Technical Details
+- **CommandProcessor** (`src/utils/command_processor.py`):
+  - New routing logic: `execute_command()` routes non-slash to orchestrator
+  - New method: `_send_to_orchestrator()` for default routing
+  - New method: `_process_slash_command()` with validation
+  - Updated help text with new command syntax
+- **Orchestrator** (`src/orchestrator.py`):
+  - Error handling improvements in `_check_interactive_commands()` and `_wait_for_resume()`
+  - Catches `CommandValidationError` and shows helpful messages
+- **InputManager** (`src/utils/input_manager.py`):
+  - New `SlashCommandCompleter` class for context-aware completion
+  - Updated `SLASH_COMMANDS` list
+  - Added bottom toolbar hint
+
+### Documentation
+- Updated `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` with v1.5.0 UX changes
+- Added `docs/development/INTERACTIVE_UX_IMPROVEMENT_PLAN.md` (human-readable plan)
+- Added `docs/development/INTERACTIVE_UX_IMPLEMENTATION_CHECKLIST.md` (machine-optimized checklist)
+
 ## [1.4.0] - 2025-11-11
 
 ### Added

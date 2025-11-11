@@ -3,8 +3,8 @@
 This module provides command parsing and execution for interactive orchestration,
 allowing users to inject context, override decisions, and control execution flow.
 
-Integrates Natural Language Command Interface (Story 5) to process non-slash-command
-input through the NL pipeline (intent classification → entity extraction → execution).
+v1.5.0: Natural language defaults to orchestrator (no slash prefix needed).
+All system commands require '/' prefix as first character.
 
 Part of Interactive Streaming Interface (Phase 2) + NL Commands (v1.3).
 """
@@ -18,30 +18,62 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class CommandValidationError(Exception):
+    """Raised when slash command is invalid.
+
+    Attributes:
+        message: Error message
+        available_commands: List of valid slash commands
+    """
+
+    def __init__(self, message: str, available_commands: list):
+        super().__init__(message)
+        self.message = message
+        self.available_commands = available_commands
+
 # Maximum length for injected text (~1250 tokens)
 MAX_INJECTED_TEXT_LENGTH = 5000
 
 # Valid decision types that can be overridden
 VALID_DECISIONS = ['proceed', 'retry', 'clarify', 'escalate', 'checkpoint']
 
-# Help text for all commands
-HELP_TEXT = {
-    '/pause': 'Pause execution after current turn. Resume with /resume.',
-    '/resume': 'Resume paused execution.',
-    '/to-impl': 'Send message to implementer (Claude Code). Aliases: /to-claude, /to-implementer. Max 5000 chars. Example: /to-impl Add unit tests',
-    '/to-orch': '''Send message to orchestrator (Qwen/Codex). Aliases: /to-obra, /to-orchestrator. Purpose depends on message content. Examples:
-  - Validation guidance: /to-orch Be more lenient with quality scores
-  - Decision override: /to-orch Accept this response even if quality is low
-  - Feedback request: /to-orch Analyze this code and suggest improvements to implementer''',
-    '/override-decision': 'Override current decision. Valid: proceed, retry, clarify, escalate, checkpoint. Example: /override-decision retry',
-    '/status': 'Show current task status, iteration, quality score, token usage.',
-    '/help': 'Show this help message or help for specific command.',
-    '/stop': 'Stop execution gracefully (completes current turn, saves state).',
+# Help text for all commands (v1.5.0)
+HELP_TEXT = """
+Interactive Mode Commands (v1.5.0):
 
-    # Deprecated (show but indicate aliases)
-    '/to-claude': 'DEPRECATED: Use /to-impl instead. Alias for /to-impl.',
-    '/to-obra': 'DEPRECATED: Use /to-orch instead. Alias for /to-orch.',
-}
+DEFAULT BEHAVIOR:
+  <natural text>              Send message to orchestrator (no prefix needed)
+
+SLASH COMMANDS (must start with '/'):
+  /help                       Show this help message
+  /status                     Show current task status, iteration, quality score
+  /pause                      Pause execution (before next checkpoint)
+  /resume                     Resume paused execution
+  /stop                       Stop execution gracefully (completes turn, saves state)
+  /to-impl <message>          Send message to implementer (Claude Code)
+                              Aliases: /to-claude, /to-implementer
+                              Max 5000 chars. Example: /to-impl Add unit tests
+  /override-decision <choice> Override orchestrator's decision
+                              Valid: proceed, retry, clarify, escalate, checkpoint
+
+EXAMPLES:
+  Be more lenient with quality scores                 → Sent to orchestrator
+  Should I retry or escalate this task?               → Sent to orchestrator
+  /to-impl fix the type error in src/auth.py          → Sent to Claude
+  /status                                              → Show status
+  /pause                                               → Pause before next checkpoint
+
+NOTE: Messages starting with '/' must be valid commands. To send natural
+      language to the orchestrator, do not start with '/'.
+
+ORCHESTRATOR CAPABILITIES:
+  Natural language messages can:
+  - Provide validation guidance (affects quality scoring)
+  - Request decision advice (get recommendations)
+  - Ask for feedback (orchestrator analyzes and provides suggestions)
+  - General orchestration questions
+"""
 
 
 class CommandProcessor:
@@ -183,9 +215,9 @@ class CommandProcessor:
     def execute_command(self, input_str: str) -> Dict[str, Any]:
         """Execute a command (slash command or natural language).
 
-        Routes input to appropriate handler:
+        Routes input to appropriate handler (v1.5.0 behavior):
         - Slash commands (/pause, /resume, etc.) → slash command handler
-        - Non-slash commands → NL command processor (if enabled)
+        - Non-slash commands → Send to orchestrator (default)
 
         Args:
             input_str: User input string
@@ -193,14 +225,17 @@ class CommandProcessor:
         Returns:
             Result dict with 'success' or 'error' key and 'message'
 
+        Raises:
+            CommandValidationError: If slash command is invalid
+
         Example:
             >>> # Slash command
             >>> result = processor.execute_command('/pause')
             >>> if 'success' in result:
             ...     print(result['message'])
 
-            >>> # Natural language command
-            >>> result = processor.execute_command('Create epic for user auth')
+            >>> # Natural language (new default behavior)
+            >>> result = processor.execute_command('Be more lenient with quality')
             >>> print(result['message'])
         """
         input_str = input_str.strip()
@@ -211,33 +246,50 @@ class CommandProcessor:
         # Check if it's a slash command
         if input_str.startswith('/'):
             return self._execute_slash_command(input_str)
-
-        # Route to NL processor if enabled
-        if self.nl_processor:
-            return self._execute_nl_command(input_str)
         else:
-            # NL processor not available - provide helpful message
-            return {
-                'error': 'Natural language commands not enabled',
-                'message': 'Use slash commands like /help or enable nl_commands in config'
-            }
+            # Default: Send to orchestrator
+            return self._send_to_orchestrator(input_str)
 
     def _execute_slash_command(self, input_str: str) -> Dict[str, Any]:
-        """Execute slash command.
+        """Execute slash command with validation.
 
         Args:
             input_str: Slash command string
 
         Returns:
             Result dict with 'success' or 'error' key and 'message'
+
+        Raises:
+            CommandValidationError: If slash command is invalid
         """
-        command, args = self.parse_command(input_str)
+        # Remove leading slash and parse
+        parts = input_str[1:].split(maxsplit=1)
+
+        if not parts or not parts[0]:
+            raise CommandValidationError(
+                "Invalid command: slash with no command name",
+                available_commands=list(self.commands.keys())
+            )
+
+        command = '/' + parts[0].lower()
+        args_str = parts[1] if len(parts) > 1 else ''
 
         if command not in self.commands:
-            return {
-                'error': f'Unknown command: {command}',
-                'message': 'Type /help for available commands'
-            }
+            raise CommandValidationError(
+                f"Unknown command: {command}",
+                available_commands=list(self.commands.keys())
+            )
+
+        # Build args dict based on command (reuse existing logic)
+        args: Dict[str, Any] = {}
+
+        if command in ['/to-impl', '/to-orch', '/to-implementer', '/to-orchestrator',
+                       '/to-claude', '/to-obra']:
+            args['message'] = args_str
+        elif command == '/override-decision':
+            args['decision'] = args_str.lower()
+        elif command == '/help':
+            args['command'] = args_str.lower() if args_str else None
 
         try:
             return self.commands[command](args)
@@ -247,8 +299,28 @@ class CommandProcessor:
                 'error': f'Command failed: {str(e)}'
             }
 
+    def _send_to_orchestrator(self, message: str) -> Dict[str, Any]:
+        """Send natural language message to orchestrator.
+
+        This is the default action for non-slash input (v1.5.0).
+
+        Args:
+            message: Natural language text from user
+
+        Returns:
+            Result dict with orchestrator response
+        """
+        self.logger.debug(f"Routing natural language to orchestrator: {message[:50]}...")
+
+        # Reuse existing _to_orch logic
+        return self._to_orch({'message': message})
+
     def _execute_nl_command(self, input_str: str) -> Dict[str, Any]:
         """Execute natural language command via NL processor.
+
+        NOTE: This method is deprecated in v1.5.0. Natural language input
+        now routes to orchestrator by default. NL processor functionality
+        is preserved for backward compatibility if explicitly enabled.
 
         Args:
             input_str: Natural language input
@@ -522,33 +594,11 @@ class CommandProcessor:
         Returns:
             Success result with help text
         """
-        command = args.get('command')
-
-        if command:
-            # Show help for specific command
-            if not command.startswith('/'):
-                command = '/' + command
-
-            if command in HELP_TEXT:
-                return {
-                    'success': True,
-                    'message': f'{command}: {HELP_TEXT[command]}'
-                }
-            else:
-                return {
-                    'error': f'Unknown command: {command}',
-                    'message': 'Type /help for all commands'
-                }
-        else:
-            # Show help for all commands
-            help_lines = ['Available commands:']
-            for cmd, help_text in HELP_TEXT.items():
-                help_lines.append(f'  {cmd}: {help_text}')
-
-            return {
-                'success': True,
-                'message': '\n'.join(help_lines)
-            }
+        # v1.5.0: HELP_TEXT is now a single formatted string
+        return {
+            'success': True,
+            'message': HELP_TEXT
+        }
 
     def _stop(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Stop execution gracefully.

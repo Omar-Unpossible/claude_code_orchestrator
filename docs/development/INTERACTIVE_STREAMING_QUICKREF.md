@@ -6,6 +6,29 @@
 
 ---
 
+## 🆕 v1.5.0 UX Improvement (2025-11-11)
+
+**Natural language now defaults to orchestrator!** No more `/to-orch` prefix needed.
+
+### What Changed:
+- **Natural text (no slash) → Orchestrator** - Just type naturally to talk to Obra
+- **ALL system commands require `/` prefix** - Including `/help`, `/status`, etc.
+- **Invalid slash commands rejected** - Helpful error messages guide you
+
+### Examples:
+```bash
+# OLD (v1.4.0)                    # NEW (v1.5.0)
+/to-orch Be lenient              Be lenient with quality
+/to-orch Should I retry?         Should I retry this task?
+help                              /help
+status                            /status
+/to-impl Fix bug                 /to-impl Fix bug (unchanged)
+```
+
+**Migration**: Remove `/to-orch` prefix from natural language. Add `/` prefix to all system commands.
+
+---
+
 ## TL;DR
 
 Add `--stream` and `--interactive` flags to Obra CLI for real-time visibility and control:
@@ -18,15 +41,15 @@ Add `--stream` and `--interactive` flags to Obra CLI for real-time visibility an
 ./venv/bin/python -m src.cli task execute 3 --stream --interactive
 ```
 
-**Commands** (NEW: Dynamic labels + orchestrator messaging):
-- `/to-impl <message>` - Send message to implementer (Claude Code)
-  - Aliases: `/to-claude` (legacy), `/to-implementer`
-- `/to-orch <message>` - Send message to orchestrator (Qwen/Codex)
-  - Aliases: `/to-obra` (legacy), `/to-orchestrator`
-  - Auto-detects intent: validation guidance, decision hints, feedback requests
+**Commands (v1.5.0)**:
+- **Natural text (no slash)** - Send message to orchestrator (DEFAULT)
+- `/help` - Show help message
+- `/status` - Show current task status, iteration, quality score
 - `/pause` / `/resume` - Pause/resume execution
-- `/override-decision RETRY` - Override Obra's decision
-- `/status` - Show current metrics
+- `/stop` - Stop execution gracefully
+- `/to-impl <message>` - Send message to implementer (Claude Code)
+  - Aliases: `/to-claude`, `/to-implementer`
+- `/override-decision <choice>` - Override orchestrator's decision
 
 **Display**: Shows actual LLM in use (`[ORCH:ollama]` or `[ORCH:openai-codex]`)
 
