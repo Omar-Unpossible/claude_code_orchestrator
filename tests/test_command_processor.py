@@ -243,31 +243,36 @@ class TestCommandExecution:
         assert '⏸️  PAUSED' in result['message']
 
     def test_execute_help_all_commands(self, processor):
-        """Test executing /help without arguments."""
+        """Test executing /help without arguments (v1.5.0)."""
         result = processor.execute_command('/help')
 
         assert 'success' in result
-        assert 'Available commands:' in result['message']
+        assert 'Interactive Mode Commands (v1.5.0)' in result['message']
+        assert 'DEFAULT BEHAVIOR:' in result['message']
+        assert 'SLASH COMMANDS' in result['message']
+        assert 'EXAMPLES:' in result['message']
 
-        # Check all commands are listed
-        for cmd in ['/pause', '/resume', '/to-claude', '/to-obra',
-                    '/override-decision', '/status', '/help', '/stop']:
+        # Check essential commands are listed
+        for cmd in ['/pause', '/resume', '/to-impl', '/override-decision', '/status', '/help', '/stop']:
             assert cmd in result['message']
 
+    @pytest.mark.skip("v1.5.0: Help format changed - no longer supports specific command help")
     def test_execute_help_specific_command(self, processor):
         """Test executing /help with specific command."""
         result = processor.execute_command('/help to-claude')
 
         assert 'success' in result
-        assert '/to-claude' in result['message']
-        assert HELP_TEXT['/to-claude'] in result['message']
+        # v1.5.0: Returns full help text regardless of argument
+        assert 'Interactive Mode Commands (v1.5.0)' in result['message']
 
+    @pytest.mark.skip("v1.5.0: Help format changed - no longer supports specific command help")
     def test_execute_help_unknown_command(self, processor):
         """Test executing /help with unknown command."""
         result = processor.execute_command('/help unknown-cmd')
 
-        assert 'error' in result
-        assert 'Unknown command' in result['error']
+        assert 'success' in result
+        # v1.5.0: Returns full help text regardless of argument
+        assert 'Interactive Mode Commands (v1.5.0)' in result['message']
 
     def test_execute_stop(self, processor, mock_orchestrator):
         """Test executing /stop command."""
@@ -278,12 +283,15 @@ class TestCommandExecution:
         assert mock_orchestrator.stop_requested is True
 
     def test_execute_unknown_command(self, processor):
-        """Test executing unknown command."""
-        result = processor.execute_command('/unknown')
+        """Test executing unknown command (v1.5.0: raises CommandValidationError)."""
+        from src.utils.command_processor import CommandValidationError
 
-        assert 'error' in result
-        assert 'Unknown command: /unknown' in result['error']
-        assert 'Type /help' in result['message']
+        with pytest.raises(CommandValidationError) as exc_info:
+            processor.execute_command('/unknown')
+
+        assert 'Unknown command: /unknown' in str(exc_info.value)
+        assert len(exc_info.value.available_commands) > 0
+        assert '/help' in exc_info.value.available_commands
 
     def test_execute_empty_command(self, processor):
         """Test executing empty command."""
@@ -444,17 +452,16 @@ class TestCommandRegistry:
             assert cmd in processor.commands
             assert callable(processor.commands[cmd])
 
-    def test_help_text_for_all_commands(self):
-        """Test help text exists for all commands."""
-        expected_commands = [
-            '/pause', '/resume', '/to-claude', '/to-obra',
-            '/override-decision', '/status', '/help', '/stop'
-        ]
+    def test_help_text_contains_all_commands(self):
+        """Test help text contains all registered slash commands (v1.5.0)."""
+        # v1.5.0: HELP_TEXT is a single formatted string
+        assert isinstance(HELP_TEXT, str)
+        assert len(HELP_TEXT) > 0
 
-        for cmd in expected_commands:
-            assert cmd in HELP_TEXT
-            assert isinstance(HELP_TEXT[cmd], str)
-            assert len(HELP_TEXT[cmd]) > 0
+        # Verify all essential slash commands mentioned in help text
+        essential_commands = ['/help', '/status', '/pause', '/resume', '/stop', '/to-impl', '/override-decision']
+        for cmd in essential_commands:
+            assert cmd in HELP_TEXT, f"Command {cmd} not found in help text"
 
 
 class TestMessagePreviews:
