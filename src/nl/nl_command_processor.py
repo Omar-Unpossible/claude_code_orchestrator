@@ -30,7 +30,7 @@ from plugins.base import LLMPlugin
 from nl.intent_classifier import IntentClassifier
 from nl.entity_extractor import EntityExtractor
 from nl.command_validator import CommandValidator
-from nl.command_executor import CommandExecutor
+from nl.command_executor import CommandExecutor, ExecutionResult
 from nl.response_formatter import ResponseFormatter
 
 logger = logging.getLogger(__name__)
@@ -46,14 +46,14 @@ class NLResponse:
         success: True if command executed successfully
         updated_context: Updated conversation context
         forwarded_to_claude: True if question forwarded to Claude Code
-        execution_result: Optional execution result details
+        execution_result: Optional ExecutionResult from command execution
     """
     response: str
     intent: str
     success: bool
     updated_context: Dict[str, Any] = field(default_factory=dict)
     forwarded_to_claude: bool = False
-    execution_result: Optional[Dict[str, Any]] = None
+    execution_result: Optional['ExecutionResult'] = None
 
 
 class NLCommandProcessor:
@@ -300,10 +300,7 @@ class NLCommandProcessor:
                 intent='COMMAND',
                 success=execution_result.success,
                 updated_context=updated_context,
-                execution_result={
-                    'created_ids': execution_result.created_ids,
-                    'entity_type': extracted.entity_type
-                }
+                execution_result=execution_result
             )
 
         except Exception as e:
@@ -495,7 +492,7 @@ class NLCommandProcessor:
                     response=response,
                     intent='COMMAND',
                     success=True,
-                    execution_result={'project_id': proj_id}
+                    execution_result=None  # Query operation, no entities created
                 )
             else:
                 # List all projects

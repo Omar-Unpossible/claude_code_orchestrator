@@ -87,11 +87,14 @@ def real_state_manager(real_llm_config):
 def real_llm_interface(real_llm_config):
     """Real LLM interface for direct testing"""
     from src.llm.local_interface import LocalLLMInterface
-    return LocalLLMInterface(
-        model=real_llm_config.get('llm.model'),
-        base_url=real_llm_config.get('llm.base_url'),
-        timeout=real_llm_config.get('llm.timeout')
-    )
+    llm = LocalLLMInterface()
+    llm.initialize({
+        'model': real_llm_config.get('llm.model'),
+        'endpoint': real_llm_config.get('llm.base_url'),
+        'timeout': real_llm_config.get('llm.timeout'),
+        'temperature': real_llm_config.get('llm.temperature', 0.1)
+    })
+    return llm
 
 
 @pytest.fixture
@@ -393,8 +396,8 @@ class TestRealLLMFullPipeline:
     def test_create_task_with_dependencies(self, real_nl_processor, real_state_manager):
         """REAL LLM: Full pipeline - create task with dependencies"""
         # Create prerequisite tasks
-        task1 = real_state_manager.create_task(1, "Setup environment", "Install dependencies")
-        task2 = real_state_manager.create_task(1, "Configure database", "Set up DB schema")
+        task1 = real_state_manager.create_task(1, {"title": "Setup environment", "description": "Install dependencies"})
+        task2 = real_state_manager.create_task(1, {"title": "Configure database", "description": "Set up DB schema"})
 
         response = real_nl_processor.process(
             f"Create task 'Run migrations' that depends on tasks {task1} and {task2}"
@@ -477,11 +480,12 @@ class TestRealLLMFailureModes:
         real_llm_config.set('llm.timeout', 1.0)  # 1 second - too short for most LLM calls
 
         from src.llm.local_interface import LocalLLMInterface
-        llm = LocalLLMInterface(
-            model='qwen2.5-coder:32b',
-            base_url='http://172.29.144.1:11434',
-            timeout=1.0
-        )
+        llm = LocalLLMInterface()
+        llm.initialize({
+            'model': 'qwen2.5-coder:32b',
+            'endpoint': 'http://172.29.144.1:11434',
+            'timeout': 1.0
+        })
 
         extractor = EntityExtractor(llm_plugin=llm)
 
@@ -502,11 +506,12 @@ class TestRealLLMFailureModes:
         from src.llm.local_interface import LocalLLMInterface
 
         # Configure wrong URL
-        llm = LocalLLMInterface(
-            model='qwen2.5-coder:32b',
-            base_url='http://invalid.url:99999',  # Invalid URL
-            timeout=5.0
-        )
+        llm = LocalLLMInterface()
+        llm.initialize({
+            'model': 'qwen2.5-coder:32b',
+            'endpoint': 'http://invalid.url:99999',  # Invalid URL
+            'timeout': 5.0
+        })
 
         classifier = IntentClassifier(llm_plugin=llm)
 
