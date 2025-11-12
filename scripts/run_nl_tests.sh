@@ -13,6 +13,18 @@
 
 set -e  # Exit on error
 
+# Activate virtual environment if it exists
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+if [ -f "$PROJECT_ROOT/venv/bin/activate" ]; then
+    source "$PROJECT_ROOT/venv/bin/activate"
+elif [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+    source "$PROJECT_ROOT/.venv/bin/activate"
+else
+    echo "Warning: No virtual environment found. Assuming pytest is in PATH."
+fi
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

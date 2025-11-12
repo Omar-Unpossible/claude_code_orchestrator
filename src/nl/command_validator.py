@@ -148,7 +148,13 @@ class CommandValidator:
         """
         errors = []
 
-        # Define required fields per entity type
+        # If entity has 'id', it's an UPDATE operation - only validate presence of id
+        # For updates, any additional fields present will be updated, but not all are required
+        if 'id' in entity:
+            # Update operation - only 'id' is required
+            return errors
+
+        # CREATE operation - validate all required fields
         required_fields = {
             'epic': ['title'],
             'story': ['title'],
