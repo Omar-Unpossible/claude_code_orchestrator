@@ -1,0 +1,103 @@
+# Quick Reference Template for New Issues
+# Copy this template when adding a new issue to MANUAL_TESTING_LOG.yaml
+
+- id: "ISSUE-XXX"  # Replace with next sequential number
+  title: "Brief descriptive title (5-10 words)"
+  description: |
+    Detailed description of the issue. Include:
+    - What you were doing when you encountered it
+    - Context about your testing scenario
+    - Why this is a problem
+    - Any initial observations
+
+  # === REQUIRED FIELDS ===
+  timestamp: "YYYY-MM-DDTHH:MM:SSZ"  # ISO 8601 format
+  reporter: "Your Name"
+  category: "CATEGORY_HERE"  # See categories in ISSUE_LOG_GUIDE.md
+  severity: "MEDIUM"  # CRITICAL/HIGH/MEDIUM/LOW
+  type: "BUG"  # BUG/PERFORMANCE/UX/ARCHITECTURAL/ENHANCEMENT/DOCUMENTATION
+  status: "OPEN"  # OPEN/IN_PROGRESS/RESOLVED/CLOSED/WONT_FIX/DUPLICATE
+
+  # === CONTEXT ===
+  version: "v1.5.0"
+  environment:
+    os: "WSL2 Ubuntu 22.04"
+    python: "3.11"
+    llm_provider: "Ollama/Qwen 2.5 Coder 32B"
+    agent: "Claude Code CLI"
+
+  # === REPRODUCTION ===
+  steps_to_reproduce:
+    - "Step 1: ..."
+    - "Step 2: ..."
+    - "Step 3: ..."
+
+  expected_behavior: "What should have happened"
+  actual_behavior: "What actually happened"
+
+  # === COMPONENTS ===
+  affected_components:
+    - "src/module.py"
+    - "src/another_module.py"
+
+  # === ANALYSIS (Fill in during investigation) ===
+  root_cause: |
+    Analysis of why this happened. Update as you investigate.
+
+  impact_analysis:
+    user_impact: "How this affects users"
+    system_impact: "Technical impact on the system"
+    frequency: "always/often/sometimes/rare"
+
+  # === RESOLUTION (Fill in when fixed) ===
+  resolution:
+    approach: "How you fixed it or plan to fix it"
+    implemented_in: "commit-sha or PR-number"
+    verified_date: "YYYY-MM-DD"
+    verification_notes: "How you verified the fix"
+
+  # === RELATED ITEMS ===
+  related_links:
+    adr: []  # ["ADR-001"]
+    commits: []  # ["abc123"]
+    prs: []  # ["#42"]
+    issues: []  # ["ISSUE-001"]
+
+  # === TAGS ===
+  tags:
+    - "tag1"
+    - "tag2"
+
+  # === FOLLOW-UP ===
+  follow_up_needed: false
+  follow_up_tasks: []  # ["Task 1", "Task 2"]
+
+  # === NOTES ===
+  notes: |
+    Additional context, observations, or thoughts about this issue.
+
+# ==========================================
+# QUICK REFERENCE: Common Categories
+# ==========================================
+# STATE_MANAGEMENT, ORCHESTRATION, AGENT_COMMUNICATION, LLM_INTEGRATION,
+# VALIDATION, DECISION_ENGINE, CONFIGURATION, CLI, INTERACTIVE_MODE,
+# GIT_INTEGRATION, NATURAL_LANGUAGE, AGILE_WORKFLOW, PROJECT_INFRASTRUCTURE,
+# PERFORMANCE, ARCHITECTURE
+
+# ==========================================
+# QUICK REFERENCE: Severity Guidelines
+# ==========================================
+# CRITICAL: System crash, data loss, security vulnerability
+# HIGH: Major functionality broken, blocks workflow
+# MEDIUM: Functionality impaired, workaround exists
+# LOW: Minor issue, cosmetic, enhancement
+
+# ==========================================
+# QUICK REFERENCE: Issue Types
+# ==========================================
+# BUG: Functional defect
+# PERFORMANCE: Speed/resource issue
+# UX: User experience problem
+# ARCHITECTURAL: Design/pattern concern
+# ENHANCEMENT: Feature request
+# DOCUMENTATION: Docs issue

@@ -22,7 +22,7 @@
 - **[Data Flow](architecture/data_flow.md)** - How data moves through the system
 - **[System Design](architecture/system_design.md)** - High-level design decisions
 
-### 📋 Architecture Decision Records (ADRs) - 14 Total
+### 📋 Architecture Decision Records (ADRs) - 15 Total
 **Foundation ADRs (001-006)**:
 - **[ADR-001: Why Plugins](decisions/001_why_plugins.md)** - Plugin system rationale
 - **[ADR-002: Deployment Models](decisions/002_deployment_models.md)** - SSH/Docker/Local options
@@ -32,11 +32,12 @@
 - **[ADR-005: Claude-Driven Parallelization](decisions/ADR-005-claude-driven-parallelization.md)** - Parallelization approach
 - **[ADR-006: LLM-First Prompts](decisions/ADR-006-llm-first-prompts.md)** - Hybrid prompt format
 
-**Feature ADRs (007-015)**:
+**Feature ADRs (007-016)**:
 - **[ADR-007-012: Various Features](decisions/)** - Session management, context, quality control, etc.
 - **[ADR-013: Agile Work Hierarchy](decisions/ADR-013-adopt-agile-work-hierarchy.md)** - Epic/story/task model (v1.3.0)
 - **[ADR-014: Natural Language Command Interface](decisions/ADR-014-natural-language-command-interface.md)** - Conversational commands (v1.3.0)
 - **[ADR-015: Project Infrastructure Maintenance](decisions/ADR-015-project-infrastructure-maintenance-system.md)** - Auto documentation maintenance (v1.4.0) ✅
+- **[ADR-016: Decompose NL Entity Extraction](decisions/ADR-016-decompose-nl-entity-extraction.md)** - NL pipeline refactor (v1.6.0 - Proposed) 🆕
 
 ### 🛠️ Development
 **Active Development**:
@@ -46,11 +47,21 @@
 - **[WSL2 Postmortem](development/WSL2_TEST_CRASH_POSTMORTEM.md)** - Test crash analysis and fixes
 - **[NL Command Interface Spec](development/NL_COMMAND_INTERFACE_SPEC.json)** - Machine-readable NL spec (v1.3.0)
 - **[NL Command Test Specification](development/NL_COMMAND_TEST_SPECIFICATION.md)** - Comprehensive test plan (v1.3.0)
+- **[ADR-016 Plans](development/)** - NL Pipeline Decomposition (v1.6.0 - Proposed) 🆕
+  - `ADR016_SUMMARY.md` - Executive summary and quick overview
+  - `ADR016_IMPLEMENTATION_PLAN.md` - Human-readable detailed plan
+  - `ADR016_IMPLEMENTATION_PLAN.yaml` - Machine-optimized for LLM
+  - `ADR016_EPIC_BREAKDOWN.md` - Story hierarchy and task breakdown
 - **[Project Infrastructure Plans](development/)** - v1.4.0 implementation plans ✅
   - `PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.md` - Human-readable plan
   - `PROJECT_INFRASTRUCTURE_IMPLEMENTATION_PLAN.yaml` - Machine-optimized for LLM
   - `PROJECT_INFRASTRUCTURE_EPIC_BREAKDOWN.md` - Epic/story breakdown
   - Story summaries: `STORY_1.1_*`, `STORY_1.4_*`, `STORY_2.1_*`
+
+### 📊 Quality Assurance
+- **[Manual Testing Log](quality/MANUAL_TESTING_LOG.yaml)** - Issue tracking for pattern analysis (NEW) 🆕
+- **[Issue Log Guide](quality/ISSUE_LOG_GUIDE.md)** - How to use the manual testing log
+- **[Issue Analysis Tool](quality/analyze_issues.py)** - Generate statistics and insights
 
 **Completed Plans** (Archived):
 - See `archive/development/` for completed implementation plans:
@@ -123,6 +134,12 @@ docs/
 │   ├── NL_COMMAND_INTERFACE_SPEC.json    🆕 v1.3.0
 │   ├── NL_COMMAND_TEST_SPECIFICATION.md  🆕 v1.3.0
 │   └── phase-reports/                    (Phase completion summaries)
+├── quality/                           # Quality assurance (NEW) 🆕
+│   ├── README.md                         (Quality directory overview)
+│   ├── MANUAL_TESTING_LOG.yaml           (Issue tracking log)
+│   ├── ISSUE_LOG_GUIDE.md                (How to use the log)
+│   ├── ISSUE_TEMPLATE.yaml               (Template for new issues)
+│   └── analyze_issues.py                 (Analysis utility)
 ├── business_dev/                      # Business documentation (3 docs)
 │   ├── obra_pitch_deck.md
 │   ├── pitch_overview.md

@@ -2,7 +2,13 @@
 
 This module orchestrates the entire NL command pipeline:
 - Intent classification (COMMAND, QUESTION, CLARIFICATION_NEEDED)
-- Entity extraction with schema awareness
+- 5-stage command processing (ADR-016):
+  1. OperationClassifier: Classify operation (CREATE/UPDATE/DELETE/QUERY)
+  2. EntityTypeClassifier: Classify entity type (project/epic/story/task/milestone)
+  3. EntityIdentifierExtractor: Extract entity identifier (name or ID)
+  4. ParameterExtractor: Extract operation-specific parameters
+  5. Build OperationContext → validate → execute
+- Question handling via QuestionHandler
 - Command validation against business rules
 - Command execution via StateManager
 - Response formatting with color coding
@@ -17,21 +23,36 @@ Example:
     >>> llm_plugin = LLMRegistry.get('ollama')()
     >>> state = StateManager(db_url)
     >>> processor = NLCommandProcessor(llm_plugin, state, config)
-    >>> response = processor.process("Create an epic for user authentication")
+    >>> response = processor.process("Mark the manual tetris test as INACTIVE")
     >>> print(response.response)  # Formatted response
 """
 
 import logging
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
 from core.state import StateManager
 from core.config import Config
 from plugins.base import LLMPlugin
 from nl.intent_classifier import IntentClassifier
-from nl.entity_extractor import EntityExtractor
 from nl.command_validator import CommandValidator
 from nl.command_executor import CommandExecutor, ExecutionResult
 from nl.response_formatter import ResponseFormatter
+from src.nl.types import OperationContext, OperationType, EntityType, QueryType
+
+# New ADR-016 components
+from src.nl.operation_classifier import OperationClassifier
+from src.nl.entity_type_classifier import EntityTypeClassifier
+from src.nl.entity_identifier_extractor import EntityIdentifierExtractor
+from src.nl.parameter_extractor import ParameterExtractor
+from src.nl.question_handler import QuestionHandler
+
+# Legacy component (deprecated)
+try:
+    from nl.entity_extractor import EntityExtractor
+    LEGACY_ENTITY_EXTRACTOR = True
+except ImportError:
+    LEGACY_ENTITY_EXTRACTOR = False
 
 logger = logging.getLogger(__name__)
 
@@ -109,12 +130,41 @@ class NLCommandProcessor:
             confidence_threshold=confidence_threshold
         )
 
-        # Get schema path from config or use default
-        schema_path = config.get('nl_commands.schema_path', 'src/nl/schemas/obra_schema.json')
-        self.entity_extractor = EntityExtractor(
+        # ADR-016: 5-stage pipeline components
+        self.operation_classifier = OperationClassifier(
             llm_plugin=llm_plugin,
-            schema_path=schema_path
+            confidence_threshold=confidence_threshold
         )
+
+        self.entity_type_classifier = EntityTypeClassifier(
+            llm_plugin=llm_plugin,
+            confidence_threshold=confidence_threshold
+        )
+
+        self.entity_identifier_extractor = EntityIdentifierExtractor(
+            llm_plugin=llm_plugin,
+            confidence_threshold=confidence_threshold
+        )
+
+        self.parameter_extractor = ParameterExtractor(
+            llm_plugin=llm_plugin,
+            confidence_threshold=confidence_threshold
+        )
+
+        self.question_handler = QuestionHandler(
+            state_manager=state_manager,
+            llm_plugin=llm_plugin
+        )
+
+        # Legacy entity extractor (deprecated, for backward compatibility)
+        if LEGACY_ENTITY_EXTRACTOR:
+            schema_path = config.get('nl_commands.schema_path', 'src/nl/schemas/obra_schema.json')
+            self.entity_extractor = EntityExtractor(
+                llm_plugin=llm_plugin,
+                schema_path=schema_path
+            )
+        else:
+            self.entity_extractor = None
 
         self.command_validator = CommandValidator(state_manager)
 
@@ -219,7 +269,14 @@ class NLCommandProcessor:
         project_id: Optional[int],
         confirmed: bool
     ) -> NLResponse:
-        """Handle COMMAND intent through extraction → validation → execution.
+        """Handle COMMAND intent through 5-stage pipeline (ADR-016).
+
+        Pipeline stages:
+        1. OperationClassifier → OperationType (CREATE/UPDATE/DELETE/QUERY)
+        2. EntityTypeClassifier → EntityType (project/epic/story/task/milestone)
+        3. EntityIdentifierExtractor → identifier (name or ID)
+        4. ParameterExtractor → parameters (status, priority, etc.)
+        5. Build OperationContext → validate → execute
 
         Args:
             message: User message
@@ -232,23 +289,97 @@ class NLCommandProcessor:
             NLResponse with execution results
         """
         try:
-            # Step 2: Extract entities
-            extracted = self.entity_extractor.extract(message, intent_result.intent)
+            # Stage 1: Classify operation type (CREATE/UPDATE/DELETE/QUERY)
+            logger.debug(f"Stage 1: Classifying operation for: {message}")
+            operation_result = self.operation_classifier.classify(message)
             logger.info(
-                f"Extracted {len(extracted.entities)} {extracted.entity_type}(s) "
-                f"(confidence={extracted.confidence:.2f})"
+                f"Stage 1 complete: Operation={operation_result.operation_type.value} "
+                f"(confidence={operation_result.confidence:.2f})"
             )
 
-            # Special handling for project queries (no entities = query current project)
-            if extracted.entity_type == 'project' and not extracted.entities:
-                return self._handle_project_query(message, context, project_id)
+            # Stage 2: Classify entity type (project/epic/story/task/milestone)
+            logger.debug(f"Stage 2: Classifying entity type (operation={operation_result.operation_type.value})")
+            entity_type_result = self.entity_type_classifier.classify(
+                message,
+                operation=operation_result.operation_type
+            )
+            logger.info(
+                f"Stage 2 complete: EntityType={entity_type_result.entity_type.value} "
+                f"(confidence={entity_type_result.confidence:.2f})"
+            )
 
-            # Step 3: Validate entities
-            validation_result = self.command_validator.validate(extracted)
+            # Stage 3: Extract entity identifier (name or ID)
+            logger.debug(f"Stage 3: Extracting identifier")
+            identifier_result = self.entity_identifier_extractor.extract(
+                message,
+                entity_type=entity_type_result.entity_type,
+                operation=operation_result.operation_type
+            )
+            logger.info(
+                f"Stage 3 complete: Identifier={identifier_result.identifier} "
+                f"(confidence={identifier_result.confidence:.2f})"
+            )
+
+            # Stage 4: Extract parameters (status, priority, dependencies, etc.)
+            logger.debug(f"Stage 4: Extracting parameters")
+            parameter_result = self.parameter_extractor.extract(
+                message,
+                operation=operation_result.operation_type,
+                entity_type=entity_type_result.entity_type
+            )
+            logger.info(
+                f"Stage 4 complete: Parameters={list(parameter_result.parameters.keys())} "
+                f"(confidence={parameter_result.confidence:.2f})"
+            )
+
+            # Stage 5: Build OperationContext
+            logger.debug(f"Stage 5: Building OperationContext")
+
+            # Calculate aggregate confidence (average of all stages)
+            aggregate_confidence = (
+                operation_result.confidence +
+                entity_type_result.confidence +
+                identifier_result.confidence +
+                parameter_result.confidence
+            ) / 4.0
+
+            # Determine query type for QUERY operations
+            query_type = None
+            if operation_result.operation_type == OperationType.QUERY:
+                # Check for hierarchical keywords
+                if any(keyword in message.lower() for keyword in ['workplan', 'hierarchy', 'hierarchical']):
+                    query_type = QueryType.HIERARCHICAL
+                elif any(keyword in message.lower() for keyword in ['next', 'next steps', "what's next"]):
+                    query_type = QueryType.NEXT_STEPS
+                elif any(keyword in message.lower() for keyword in ['backlog', 'pending', 'todo']):
+                    query_type = QueryType.BACKLOG
+                elif any(keyword in message.lower() for keyword in ['roadmap', 'milestone']):
+                    query_type = QueryType.ROADMAP
+                else:
+                    query_type = QueryType.SIMPLE
+
+            operation_context = OperationContext(
+                operation=operation_result.operation_type,
+                entity_type=entity_type_result.entity_type,
+                identifier=identifier_result.identifier,
+                parameters=parameter_result.parameters,
+                query_type=query_type,
+                confidence=aggregate_confidence,
+                raw_input=message
+            )
+
+            logger.info(
+                f"OperationContext built: {operation_context.operation.value} "
+                f"{operation_context.entity_type.value} (confidence={aggregate_confidence:.2f})"
+            )
+
+            # Step 6: Validate OperationContext
+            logger.debug(f"Step 6: Validating OperationContext")
+            validation_result = self.command_validator.validate(operation_context)
 
             if not validation_result.valid:
                 # Validation failed - return error with suggestions
-                error_msg = '; '.join(validation_result.errors)
+                logger.warning(f"Validation failed: {validation_result.errors}")
                 response = self.response_formatter._format_error(
                     type('ExecutionResult', (), {
                         'success': False,
@@ -271,14 +402,20 @@ class NLCommandProcessor:
                     updated_context=updated_context
                 )
 
-            # Step 4: Execute validated command
+            # Step 7: Execute validated command
+            logger.debug(f"Step 7: Executing command")
             execution_result = self.command_executor.execute(
-                validation_result.validated_command,
+                operation_context,
                 project_id=project_id,
                 confirmed=confirmed
             )
 
-            # Step 5: Format response
+            logger.info(
+                f"Execution complete: success={execution_result.success}, "
+                f"created_ids={execution_result.created_ids}"
+            )
+
+            # Step 8: Format response
             response = self.response_formatter.format(
                 execution_result,
                 intent='COMMAND'
@@ -291,7 +428,8 @@ class NLCommandProcessor:
                 {
                     'execution_success': execution_result.success,
                     'created_ids': execution_result.created_ids,
-                    'entity_type': extracted.entity_type
+                    'entity_type': operation_context.entity_type.value,
+                    'operation': operation_context.operation.value
                 }
             )
 
@@ -303,12 +441,28 @@ class NLCommandProcessor:
                 execution_result=execution_result
             )
 
-        except Exception as e:
-            logger.exception(f"Command handling failed: {e}")
+        except ValueError as e:
+            # OperationContext validation error (e.g., UPDATE without identifier)
+            logger.warning(f"OperationContext validation error: {e}")
             error_response = self.response_formatter._format_error(
                 type('ExecutionResult', (), {
                     'success': False,
                     'errors': [str(e)],
+                    'results': {}
+                })()
+            )
+            return NLResponse(
+                response=error_response,
+                intent='COMMAND',
+                success=False
+            )
+
+        except Exception as e:
+            logger.exception(f"Command handling failed at pipeline stage: {e}")
+            error_response = self.response_formatter._format_error(
+                type('ExecutionResult', (), {
+                    'success': False,
+                    'errors': [f"Pipeline error: {str(e)}"],
                     'results': {}
                 })()
             )
@@ -324,7 +478,13 @@ class NLCommandProcessor:
         intent_result: Any,
         context: Dict[str, Any]
     ) -> NLResponse:
-        """Handle QUESTION intent - forward to Claude Code or provide info.
+        """Handle QUESTION intent via QuestionHandler (ADR-016).
+
+        Routes informational questions to the QuestionHandler which:
+        1. Classifies question type (NEXT_STEPS/STATUS/BLOCKERS/PROGRESS/GENERAL)
+        2. Extracts entities from question (project name, task ID, etc.)
+        3. Queries StateManager for relevant data
+        4. Formats helpful response
 
         Args:
             message: User message
@@ -332,39 +492,51 @@ class NLCommandProcessor:
             context: Conversation context
 
         Returns:
-            NLResponse indicating question forwarding
+            NLResponse with informational answer
         """
-        # Check if fallback_to_info is enabled
-        fallback_to_info = self.config.get('nl_commands.fallback_to_info', True)
+        try:
+            logger.debug(f"Handling QUESTION: {message}")
 
-        if fallback_to_info:
-            # Forward to Claude Code for informational response
-            response = (
-                f"Forwarding question to Claude Code: {message}\n"
-                f"(This would integrate with Claude Code's conversational interface)"
+            # Use QuestionHandler to process the question
+            question_response = self.question_handler.handle(message)
+
+            logger.info(
+                f"Question handled: type={question_response.question_type.value}, "
+                f"confidence={question_response.confidence:.2f}"
             )
 
+            # Update conversation context
             updated_context = self._update_conversation_context(
                 message,
                 intent_result.intent,
-                {'forwarded': True}
+                {
+                    'question_type': question_response.question_type.value,
+                    'entities': question_response.entities
+                }
             )
 
             return NLResponse(
-                response=response,
+                response=question_response.answer,
                 intent='QUESTION',
                 success=True,
                 updated_context=updated_context,
-                forwarded_to_claude=True
+                forwarded_to_claude=False  # Handled internally
             )
-        else:
-            # Suggest rephrasing as command
-            response = (
-                "I can help with commands like 'create epic' or 'list tasks'. "
-                "Could you rephrase as an action?"
+
+        except Exception as e:
+            logger.exception(f"Question handling failed: {e}")
+
+            # Fallback behavior - suggest rephrasing as command
+            fallback_response = (
+                f"I couldn't answer that question: {str(e)}\n\n"
+                f"Try rephrasing as a command like:\n"
+                f"  • 'Show me tasks for project X'\n"
+                f"  • 'List next steps'\n"
+                f"  • 'What's the status of epic Y'"
             )
+
             return NLResponse(
-                response=response,
+                response=fallback_response,
                 intent='QUESTION',
                 success=False
             )

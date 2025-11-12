@@ -57,6 +57,17 @@ jobs:
             --cov-report=xml \
             --cov-report=html
 
+      - name: Run infrastructure tests
+        run: |
+          pytest tests/test_database_schema.py \
+                 tests/test_interactive_integration.py \
+                 tests/test_statemanager_strain.py \
+            -v \
+            --cov=src.core \
+            --cov=src.interactive \
+            --cov-append \
+            --cov-report=term
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:

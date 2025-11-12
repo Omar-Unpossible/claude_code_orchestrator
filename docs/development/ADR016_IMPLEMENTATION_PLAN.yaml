@@ -1,0 +1,532 @@
+# ADR-016 Implementation Plan (Machine-Optimized for LLM)
+# Target Version: v1.6.0
+# Estimated Effort: 8-10 days
+# Priority: HIGH
+
+metadata:
+  version: "1.0"
+  created: "2025-11-11"
+  target_version: "v1.6.0"
+  estimated_days: 10
+  priority: "HIGH"
+  status: "Proposed"
+
+goals:
+  - "Increase NL command accuracy from 80-85% to 95%+"
+  - "Resolve ISSUE-001 (HIGH), ISSUE-002 (MEDIUM), ISSUE-003 (MEDIUM)"
+  - "Maintain backward compatibility (103 existing tests must pass)"
+  - "Improve extensibility for new operations and entity types"
+
+non_goals:
+  - "Performance optimization (defer to v1.7+)"
+  - "Multi-language support (defer to v1.7+)"
+  - "Voice input integration (future)"
+  - "Multi-turn conversational context (defer to v1.7+)"
+
+architecture:
+  current:
+    pipeline: "IntentClassifier → EntityExtractor → CommandValidator → CommandExecutor"
+    problem: "EntityExtractor does too much in one LLM call"
+
+  new:
+    command_path:
+      - "IntentClassifier (COMMAND)"
+      - "OperationClassifier (CREATE/UPDATE/DELETE/QUERY)"
+      - "EntityTypeClassifier (project/task/epic/story)"
+      - "EntityIdentifierExtractor (name or ID)"
+      - "ParameterExtractor (status, priority, etc.)"
+      - "CommandValidator (validate context)"
+      - "CommandExecutor (execute with hierarchical query support)"
+
+    question_path:
+      - "IntentClassifier (QUESTION)"
+      - "QuestionHandler (informational response)"
+
+phases:
+  phase_1:
+    name: "Design and Foundation"
+    duration_days: 1
+    goal: "Finalize design, create data structures, approve ADR-016"
+
+    tasks:
+      - id: "1.1"
+        name: "Review and approve ADR-016"
+        duration_hours: 2
+        deliverable: "ADR-016 formally approved"
+
+      - id: "1.2"
+        name: "Create core data structures"
+        duration_hours: 2
+        deliverable: "src/nl/types.py with OperationType, QueryType, OperationContext, QuestionType enums/dataclasses"
+        details:
+          - "OperationType enum: CREATE, UPDATE, DELETE, QUERY"
+          - "QueryType enum: SIMPLE, HIERARCHICAL, NEXT_STEPS, BACKLOG, ROADMAP"
+          - "OperationContext dataclass: operation + entity_type + identifier + parameters"
+          - "QuestionType enum: NEXT_STEPS, STATUS, BLOCKERS, PROGRESS, GENERAL"
+
+      - id: "1.3"
+        name: "Design component interfaces"
+        duration_hours: 2
+        deliverable: "src/nl/base.py with abstract base classes"
+        details:
+          - "Define input/output contracts for each component"
+          - "Specify error handling patterns"
+          - "Document type hints"
+
+      - id: "1.4"
+        name: "Update NL command spec"
+        duration_hours: 2
+        deliverable: "Updated docs/development/NL_COMMAND_INTERFACE_SPEC.json"
+        details:
+          - "Add operation type examples"
+          - "Add parameter extraction examples"
+          - "Add question handling examples"
+
+    success_criteria:
+      - "All data structures documented with docstrings and type hints"
+      - "Stakeholder approval obtained for ADR-016"
+
+  phase_2:
+    name: "Implement New Components"
+    duration_days: 4
+    goal: "Build five new single-responsibility components"
+
+    tasks:
+      - id: "2.1"
+        name: "Implement OperationClassifier"
+        duration_hours: 4
+        day: 2
+        deliverable: "src/nl/operation_classifier.py + 20 tests"
+        details:
+          file: "src/nl/operation_classifier.py"
+          purpose: "Classify command into CREATE/UPDATE/DELETE/QUERY"
+          prompt_template: |
+            Classify the operation type for this command. Choose exactly one:
+            - CREATE: Making something new (create, add, new, make)
+            - UPDATE: Changing existing thing (update, modify, change, mark, set, edit)
+            - DELETE: Removing something (delete, remove, cancel)
+            - QUERY: Asking for information (show, list, display, get, find, what, how)
+
+            Command: "{command}"
+            Operation type (one word):
+          tests:
+            - "5 CREATE examples"
+            - "5 UPDATE examples"
+            - "5 DELETE examples"
+            - "5 QUERY examples"
+
+      - id: "2.2"
+        name: "Implement EntityTypeClassifier"
+        duration_hours: 4
+        day: 2
+        deliverable: "src/nl/entity_type_classifier.py + 25 tests"
+        details:
+          file: "src/nl/entity_type_classifier.py"
+          purpose: "Classify entity type given operation context"
+          prompt_template: |
+            Given that this is a {operation_type} operation, identify the entity type.
+
+            Entity types:
+            - PROJECT: Top-level project/product
+            - EPIC: Large feature (3-15 sessions)
+            - STORY: User deliverable (1 session)
+            - TASK: Technical work (default)
+            - MILESTONE: Checkpoint/release
+
+            Command: "{command}"
+            Operation: {operation_type}
+            Entity type (one word):
+          tests:
+            - "5 PROJECT examples with different operations"
+            - "5 EPIC examples"
+            - "5 STORY examples"
+            - "5 TASK examples"
+            - "5 MILESTONE examples"
+
+      - id: "2.3"
+        name: "Implement EntityIdentifierExtractor"
+        duration_hours: 4
+        day: 3
+        deliverable: "src/nl/entity_identifier_extractor.py + 20 tests"
+        details:
+          file: "src/nl/entity_identifier_extractor.py"
+          purpose: "Extract entity name or ID from command"
+          prompt_template: |
+            Extract the {entity_type} identifier from this command.
+            The identifier can be:
+            - A name (string): "tetris game", "auth system", "user login"
+            - An ID (number): 1, 5, 42
+
+            Command: "{command}"
+            Entity type: {entity_type}
+            Operation: {operation_type}
+            Identifier (name or number):
+          tests:
+            - "10 name-based identifiers"
+            - "10 ID-based identifiers"
+
+      - id: "2.4"
+        name: "Implement ParameterExtractor"
+        duration_hours: 4
+        day: 3
+        deliverable: "src/nl/parameter_extractor.py + 25 tests"
+        details:
+          file: "src/nl/parameter_extractor.py"
+          purpose: "Extract operation-specific parameters (status, priority, dependencies)"
+          prompt_template: |
+            Extract parameters from this command. Return JSON.
+
+            Command: "{command}"
+            Operation: {operation_type}
+            Entity: {entity_type}
+            Expected parameters: {expected_params}
+
+            Return JSON with extracted values. Example:
+            {{"status": "INACTIVE", "priority": "HIGH"}}
+
+            Parameters (JSON):
+          tests:
+            - "5 status updates"
+            - "5 priority settings"
+            - "5 dependencies"
+            - "5 query parameters"
+            - "5 complex combinations"
+
+      - id: "2.5"
+        name: "Implement QuestionHandler"
+        duration_hours: 6
+        day: 4
+        deliverable: "src/nl/question_handler.py + 30 tests"
+        details:
+          file: "src/nl/question_handler.py"
+          purpose: "Handle informational questions gracefully"
+          question_types:
+            - "NEXT_STEPS: What's next, Next tasks"
+            - "STATUS: What's the status, How's progress"
+            - "BLOCKERS: What's blocking, Any issues"
+            - "PROGRESS: Show progress, Completion %"
+            - "GENERAL: Catch-all"
+          approach:
+            - "Step 1: Classify question type (NEXT_STEPS/STATUS/BLOCKERS/PROGRESS/GENERAL)"
+            - "Step 2: Extract entities from question (project name, etc.)"
+            - "Step 3: Query StateManager for relevant data"
+            - "Step 4: Format helpful response"
+          tests:
+            - "6 NEXT_STEPS questions"
+            - "6 STATUS questions"
+            - "6 BLOCKERS questions"
+            - "6 PROGRESS questions"
+            - "6 GENERAL questions"
+
+    deliverables:
+      - "5 new component implementations"
+      - "120 unit tests total"
+      - "All tests passing"
+
+  phase_3:
+    name: "Update Existing Components"
+    duration_days: 2
+    goal: "Modify CommandValidator and CommandExecutor to work with new pipeline"
+
+    tasks:
+      - id: "3.1"
+        name: "Update CommandValidator"
+        duration_hours: 4
+        day: 6
+        deliverable: "Updated src/nl/command_validator.py + 15 tests"
+        changes:
+          - "Accept OperationContext instead of entity list"
+          - "Validate operation + entity type combinations"
+          - "Validate parameters for operation type"
+          - "Check entity exists for UPDATE/DELETE operations"
+        validation_rules:
+          - "UPDATE requires identifier"
+          - "Entity exists check for UPDATE/DELETE"
+          - "Parameters valid for operation (e.g., valid status values)"
+
+      - id: "3.2"
+        name: "Update CommandExecutor"
+        duration_hours: 6
+        day: 6-7
+        deliverable: "Updated src/nl/command_executor.py + 20 tests"
+        changes:
+          - "Accept OperationContext instead of entity list"
+          - "Add hierarchical query support"
+          - "Add query type handling (WORKPLAN, BACKLOG, NEXT_STEPS, ROADMAP)"
+          - "Improve error handling"
+        new_query_types:
+          - "HIERARCHICAL: Show task hierarchies (epics → stories → tasks)"
+          - "NEXT_STEPS: Show next pending tasks"
+          - "BACKLOG: Show all pending tasks"
+          - "ROADMAP: Show milestones and epics"
+
+      - id: "3.3"
+        name: "Update NLCommandProcessor"
+        duration_hours: 4
+        day: 7
+        deliverable: "Updated src/nl/nl_command_processor.py + 10 integration tests"
+        changes:
+          - "Orchestrate new 5-stage pipeline"
+          - "Add error handling at each stage"
+          - "Add QUESTION path to QuestionHandler"
+          - "Log intermediate outputs for debugging"
+
+    deliverables:
+      - "Updated CommandValidator, CommandExecutor, NLCommandProcessor"
+      - "45 tests (15+20+10)"
+
+  phase_4:
+    name: "Testing and Validation"
+    duration_days: 2
+    goal: "Comprehensive testing and issue resolution"
+
+    tasks:
+      - id: "4.1"
+        name: "Unit testing"
+        duration_hours: 4
+        day: 8
+        coverage_targets:
+          OperationClassifier: "95%"
+          EntityTypeClassifier: "95%"
+          EntityIdentifierExtractor: "95%"
+          ParameterExtractor: "90%"
+          QuestionHandler: "90%"
+        total_unit_tests: 165
+
+      - id: "4.2"
+        name: "Integration testing"
+        duration_hours: 4
+        day: 8
+        test_scenarios:
+          - "10 full pipeline tests (CREATE, UPDATE, QUERY, QUESTION)"
+          - "10 error propagation tests"
+          - "103 existing NL tests (must all pass)"
+          - "7 cross-component tests"
+        total_integration_tests: 130
+
+      - id: "4.3"
+        name: "Manual testing"
+        duration_hours: 4
+        day: 9
+        validation_scenarios:
+          issue_001:
+            - "Mark the manual tetris test as INACTIVE → Should update project"
+            - "Set project 1 status to COMPLETED"
+          issue_002:
+            - "List the workplans for the projects → Should show hierarchies"
+            - "Show me the backlog for project 1"
+          issue_003:
+            - "What's next for the tetris game development → Should answer"
+            - "How's project 1 going?"
+          additional:
+            - "20+ diverse commands across all operation types"
+        acceptance_criteria:
+          - "ISSUE-001, ISSUE-002, ISSUE-003 all resolved"
+          - "95%+ accuracy on 30+ manual test commands"
+          - "No critical regressions"
+
+      - id: "4.4"
+        name: "Performance testing"
+        duration_hours: 2
+        day: 9
+        benchmarks:
+          latency_per_stage:
+            IntentClassifier: "<200ms"
+            OperationClassifier: "<150ms"
+            EntityTypeClassifier: "<150ms"
+            EntityIdentifierExtractor: "<150ms"
+            ParameterExtractor: "<150ms"
+            CommandValidator: "<50ms"
+            CommandExecutor: "<100ms"
+            total: "<1000ms (1 second)"
+          throughput: "50+ commands/minute"
+          memory: "<200MB additional"
+        acceptance_criteria:
+          - "End-to-end latency <1.5 seconds (P95)"
+          - "No memory leaks"
+          - "Performance acceptable for interactive use"
+
+    deliverables:
+      - "165 unit tests passing"
+      - "130 integration tests passing"
+      - "95%+ manual testing accuracy"
+      - "Performance benchmarks met"
+      - "ISSUE-001, ISSUE-002, ISSUE-003 resolved"
+
+  phase_5:
+    name: "Documentation and Migration"
+    duration_days: 1
+    goal: "Comprehensive documentation and migration guide"
+
+    tasks:
+      - id: "5.1"
+        name: "Update documentation"
+        duration_hours: 4
+        day: 10
+        documents:
+          - file: "docs/guides/NL_COMMAND_GUIDE.md"
+            changes:
+              - "Add operation type examples"
+              - "Add hierarchical query examples"
+              - "Add question handling examples"
+              - "Update accuracy claims (95%+)"
+          - file: "docs/development/NL_COMMAND_INTERFACE_SPEC.json"
+            changes:
+              - "Add operation types to schema"
+              - "Add parameter extraction examples"
+              - "Add question types"
+          - file: "docs/architecture/ARCHITECTURE.md"
+            changes:
+              - "Update NL interface architecture diagram"
+              - "Document new components"
+              - "Update data flow"
+
+      - id: "5.2"
+        name: "Create migration guide"
+        duration_hours: 2
+        day: 10
+        deliverable: "docs/guides/ADR016_MIGRATION_GUIDE.md"
+        contents:
+          - "Breaking changes (EntityExtractor deprecated)"
+          - "New features (question handling, hierarchical queries)"
+          - "Testing your integration"
+          - "Rollback plan (legacy pipeline via config)"
+
+      - id: "5.3"
+        name: "Update CHANGELOG"
+        duration_hours: 0.5
+        day: 10
+        deliverable: "CHANGELOG.md entry for v1.6.0"
+        sections:
+          - "Added: NL pipeline refactor, hierarchical queries, question handling"
+          - "Fixed: ISSUE-001, ISSUE-002, ISSUE-003"
+          - "Changed: EntityExtractor deprecated, CommandValidator/Executor updated"
+          - "Performance: <1s latency, 95% accuracy"
+
+      - id: "5.4"
+        name: "Update ADR-016 status"
+        duration_hours: 0.5
+        day: 10
+        changes:
+          - "Status: Proposed → Implemented"
+          - "Add implementation date"
+          - "Add actual vs. estimated effort"
+          - "Add lessons learned"
+
+    deliverables:
+      - "Updated NL_COMMAND_GUIDE.md, NL_COMMAND_INTERFACE_SPEC.json, ARCHITECTURE.md"
+      - "Migration guide created"
+      - "CHANGELOG updated"
+      - "ADR-016 status updated to Implemented"
+
+success_metrics:
+  accuracy:
+    simple_commands: "98% (target: 95%)"
+    status_updates: "95% (target: 95%)"
+    hierarchical_queries: "90% (target: 90%)"
+    natural_questions: "92% (target: 90%)"
+    overall: "95%+ (target: 95%)"
+
+  test_coverage:
+    unit_tests: 165
+    integration_tests: 130
+    existing_tests_pass: true
+    manual_testing_accuracy: "95%+"
+
+  performance:
+    latency_p95: "<1.5 seconds"
+    throughput: "50+ commands/minute"
+    memory_overhead: "<200MB"
+
+  issues_resolved:
+    - "ISSUE-001 (HIGH): Entity type misclassification"
+    - "ISSUE-002 (MEDIUM): Hierarchical queries"
+    - "ISSUE-003 (MEDIUM): Question handling"
+
+risks_and_mitigation:
+  - risk: "Breaking changes"
+    mitigation: "Legacy pipeline fallback via config flag"
+    rollback: "nl_commands.use_legacy_pipeline: true"
+
+  - risk: "Performance degradation"
+    mitigation: "Benchmark before/after; optimize if needed"
+    acceptance: "<1.5s latency acceptable"
+
+  - risk: "Test failures"
+    mitigation: "Comprehensive test coverage before merging"
+    process: "No merge until all tests pass"
+
+  - risk: "User confusion"
+    mitigation: "Clear migration guide with examples"
+    support: "Update docs with new command examples"
+
+files_created:
+  new:
+    - "src/nl/types.py"
+    - "src/nl/base.py"
+    - "src/nl/operation_classifier.py"
+    - "src/nl/entity_type_classifier.py"
+    - "src/nl/entity_identifier_extractor.py"
+    - "src/nl/parameter_extractor.py"
+    - "src/nl/question_handler.py"
+    - "tests/nl/test_operation_classifier.py"
+    - "tests/nl/test_entity_type_classifier.py"
+    - "tests/nl/test_entity_identifier_extractor.py"
+    - "tests/nl/test_parameter_extractor.py"
+    - "tests/nl/test_question_handler.py"
+    - "tests/nl/test_integration_nl_pipeline.py"
+    - "docs/guides/ADR016_MIGRATION_GUIDE.md"
+
+  updated:
+    - "src/nl/command_validator.py"
+    - "src/nl/command_executor.py"
+    - "src/nl/nl_command_processor.py"
+    - "tests/nl/test_command_validator.py"
+    - "tests/nl/test_command_executor.py"
+    - "tests/nl/test_nl_command_processor.py"
+    - "docs/guides/NL_COMMAND_GUIDE.md"
+    - "docs/development/NL_COMMAND_INTERFACE_SPEC.json"
+    - "docs/architecture/ARCHITECTURE.md"
+    - "CHANGELOG.md"
+    - "docs/decisions/ADR-016-decompose-nl-entity-extraction.md"
+
+  deprecated:
+    - "src/nl/entity_extractor.py (keep for migration, remove in v1.7.0)"
+
+dependencies:
+  prerequisites:
+    - "ADR-016 approved"
+    - "StateManager API stable"
+    - "Ollama/Qwen available (local LLM)"
+
+  blockers: []
+
+  follow_up_work_v17:
+    - "Performance optimization (reduce LLM calls via caching)"
+    - "Multi-turn context (follow-up questions)"
+    - "Advanced query patterns (filters, sorting, pagination)"
+    - "Multi-language support (Spanish, French, etc.)"
+
+timeline:
+  total_days: 10
+  phases:
+    - phase: "Phase 1: Design"
+      days: 1
+      start: "Day 1"
+      end: "Day 1"
+    - phase: "Phase 2: New Components"
+      days: 4
+      start: "Day 2"
+      end: "Day 5"
+    - phase: "Phase 3: Update Components"
+      days: 2
+      start: "Day 6"
+      end: "Day 7"
+    - phase: "Phase 4: Testing"
+      days: 2
+      start: "Day 8"
+      end: "Day 9"
+    - phase: "Phase 5: Documentation"
+      days: 1
+      start: "Day 10"
+      end: "Day 10"

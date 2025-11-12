@@ -818,5 +818,323 @@
     "estimated_sessions": 8,
     "timeline_weeks": 3,
     "team_size": 1
+  },
+
+  "adr_016_enhancements": {
+    "version": "1.6.0",
+    "status": "In Development",
+    "date": "2025-11-11",
+    "title": "Decompose NL Entity Extraction Pipeline",
+    "motivation": "Increase accuracy from 80-85% to 95%+ by decomposing monolithic EntityExtractor into single-responsibility components",
+
+    "problems_solved": [
+      "ISSUE-001 (HIGH): Entity type misclassification during status updates",
+      "ISSUE-002 (MEDIUM): Vocabulary gap for hierarchical queries (workplan, backlog, roadmap)",
+      "ISSUE-003 (MEDIUM): Natural questions rejected as invalid commands"
+    ],
+
+    "new_architecture": {
+      "description": "Five-stage pipeline with explicit operation classification and question handling",
+      "data_flow": [
+        "User Input → IntentClassifier → COMMAND or QUESTION intent",
+        "COMMAND → OperationClassifier → CREATE/UPDATE/DELETE/QUERY",
+        "COMMAND → EntityTypeClassifier (with operation context) → project/epic/story/task/milestone",
+        "COMMAND → EntityIdentifierExtractor (with entity type + operation) → name or ID",
+        "COMMAND → ParameterExtractor (with operation + entity) → status, priority, dependencies, etc.",
+        "COMMAND → CommandValidator (with OperationContext) → Valid/Invalid",
+        "COMMAND → CommandExecutor (with OperationContext) → Execute (with hierarchical query support)",
+        "QUESTION → QuestionHandler → Informational response (NEXT_STEPS/STATUS/BLOCKERS/PROGRESS/GENERAL)"
+      ],
+      "design_principles": [
+        "Single Responsibility: Each component does one thing well",
+        "Explicit Context Passing: Operation type flows explicitly through pipeline",
+        "Progressive Refinement: Each stage narrows down classification",
+        "Fail-Fast Validation: Validate at each stage, not just at end"
+      ]
+    },
+
+    "new_components": [
+      {
+        "name": "OperationClassifier",
+        "file": "src/nl/operation_classifier.py",
+        "responsibility": "Classify command into CREATE/UPDATE/DELETE/QUERY",
+        "interface": "OperationClassifierInterface (src/nl/base.py)",
+        "examples": [
+          {"input": "Create epic for auth", "output": "CREATE"},
+          {"input": "Mark project as inactive", "output": "UPDATE"},
+          {"input": "Delete task 5", "output": "DELETE"},
+          {"input": "Show me all projects", "output": "QUERY"}
+        ]
+      },
+      {
+        "name": "EntityTypeClassifier",
+        "file": "src/nl/entity_type_classifier.py",
+        "responsibility": "Classify entity type given operation context",
+        "interface": "EntityTypeClassifierInterface (src/nl/base.py)",
+        "examples": [
+          {"input": "Mark the manual tetris test as INACTIVE", "operation": "UPDATE", "output": "PROJECT"},
+          {"input": "Create epic for auth", "operation": "CREATE", "output": "EPIC"},
+          {"input": "Show tasks for project 1", "operation": "QUERY", "output": "TASK"}
+        ]
+      },
+      {
+        "name": "EntityIdentifierExtractor",
+        "file": "src/nl/entity_identifier_extractor.py",
+        "responsibility": "Extract entity identifier (name or ID)",
+        "interface": "EntityIdentifierExtractorInterface (src/nl/base.py)",
+        "examples": [
+          {"input": "Mark the manual tetris test as INACTIVE", "entity_type": "PROJECT", "output": "manual tetris test"},
+          {"input": "Show tasks for project 1", "entity_type": "PROJECT", "output": 1},
+          {"input": "Delete epic #3", "entity_type": "EPIC", "output": 3}
+        ]
+      },
+      {
+        "name": "ParameterExtractor",
+        "file": "src/nl/parameter_extractor.py",
+        "responsibility": "Extract operation-specific parameters (status, priority, dependencies, etc.)",
+        "interface": "ParameterExtractorInterface (src/nl/base.py)",
+        "examples": [
+          {"input": "Mark project as INACTIVE", "operation": "UPDATE", "entity_type": "PROJECT", "output": {"status": "INACTIVE"}},
+          {"input": "Create task with priority HIGH depends on task 3", "operation": "CREATE", "entity_type": "TASK", "output": {"priority": "HIGH", "dependencies": [3]}},
+          {"input": "Show top 5 tasks", "operation": "QUERY", "entity_type": "TASK", "output": {"limit": 5, "order": "priority"}}
+        ]
+      },
+      {
+        "name": "QuestionHandler",
+        "file": "src/nl/question_handler.py",
+        "responsibility": "Handle informational questions gracefully",
+        "interface": "QuestionHandlerInterface (src/nl/base.py)",
+        "question_types": [
+          "NEXT_STEPS: What's next, Next tasks for project",
+          "STATUS: What's the status, How's progress, Is it done",
+          "BLOCKERS: What's blocking, Any issues, What's stuck",
+          "PROGRESS: Show progress, How far along, Completion %",
+          "GENERAL: Catch-all for other questions"
+        ],
+        "examples": [
+          {"input": "What's next for the tetris game development", "type": "NEXT_STEPS", "output": "Next steps for Tetris Game: 1. Implement scoring (PENDING), 2. Add sound effects (PENDING)"},
+          {"input": "How's project 1 going?", "type": "STATUS", "output": "Project #1 'Tetris Game' is ACTIVE. 3/5 tasks completed (60%)"},
+          {"input": "Any blockers for epic 3?", "type": "BLOCKERS", "output": "Epic #3 has 2 blocked tasks: Task #5 (waiting for API), Task #7 (missing design)"}
+        ]
+      }
+    ],
+
+    "updated_components": [
+      {
+        "name": "CommandValidator",
+        "file": "src/nl/command_validator.py",
+        "changes": [
+          "Accept OperationContext instead of entity list",
+          "Validate operation + entity type combinations",
+          "Validate parameters for operation type",
+          "Check entity exists for UPDATE/DELETE operations"
+        ],
+        "new_validation_rules": [
+          "UPDATE requires identifier",
+          "Entity exists check for UPDATE/DELETE",
+          "Parameters valid for operation (e.g., valid status values)"
+        ]
+      },
+      {
+        "name": "CommandExecutor",
+        "file": "src/nl/command_executor.py",
+        "changes": [
+          "Accept OperationContext instead of entity list",
+          "Add hierarchical query support (HIERARCHICAL query type)",
+          "Add query type handling (WORKPLAN, BACKLOG, NEXT_STEPS, ROADMAP)",
+          "Improve error handling"
+        ],
+        "new_query_types": [
+          "HIERARCHICAL: Show task hierarchies (epics → stories → tasks)",
+          "NEXT_STEPS: Show next pending tasks for a project",
+          "BACKLOG: Show all pending tasks",
+          "ROADMAP: Show milestones and associated epics",
+          "WORKPLAN: Synonym for HIERARCHICAL (user-facing term)"
+        ]
+      },
+      {
+        "name": "NLCommandProcessor",
+        "file": "src/nl/nl_command_processor.py",
+        "changes": [
+          "Orchestrate new 5-stage pipeline for COMMAND path",
+          "Add QUESTION path to QuestionHandler",
+          "Add error handling at each stage",
+          "Log intermediate outputs for debugging"
+        ]
+      }
+    ],
+
+    "new_data_types": {
+      "file": "src/nl/types.py",
+      "enums": [
+        {
+          "name": "OperationType",
+          "values": ["CREATE", "UPDATE", "DELETE", "QUERY"],
+          "description": "Type of operation being performed"
+        },
+        {
+          "name": "QueryType",
+          "values": ["SIMPLE", "HIERARCHICAL", "NEXT_STEPS", "BACKLOG", "ROADMAP", "WORKPLAN"],
+          "description": "Type of query being performed"
+        },
+        {
+          "name": "EntityType",
+          "values": ["PROJECT", "EPIC", "STORY", "TASK", "SUBTASK", "MILESTONE"],
+          "description": "Type of entity in Obra's work hierarchy"
+        },
+        {
+          "name": "QuestionType",
+          "values": ["NEXT_STEPS", "STATUS", "BLOCKERS", "PROGRESS", "GENERAL"],
+          "description": "Type of informational question"
+        }
+      ],
+      "dataclasses": [
+        {
+          "name": "OperationContext",
+          "description": "Context object holding all information about a command operation",
+          "fields": [
+            {"name": "operation", "type": "OperationType"},
+            {"name": "entity_type", "type": "EntityType"},
+            {"name": "identifier", "type": "Optional[Union[str, int]]"},
+            {"name": "parameters", "type": "Dict[str, Any]"},
+            {"name": "query_type", "type": "Optional[QueryType]"},
+            {"name": "confidence", "type": "float"},
+            {"name": "raw_input", "type": "str"}
+          ]
+        },
+        {
+          "name": "OperationResult",
+          "description": "Result of operation classification",
+          "fields": [
+            {"name": "operation_type", "type": "OperationType"},
+            {"name": "confidence", "type": "float"},
+            {"name": "raw_response", "type": "str"},
+            {"name": "reasoning", "type": "str"}
+          ]
+        },
+        {
+          "name": "EntityTypeResult",
+          "description": "Result of entity type classification",
+          "fields": [
+            {"name": "entity_type", "type": "EntityType"},
+            {"name": "confidence", "type": "float"},
+            {"name": "raw_response", "type": "str"},
+            {"name": "reasoning", "type": "str"}
+          ]
+        },
+        {
+          "name": "IdentifierResult",
+          "description": "Result of entity identifier extraction",
+          "fields": [
+            {"name": "identifier", "type": "Union[str, int]"},
+            {"name": "confidence", "type": "float"},
+            {"name": "raw_response", "type": "str"},
+            {"name": "reasoning", "type": "str"}
+          ]
+        },
+        {
+          "name": "ParameterResult",
+          "description": "Result of parameter extraction",
+          "fields": [
+            {"name": "parameters", "type": "Dict[str, Any]"},
+            {"name": "confidence", "type": "float"},
+            {"name": "raw_response", "type": "str"},
+            {"name": "reasoning", "type": "str"}
+          ]
+        },
+        {
+          "name": "QuestionResponse",
+          "description": "Response to a user question",
+          "fields": [
+            {"name": "answer", "type": "str"},
+            {"name": "question_type", "type": "QuestionType"},
+            {"name": "entities", "type": "Dict[str, Any]"},
+            {"name": "data", "type": "Dict[str, Any]"},
+            {"name": "confidence", "type": "float"}
+          ]
+        }
+      ]
+    },
+
+    "test_plan": {
+      "new_test_files": [
+        "tests/nl/test_operation_classifier.py (20 tests)",
+        "tests/nl/test_entity_type_classifier.py (25 tests)",
+        "tests/nl/test_entity_identifier_extractor.py (20 tests)",
+        "tests/nl/test_parameter_extractor.py (25 tests)",
+        "tests/nl/test_question_handler.py (30 tests)",
+        "tests/nl/test_integration_nl_pipeline.py (30 integration tests)"
+      ],
+      "updated_test_files": [
+        "tests/nl/test_command_validator.py (+15 tests)",
+        "tests/nl/test_command_executor.py (+20 tests)",
+        "tests/nl/test_nl_command_processor.py (+10 tests)"
+      ],
+      "total_tests": "165 unit tests + 130 integration tests = 295 tests",
+      "coverage_targets": {
+        "OperationClassifier": "95%",
+        "EntityTypeClassifier": "95%",
+        "EntityIdentifierExtractor": "95%",
+        "ParameterExtractor": "90%",
+        "QuestionHandler": "90%",
+        "Overall": "90%+"
+      }
+    },
+
+    "accuracy_improvements": {
+      "baseline": {
+        "simple_commands": "90-95%",
+        "status_updates": "80%",
+        "hierarchical_queries": "70%",
+        "natural_questions": "60%"
+      },
+      "target": {
+        "simple_commands": "98%",
+        "status_updates": "95%",
+        "hierarchical_queries": "90%",
+        "natural_questions": "92%",
+        "overall": "95%+"
+      }
+    },
+
+    "performance_targets": {
+      "latency_per_stage": {
+        "IntentClassifier": "<200ms",
+        "OperationClassifier": "<150ms",
+        "EntityTypeClassifier": "<150ms",
+        "EntityIdentifierExtractor": "<150ms",
+        "ParameterExtractor": "<150ms",
+        "CommandValidator": "<50ms",
+        "CommandExecutor": "<100ms",
+        "Total": "<1000ms (1 second)"
+      },
+      "end_to_end_latency_p95": "<1.5 seconds",
+      "throughput": "50+ commands/minute",
+      "memory_overhead": "<200MB"
+    },
+
+    "migration": {
+      "breaking_changes": [
+        "EntityExtractor deprecated (use NLCommandProcessor instead)",
+        "CommandValidator now accepts OperationContext instead of entity list",
+        "CommandExecutor now accepts OperationContext instead of entity list"
+      ],
+      "backward_compatibility": {
+        "legacy_pipeline_available": true,
+        "config_flag": "nl_commands.use_legacy_pipeline",
+        "removal_version": "v1.7.0"
+      },
+      "migration_guide": "docs/guides/ADR016_MIGRATION_GUIDE.md"
+    },
+
+    "implementation_status": {
+      "story_1_foundation": "IN_PROGRESS",
+      "story_2_classifiers": "PENDING",
+      "story_3_extraction": "PENDING",
+      "story_4_questions": "PENDING",
+      "story_5_core_updates": "PENDING",
+      "story_6_testing": "PENDING",
+      "story_7_documentation": "PENDING"
+    }
   }
 }

@@ -1,0 +1,537 @@
+# Manual Testing Issue Log
+# Version: 1.0.0
+# Purpose: Track issues discovered during manual testing of Obra for longitudinal analysis
+# Updated: 2025-11-11
+
+# USAGE:
+# 1. Add new issues at the bottom of the 'issues' list
+# 2. Use the next sequential ID
+# 3. Fill in all required fields (marked with *)
+# 4. Update status and resolution when issues are addressed
+# 5. Add tags for pattern analysis
+
+metadata:
+  log_version: "1.0.0"
+  created_date: "2025-11-11"
+  last_updated: "2025-11-11"
+  total_issues: 4
+  open_issues: 4
+  closed_issues: 0
+
+# Severity Levels:
+# - CRITICAL: System crash, data loss, security vulnerability
+# - HIGH: Major functionality broken, blocks workflow
+# - MEDIUM: Functionality impaired, workaround exists
+# - LOW: Minor issue, cosmetic, enhancement
+
+# Categories (aligned with Obra architecture):
+# - STATE_MANAGEMENT: StateManager, database, transactions
+# - ORCHESTRATION: Core orchestration loop, iteration logic
+# - AGENT_COMMUNICATION: Claude Code integration, subprocess handling
+# - LLM_INTEGRATION: Ollama, Qwen, prompt engineering
+# - VALIDATION: ResponseValidator, QualityController, ConfidenceScorer
+# - DECISION_ENGINE: DecisionEngine logic, thresholds
+# - CONFIGURATION: Config loading, profiles, settings
+# - CLI: Command-line interface, argument parsing
+# - INTERACTIVE_MODE: Command processor, input manager, checkpoints
+# - GIT_INTEGRATION: GitManager, commits, branches
+# - NATURAL_LANGUAGE: NL command interface, intent classification
+# - AGILE_WORKFLOW: Epics, stories, milestones
+# - PROJECT_INFRASTRUCTURE: Documentation maintenance, freshness
+# - PERFORMANCE: Speed, resource usage, optimization
+# - ARCHITECTURE: Design concerns, technical debt
+
+# Issue Types:
+# - BUG: Functional defect
+# - PERFORMANCE: Speed/resource issue
+# - UX: User experience problem
+# - ARCHITECTURAL: Design/pattern concern
+# - ENHANCEMENT: Feature request
+# - DOCUMENTATION: Docs issue
+
+# Status Values:
+# - OPEN: Newly reported
+# - IN_PROGRESS: Being worked on
+# - RESOLVED: Fixed/implemented
+# - CLOSED: Verified complete
+# - WONT_FIX: Intentional behavior or out of scope
+# - DUPLICATE: Duplicate of another issue
+
+issues:
+  - id: "ISSUE-001"
+    title: "Entity type misclassification - status update creates task instead"
+    description: |
+      When attempting to mark a project as INACTIVE using natural language,
+      the EntityExtractor misclassified the command as a task creation request
+      instead of a project status update.
+
+      Command: "Mark the manual tetris test as INACTIVE"
+      Expected: Update project #2 status to INACTIVE
+      Actual: Created new task #5 named "Manual Tetris Test"
+
+      The EntityExtractor identified "task(s)" with 0.85 confidence when it
+      should have identified "project(s)" and recognized the status update intent.
+
+    # Required fields
+    timestamp: "2025-11-11T20:09:49Z"
+    reporter: "Omar"
+    category: "NATURAL_LANGUAGE"
+    severity: "HIGH"
+    type: "BUG"
+    status: "OPEN"
+
+    # Context
+    version: "v1.5.0"
+    environment:
+      os: "WSL2 Ubuntu 22.04"
+      python: "3.11"
+      llm_provider: "Ollama/Qwen 2.5 Coder 32B"
+      agent: "Claude Code CLI"
+
+    # Reproduction
+    steps_to_reproduce:
+      - "Start Obra interactive mode with existing projects"
+      - "Enter command: 'Mark the manual tetris test as INACTIVE'"
+      - "Observe that a new task is created instead of updating project status"
+
+    expected_behavior: "Project #2 (Manual_Tetris_Test) should be updated to INACTIVE status"
+    actual_behavior: "New task #5 'Manual Tetris Test' created instead; project status unchanged"
+
+    # Components affected
+    affected_components:
+      - "src/nl/entity_extractor.py"
+      - "src/nl/nl_command_processor.py"
+      - "src/nl/command_validator.py"
+
+    # Analysis
+    root_cause: |
+      The EntityExtractor's LLM-based classification incorrectly identified the
+      entity type as "task" instead of "project". Additionally, it failed to
+      recognize the intent as a status update operation rather than a creation
+      operation.
+
+      This reveals a gap in the entity extraction prompt or schema that doesn't
+      adequately distinguish between:
+      1. Entity types (project vs task vs epic vs story)
+      2. Operation types (create vs update/modify vs query)
+      3. Status update patterns ("mark as X", "set status to X", "make X inactive")
+
+      The NL command vocabulary may not have sufficient training examples for
+      status update operations on projects.
+
+    impact_analysis:
+      user_impact: "Users cannot update project status via NL commands; creates spurious tasks instead"
+      system_impact: "Database accumulates unwanted tasks; projects remain in wrong status"
+      frequency: "Always occurs with status update commands on projects"
+
+    # Resolution
+    resolution:
+      approach: ""
+      implemented_in: ""
+      verified_date: ""
+      verification_notes: ""
+
+    # Related items
+    related_links:
+      adr: ["ADR-014"]
+      commits: []
+      prs: []
+      issues: ["ISSUE-002", "ISSUE-003"]
+
+    # Pattern analysis tags
+    tags:
+      - "nl-entity-extraction"
+      - "status-update"
+      - "entity-type-confusion"
+      - "project-management"
+
+    # Follow-up items
+    follow_up_needed: true
+    follow_up_tasks:
+      - "Review EntityExtractor prompt for status update patterns"
+      - "Add training examples for project status updates to NL spec"
+      - "Implement operation type detection (create/update/delete/query)"
+      - "Add unit tests for status update commands"
+
+    # Notes for ongoing tracking
+    notes: |
+      This is a critical NL interface bug that makes a core workflow (project
+      status management) completely unusable via natural language. Users must
+      fall back to CLI commands.
+
+      Related to ISSUE-002 and ISSUE-003 - all three issues point to gaps in
+      the NL command vocabulary and entity classification logic.
+
+  - id: "ISSUE-002"
+    title: "Command vocabulary gap - 'workplan' not recognized"
+    description: |
+      When asking to list workplans for projects, the NL interface defaults to
+      listing projects instead. The term "workplan" is not recognized as a valid
+      entity or operation type.
+
+      Command: "List the workplans for the projects"
+      Expected: Display workplans (task hierarchies) for all active projects
+      Actual: Listed projects only (same as "List all projects")
+
+      The IntentClassifier correctly identified this as a COMMAND (0.92 confidence),
+      but the EntityExtractor found 0 projects and the system defaulted to the
+      project list display.
+
+    # Required fields
+    timestamp: "2025-11-11T20:10:30Z"
+    reporter: "Omar"
+    category: "NATURAL_LANGUAGE"
+    severity: "MEDIUM"
+    type: "BUG"
+    status: "OPEN"
+
+    # Context
+    version: "v1.5.0"
+    environment:
+      os: "WSL2 Ubuntu 22.04"
+      python: "3.11"
+      llm_provider: "Ollama/Qwen 2.5 Coder 32B"
+      agent: "Claude Code CLI"
+
+    # Reproduction
+    steps_to_reproduce:
+      - "Start Obra interactive mode with projects that have tasks"
+      - "Enter command: 'List the workplans for the projects'"
+      - "Observe that only project list is displayed, not task hierarchies"
+
+    expected_behavior: "Display task hierarchies (epics/stories/tasks) for all active projects"
+    actual_behavior: "Displayed only project list (name, ID, status)"
+
+    # Components affected
+    affected_components:
+      - "src/nl/entity_extractor.py"
+      - "src/nl/command_executor.py"
+      - "src/nl/nl_command_processor.py"
+
+    # Analysis
+    root_cause: |
+      The NL command vocabulary does not include "workplan" as a recognized
+      entity type or query target. When the EntityExtractor cannot identify
+      a specific entity type, the system defaults to showing the project list.
+
+      This reveals that the NL interface lacks vocabulary for hierarchical
+      queries (epics, stories, tasks within projects) and doesn't map common
+      synonyms like "workplan", "task list", "backlog", etc. to the underlying
+      data model.
+
+      The CommandExecutor likely needs a new query type for hierarchical
+      project views beyond simple entity lists.
+
+    impact_analysis:
+      user_impact: "Users cannot view task hierarchies via NL; must use CLI commands"
+      system_impact: "Limits utility of NL interface for project planning workflows"
+      frequency: "Always occurs with 'workplan' or hierarchical query terms"
+
+    # Resolution
+    resolution:
+      approach: ""
+      implemented_in: ""
+      verified_date: ""
+      verification_notes: ""
+
+    # Related items
+    related_links:
+      adr: ["ADR-014"]
+      commits: []
+      prs: []
+      issues: ["ISSUE-001"]
+
+    # Pattern analysis tags
+    tags:
+      - "nl-vocabulary"
+      - "entity-recognition"
+      - "hierarchical-queries"
+      - "feature-gap"
+
+    # Follow-up items
+    follow_up_needed: true
+    follow_up_tasks:
+      - "Add 'workplan' to NL vocabulary with mapping to task hierarchy query"
+      - "Implement hierarchical query support in CommandExecutor"
+      - "Add synonyms: backlog, task list, work items, roadmap"
+      - "Add unit tests for hierarchical queries"
+
+    # Notes for ongoing tracking
+    notes: |
+      This is a vocabulary/feature gap rather than a logic bug. The NL interface
+      was designed for CRUD operations on individual entities but doesn't support
+      hierarchical/relational queries well.
+
+      Consider adding a "query patterns" layer that maps natural language query
+      patterns to complex StateManager queries.
+
+  - id: "ISSUE-003"
+    title: "Natural questions rejected as invalid - overly strict validation"
+    description: |
+      When asking a natural question about next steps, the command validator
+      rejects it as invalid syntax instead of handling it as an informational
+      query.
+
+      Command: "What's next for the tetris game development"
+      Expected: Answer with next tasks/milestones for project #1, or informational response
+      Actual: "✗ Invalid command syntax" error
+
+      The IntentClassifier likely classified this as QUESTION but the validator
+      rejected it rather than routing it to an informational handler.
+
+    # Required fields
+    timestamp: "2025-11-11T20:10:35Z"
+    reporter: "Omar"
+    category: "NATURAL_LANGUAGE"
+    severity: "MEDIUM"
+    type: "UX"
+    status: "OPEN"
+
+    # Context
+    version: "v1.5.0"
+    environment:
+      os: "WSL2 Ubuntu 22.04"
+      python: "3.11"
+      llm_provider: "Ollama/Qwen 2.5 Coder 32B"
+      agent: "Claude Code CLI"
+
+    # Reproduction
+    steps_to_reproduce:
+      - "Start Obra interactive mode"
+      - "Enter question: 'What's next for the tetris game development'"
+      - "Observe 'Invalid command syntax' error"
+
+    expected_behavior: "System should answer with next pending tasks/milestones for project, or explain available commands"
+    actual_behavior: "Rejected with 'Invalid command syntax' error"
+
+    # Components affected
+    affected_components:
+      - "src/nl/intent_classifier.py"
+      - "src/nl/command_validator.py"
+      - "src/nl/nl_command_processor.py"
+
+    # Analysis
+    root_cause: |
+      The NL command processor appears to validate commands too strictly. When
+      a natural question is asked (likely classified as QUESTION intent), the
+      validator rejects it rather than providing a helpful informational response.
+
+      This suggests one of two issues:
+      1. IntentClassifier didn't run (returned immediately with error)
+      2. IntentClassifier classified as QUESTION but validator doesn't handle QUESTION intent gracefully
+
+      The UX is confusing - users expect a conversational interface to handle
+      questions, not reject them. The system should either:
+      - Answer the question (query StateManager for next tasks)
+      - Explain what it can/cannot do
+      - Suggest alternative phrasings
+
+      Instead, it provides a terse error that doesn't help the user.
+
+    impact_analysis:
+      user_impact: "Confusing UX; users don't know how to phrase commands correctly"
+      system_impact: "Reduces perceived intelligence of NL interface"
+      frequency: "Often occurs with question-phrased commands"
+
+    # Resolution
+    resolution:
+      approach: ""
+      implemented_in: ""
+      verified_date: ""
+      verification_notes: ""
+
+    # Related items
+    related_links:
+      adr: ["ADR-014"]
+      commits: []
+      prs: []
+      issues: ["ISSUE-001", "ISSUE-002"]
+
+    # Pattern analysis tags
+    tags:
+      - "nl-question-handling"
+      - "command-validation"
+      - "ux-friction"
+      - "error-messages"
+
+    # Follow-up items
+    follow_up_needed: true
+    follow_up_tasks:
+      - "Review question handling in IntentClassifier and NLCommandProcessor"
+      - "Add informational response handler for QUESTION intent"
+      - "Improve error messages with suggestions for valid commands"
+      - "Add unit tests for question-phrased commands"
+
+    # Notes for ongoing tracking
+    notes: |
+      This is primarily a UX issue. The NL interface is functional for commands
+      but doesn't gracefully handle questions. Users expect conversational AI
+      to answer questions, not reject them.
+
+      Consider implementing a fallback informational handler that:
+      1. Detects question intent
+      2. Extracts entities (project name, etc.)
+      3. Queries StateManager for relevant info
+      4. Formats a helpful response
+
+      Alternatively, improve error messages to suggest correct command syntax.
+
+  - id: "ISSUE-004"
+    title: "Multiple projects marked as ACTIVE - unclear constraint"
+    description: |
+      When listing projects, multiple projects show as ACTIVE. It's unclear if
+      this is intentional behavior or if there should be a constraint limiting
+      active projects to one at a time.
+
+      Observed: Both "Manual_Tetris_Test" (#2) and "Tetris Game Development Test" (#1)
+      are marked as ACTIVE simultaneously.
+
+      Question: Is this a bug (should only one project be active?) or is this
+      expected behavior (multiple active projects allowed)?
+
+    # Required fields
+    timestamp: "2025-11-11T20:10:02Z"
+    reporter: "Omar"
+    category: "STATE_MANAGEMENT"
+    severity: "LOW"
+    type: "ENHANCEMENT"
+    status: "OPEN"
+
+    # Context
+    version: "v1.5.0"
+    environment:
+      os: "WSL2 Ubuntu 22.04"
+      python: "3.11"
+      llm_provider: "Ollama/Qwen 2.5 Coder 32B"
+      agent: "Claude Code CLI"
+
+    # Reproduction
+    steps_to_reproduce:
+      - "Create multiple projects in Obra"
+      - "List projects"
+      - "Observe multiple projects with ACTIVE status"
+
+    expected_behavior: "Unclear - either (1) only one active project allowed, or (2) multiple active projects are valid"
+    actual_behavior: "Multiple projects shown as ACTIVE"
+
+    # Components affected
+    affected_components:
+      - "src/core/state.py (StateManager)"
+      - "src/database/models.py (Project model)"
+
+    # Analysis
+    root_cause: |
+      The Project model and StateManager do not enforce a single-active-project
+      constraint. This may be intentional design (users can work on multiple
+      projects simultaneously) or an oversight.
+
+      Need to determine the intended behavior:
+      - If single-active is desired: Add constraint at DB level and StateManager validation
+      - If multi-active is desired: Document this behavior and update UX to make it clear
+
+      Review ADR-013 (Agile Work Hierarchy) and related docs to understand
+      original intent for project status management.
+
+    impact_analysis:
+      user_impact: "Unclear if behavior is correct; may cause confusion about which project is 'current'"
+      system_impact: "None if intentional; potential data integrity issue if not"
+      frequency: "Always (current system allows multi-active)"
+
+    # Resolution
+    resolution:
+      approach: ""
+      implemented_in: ""
+      verified_date: ""
+      verification_notes: ""
+
+    # Related items
+    related_links:
+      adr: ["ADR-013"]
+      commits: []
+      prs: []
+      issues: []
+
+    # Pattern analysis tags
+    tags:
+      - "project-status"
+      - "business-logic"
+      - "constraint-validation"
+      - "design-clarification"
+
+    # Follow-up items
+    follow_up_needed: true
+    follow_up_tasks:
+      - "Review original design intent for project status constraints"
+      - "Decide: single-active or multi-active projects?"
+      - "If single-active: Implement constraint at StateManager/DB level"
+      - "If multi-active: Document this behavior in guides"
+      - "Add tests for project status transitions"
+
+    # Notes for ongoing tracking
+    notes: |
+      This may not be a bug at all - just unclear requirements. Need to clarify
+      intended behavior before determining if this is an issue or working as designed.
+
+      The fact that the user expected only one active project suggests the UX/docs
+      don't make the multi-active capability clear (if it's intentional).
+
+# Pattern Analysis Section
+# Update this periodically to identify trends
+pattern_analysis:
+  recurring_themes:
+    - theme: "Natural Language command vocabulary gaps"
+      occurrences: 3
+      issues: ["ISSUE-001", "ISSUE-002", "ISSUE-003"]
+      description: "Entity extraction, vocabulary coverage, and question handling all show gaps in NL interface"
+      recommended_action: "Comprehensive review of EntityExtractor prompts and NL vocabulary; add operation type detection"
+
+  architectural_concerns:
+    - concern: "NL interface designed for CRUD but lacks hierarchical query support"
+      related_issues: ["ISSUE-002"]
+      severity: "MEDIUM"
+      description: "CommandExecutor handles individual entity CRUD well but struggles with relational/hierarchical queries"
+      proposed_solution: "Add query pattern layer to map natural language patterns to complex StateManager queries"
+
+    - concern: "EntityExtractor conflates entity type with operation type"
+      related_issues: ["ISSUE-001"]
+      severity: "HIGH"
+      description: "Extractor identifies entities (task/project/epic) but doesn't detect operations (create/update/delete/query)"
+      proposed_solution: "Split extraction into two phases: (1) Entity type + identifier, (2) Operation type + parameters"
+
+  suggested_improvements:
+    - improvement: "Add operation type detection to EntityExtractor"
+      benefit: "Distinguish create vs update vs query operations; prevent misclassification"
+      effort: "MEDIUM"
+      priority: "HIGH"
+      related_issues: ["ISSUE-001"]
+
+    - improvement: "Implement informational query handler for QUESTION intent"
+      benefit: "Better UX for natural questions; more conversational interface"
+      effort: "MEDIUM"
+      priority: "MEDIUM"
+      related_issues: ["ISSUE-003"]
+
+    - improvement: "Expand NL vocabulary with synonyms and hierarchical terms"
+      benefit: "Support more natural phrasings (workplan, backlog, roadmap, etc.)"
+      effort: "LOW"
+      priority: "MEDIUM"
+      related_issues: ["ISSUE-002"]
+
+  # Metrics by category (auto-calculated from issues)
+  category_breakdown:
+    NATURAL_LANGUAGE: 3
+    STATE_MANAGEMENT: 1
+
+  severity_breakdown:
+    HIGH: 1
+    MEDIUM: 2
+    LOW: 1
+
+  resolution_time_avg: null
+
+  # Review dates
+  last_reviewed: "2025-11-11"
+  review_notes:
+    - "First manual testing session reveals systemic NL interface issues"
+    - "All 3 NL bugs stem from entity extraction and vocabulary gaps"
+    - "Priority: Fix ISSUE-001 (HIGH severity) first, then expand vocabulary"

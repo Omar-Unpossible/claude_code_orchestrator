@@ -1,6 +1,8 @@
 """Command Execution for Natural Language Commands.
 
 This module executes validated commands via StateManager. Handles:
+- CREATE/UPDATE/DELETE/QUERY operations (ADR-016)
+- Hierarchical queries (HIERARCHICAL, NEXT_STEPS, BACKLOG, ROADMAP)
 - Mapping entity types to StateManager methods (create_epic, create_story, etc.)
 - Reference resolution (epic_reference/story_reference → IDs)
 - Transaction safety with rollback on errors
@@ -10,21 +12,32 @@ Classes:
     ExecutionResult: Dataclass holding execution results
     CommandExecutor: Executes validated commands via StateManager
 
-Example:
+Example (new OperationContext API):
     >>> from core.state import StateManager
+    >>> from src.nl.types import OperationContext, OperationType, EntityType
     >>> state = StateManager(db_url)
     >>> executor = CommandExecutor(state)
-    >>> result = executor.execute(validated_command)
+    >>> context = OperationContext(
+    ...     operation=OperationType.CREATE,
+    ...     entity_type=EntityType.EPIC,
+    ...     parameters={"title": "User Auth", "description": "OAuth + MFA"}
+    ... )
+    >>> result = executor.execute(context)
     >>> if result.success:
     ...     print(f"Created IDs: {result.created_ids}")
+
+Example (legacy API - deprecated):
+    >>> result = executor.execute_legacy(validated_command)
 """
 
 import logging
+import warnings
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from core.state import StateManager
-from core.models import TaskType
+from core.models import TaskType, TaskStatus
 from core.exceptions import OrchestratorException
+from src.nl.types import OperationContext, OperationType, EntityType, QueryType
 
 logger = logging.getLogger(__name__)
 
@@ -58,18 +71,24 @@ class CommandExecutor:
     Maps natural language commands to StateManager method calls, with
     transaction safety, reference resolution, and confirmation workflow.
 
+    Supports two APIs:
+    - New: execute(OperationContext) - ADR-016 pipeline with CREATE/UPDATE/DELETE/QUERY
+    - Legacy: execute_legacy(dict) - deprecated, will be removed in v1.7.0
+
     Args:
         state_manager: StateManager instance for command execution
-        require_confirmation_for: List of actions requiring confirmation
+        require_confirmation_for: List of operations requiring confirmation
             (default: ['delete', 'update'])
         default_project_id: Default project ID if not specified (default: 1)
 
     Example:
         >>> executor = CommandExecutor(state_manager)
-        >>> result = executor.execute({
-        ...     'entity_type': 'epic',
-        ...     'entities': [{'title': 'User Auth', 'description': 'OAuth + MFA'}]
-        ... })
+        >>> context = OperationContext(
+        ...     operation=OperationType.CREATE,
+        ...     entity_type=EntityType.EPIC,
+        ...     parameters={'title': 'User Auth'}
+        ... )
+        >>> result = executor.execute(context)
         >>> if result.success:
         ...     print(f"Created epic {result.created_ids[0]}")
     """
@@ -84,7 +103,7 @@ class CommandExecutor:
 
         Args:
             state_manager: StateManager for executing commands
-            require_confirmation_for: Actions requiring confirmation
+            require_confirmation_for: Operations requiring confirmation
             default_project_id: Default project ID
         """
         self.state_manager = state_manager
@@ -94,11 +113,688 @@ class CommandExecutor:
 
     def execute(
         self,
+        context: OperationContext,
+        project_id: Optional[int] = None,
+        confirmed: bool = False
+    ) -> ExecutionResult:
+        """Execute operation from OperationContext (ADR-016 API).
+
+        Routes to appropriate handler based on operation type:
+        - CREATE: _execute_create()
+        - UPDATE: _execute_update()
+        - DELETE: _execute_delete()
+        - QUERY: _execute_query()
+
+        Args:
+            context: OperationContext from NL pipeline
+            project_id: Project ID (uses default if not specified)
+            confirmed: True if user has confirmed destructive operation
+
+        Returns:
+            ExecutionResult with success status, created IDs, and data
+
+        Example:
+            >>> context = OperationContext(
+            ...     operation=OperationType.UPDATE,
+            ...     entity_type=EntityType.PROJECT,
+            ...     identifier=1,
+            ...     parameters={"status": "INACTIVE"}
+            ... )
+            >>> result = executor.execute(context)
+        """
+        # Use provided project_id or default
+        proj_id = project_id or self.default_project_id
+
+        # Check if confirmation required
+        if context.operation.value in self.require_confirmation_for and not confirmed:
+            return ExecutionResult(
+                success=False,
+                confirmation_required=True,
+                errors=[f"{context.operation.value} operation requires confirmation"]
+            )
+
+        # Route to operation handler
+        try:
+            if context.operation == OperationType.CREATE:
+                return self._execute_create(context, proj_id)
+            elif context.operation == OperationType.UPDATE:
+                return self._execute_update(context, proj_id)
+            elif context.operation == OperationType.DELETE:
+                return self._execute_delete(context, proj_id)
+            elif context.operation == OperationType.QUERY:
+                return self._execute_query(context, proj_id)
+            else:
+                return ExecutionResult(
+                    success=False,
+                    errors=[f"Unknown operation type: {context.operation}"]
+                )
+
+        except Exception as e:
+            logger.exception(f"Unexpected error during execution: {e}")
+            return ExecutionResult(
+                success=False,
+                errors=[f"Execution error: {e}"]
+            )
+
+    # ==================== Operation Handlers (ADR-016) ====================
+
+    def _execute_create(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute CREATE operation.
+
+        Args:
+            context: OperationContext with entity_type and parameters
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with created entity ID
+        """
+        try:
+            # Route to entity-specific create method
+            entity_id = self._create_entity_from_context(context, project_id)
+
+            logger.info(
+                f"Created {context.entity_type.value} {entity_id} via NL command"
+            )
+
+            return ExecutionResult(
+                success=True,
+                created_ids=[entity_id],
+                results={
+                    'operation': 'create',
+                    'entity_type': context.entity_type.value,
+                    'entity_id': entity_id
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create {context.entity_type.value}: {e}")
+            return ExecutionResult(
+                success=False,
+                errors=[f"Failed to create {context.entity_type.value}: {str(e)}"]
+            )
+
+    def _execute_update(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute UPDATE operation.
+
+        Args:
+            context: OperationContext with entity_type, identifier, and parameters
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with updated entity info
+        """
+        try:
+            # Resolve identifier to entity ID
+            entity_id = self._resolve_identifier_to_id(context, project_id)
+
+            if entity_id is None:
+                return ExecutionResult(
+                    success=False,
+                    errors=[
+                        f"{context.entity_type.value.capitalize()} '{context.identifier}' not found"
+                    ]
+                )
+
+            # Update entity via StateManager
+            self._update_entity(context, entity_id, project_id)
+
+            logger.info(
+                f"Updated {context.entity_type.value} {entity_id} via NL command"
+            )
+
+            return ExecutionResult(
+                success=True,
+                results={
+                    'operation': 'update',
+                    'entity_type': context.entity_type.value,
+                    'entity_id': entity_id,
+                    'updated_fields': list(context.parameters.keys())
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to update {context.entity_type.value}: {e}")
+            return ExecutionResult(
+                success=False,
+                errors=[f"Failed to update {context.entity_type.value}: {str(e)}"]
+            )
+
+    def _execute_delete(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute DELETE operation.
+
+        Args:
+            context: OperationContext with entity_type and identifier
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with deletion status
+        """
+        try:
+            # Resolve identifier to entity ID
+            entity_id = self._resolve_identifier_to_id(context, project_id)
+
+            if entity_id is None:
+                return ExecutionResult(
+                    success=False,
+                    errors=[
+                        f"{context.entity_type.value.capitalize()} '{context.identifier}' not found"
+                    ]
+                )
+
+            # Delete entity via StateManager
+            self._delete_entity(context, entity_id, project_id)
+
+            logger.info(
+                f"Deleted {context.entity_type.value} {entity_id} via NL command"
+            )
+
+            return ExecutionResult(
+                success=True,
+                results={
+                    'operation': 'delete',
+                    'entity_type': context.entity_type.value,
+                    'entity_id': entity_id
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to delete {context.entity_type.value}: {e}")
+            return ExecutionResult(
+                success=False,
+                errors=[f"Failed to delete {context.entity_type.value}: {str(e)}"]
+            )
+
+    def _execute_query(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute QUERY operation with hierarchical support.
+
+        Supports query types:
+        - SIMPLE: List entities of specified type
+        - HIERARCHICAL/WORKPLAN: Show task hierarchies (epics → stories → tasks)
+        - NEXT_STEPS: Show next pending tasks for a project
+        - BACKLOG: Show all pending tasks
+        - ROADMAP: Show milestones and associated epics
+
+        Args:
+            context: OperationContext with entity_type and query_type
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with queried data
+        """
+        try:
+            query_type = context.query_type or QueryType.SIMPLE
+
+            # Map WORKPLAN to HIERARCHICAL (user-facing synonym)
+            if query_type == QueryType.WORKPLAN:
+                query_type = QueryType.HIERARCHICAL
+
+            # Route to query handler
+            if query_type == QueryType.SIMPLE:
+                return self._query_simple(context, project_id)
+            elif query_type == QueryType.HIERARCHICAL:
+                return self._query_hierarchical(context, project_id)
+            elif query_type == QueryType.NEXT_STEPS:
+                return self._query_next_steps(context, project_id)
+            elif query_type == QueryType.BACKLOG:
+                return self._query_backlog(context, project_id)
+            elif query_type == QueryType.ROADMAP:
+                return self._query_roadmap(context, project_id)
+            else:
+                return ExecutionResult(
+                    success=False,
+                    errors=[f"Unknown query type: {query_type}"]
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to query {context.entity_type.value}: {e}")
+            return ExecutionResult(
+                success=False,
+                errors=[f"Failed to query {context.entity_type.value}: {str(e)}"]
+            )
+
+    # ==================== Helper Methods for Operation Handlers ====================
+
+    def _create_entity_from_context(self, context: OperationContext, project_id: int) -> int:
+        """Create entity from OperationContext.
+
+        Args:
+            context: OperationContext with entity_type and parameters
+            project_id: Project ID
+
+        Returns:
+            Created entity ID
+        """
+        # Convert parameters to entity dict format
+        entity = context.parameters.copy()
+
+        # Route to entity-specific create method
+        entity_type_str = context.entity_type.value
+
+        if context.entity_type == EntityType.PROJECT:
+            # Create project directly via StateManager
+            name = entity.get('name') or entity.get('title', '')
+            description = entity.get('description', '')
+            return self.state_manager.create_project(
+                project_name=name,
+                description=description
+            )
+        elif context.entity_type == EntityType.EPIC:
+            return self._create_epic(entity, project_id)
+        elif context.entity_type == EntityType.STORY:
+            return self._create_story(entity, project_id)
+        elif context.entity_type == EntityType.TASK:
+            return self._create_task(entity, project_id)
+        elif context.entity_type == EntityType.SUBTASK:
+            return self._create_subtask(entity, project_id)
+        elif context.entity_type == EntityType.MILESTONE:
+            return self._create_milestone(entity, project_id)
+        else:
+            raise ExecutionException(f"Unknown entity type: {context.entity_type}")
+
+    def _resolve_identifier_to_id(self, context: OperationContext, project_id: int) -> Optional[int]:
+        """Resolve identifier (name or ID) to entity ID.
+
+        Args:
+            context: OperationContext with entity_type and identifier
+            project_id: Project ID
+
+        Returns:
+            Entity ID or None if not found
+        """
+        identifier = context.identifier
+
+        # If already an int, return it
+        if isinstance(identifier, int):
+            return identifier
+
+        # Resolve name to ID
+        if context.entity_type == EntityType.PROJECT:
+            # Search projects by name
+            projects = self.state_manager.get_all_projects()
+            for proj in projects:
+                if proj.project_name.lower() == identifier.lower():
+                    return proj.id
+            return None
+
+        elif context.entity_type == EntityType.MILESTONE:
+            # Milestones don't have name search - require ID
+            logger.warning(f"Milestone lookup by name '{identifier}' not supported")
+            return None
+
+        else:  # EPIC, STORY, TASK, SUBTASK
+            # Search tasks by title
+            task_type_map = {
+                EntityType.EPIC: TaskType.EPIC,
+                EntityType.STORY: TaskType.STORY,
+                EntityType.TASK: TaskType.TASK,
+                EntityType.SUBTASK: TaskType.SUBTASK
+            }
+            task_type = task_type_map.get(context.entity_type)
+
+            if task_type:
+                tasks = self.state_manager.list_tasks(
+                    task_type=task_type,
+                    limit=20
+                )
+                for task in tasks:
+                    if identifier.lower() in task.title.lower():
+                        return task.id
+
+            return None
+
+    def _update_entity(self, context: OperationContext, entity_id: int, project_id: int):
+        """Update entity via StateManager.
+
+        Args:
+            context: OperationContext with entity_type and parameters
+            entity_id: Entity ID to update
+            project_id: Project ID
+        """
+        params = context.parameters
+
+        if context.entity_type == EntityType.PROJECT:
+            # Update project
+            project = self.state_manager.get_project(entity_id)
+            if not project:
+                raise ExecutionException(f"Project {entity_id} not found")
+
+            # Update fields
+            if 'status' in params:
+                # Map status string to TaskStatus enum
+                status_map = {
+                    'ACTIVE': TaskStatus.RUNNING,
+                    'INACTIVE': TaskStatus.CANCELLED,
+                    'COMPLETED': TaskStatus.COMPLETED,
+                    'PAUSED': TaskStatus.PENDING,
+                    'BLOCKED': TaskStatus.BLOCKED
+                }
+                status_str = params['status'].upper()
+                if status_str in status_map:
+                    project.status = status_map[status_str]
+
+            if 'description' in params:
+                project.description = params['description']
+
+            if 'name' in params or 'title' in params:
+                project.project_name = params.get('name') or params.get('title')
+
+            # Save changes
+            self.state_manager.db.commit()
+
+        else:  # EPIC, STORY, TASK, SUBTASK
+            # Update task
+            task = self.state_manager.get_task(entity_id)
+            if not task:
+                raise ExecutionException(f"Task {entity_id} not found")
+
+            # Update fields
+            if 'status' in params:
+                status_map = {
+                    'ACTIVE': TaskStatus.RUNNING,
+                    'INACTIVE': TaskStatus.CANCELLED,
+                    'COMPLETED': TaskStatus.COMPLETED,
+                    'PAUSED': TaskStatus.PENDING,
+                    'BLOCKED': TaskStatus.BLOCKED,
+                    'PENDING': TaskStatus.PENDING,
+                    'RUNNING': TaskStatus.RUNNING,
+                    'READY': TaskStatus.READY
+                }
+                status_str = params['status'].upper()
+                if status_str in status_map:
+                    task.status = status_map[status_str]
+
+            if 'title' in params:
+                task.title = params['title']
+
+            if 'description' in params:
+                task.description = params['description']
+
+            if 'priority' in params:
+                task.priority = params['priority']
+
+            if 'dependencies' in params:
+                task.dependencies = params['dependencies']
+
+            # Save changes
+            self.state_manager.db.commit()
+
+    def _delete_entity(self, context: OperationContext, entity_id: int, project_id: int):
+        """Delete entity via StateManager.
+
+        Args:
+            context: OperationContext with entity_type
+            entity_id: Entity ID to delete
+            project_id: Project ID
+        """
+        if context.entity_type == EntityType.PROJECT:
+            # Delete project (if StateManager supports it)
+            raise ExecutionException("Project deletion not supported via NL commands")
+
+        elif context.entity_type == EntityType.MILESTONE:
+            # Delete milestone
+            self.state_manager.db.query(self.state_manager.db.Milestone).filter_by(id=entity_id).delete()
+            self.state_manager.db.commit()
+
+        else:  # EPIC, STORY, TASK, SUBTASK
+            # Delete task
+            self.state_manager.db.query(self.state_manager.db.Task).filter_by(id=entity_id).delete()
+            self.state_manager.db.commit()
+
+    def _query_simple(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute simple QUERY (list entities).
+
+        Args:
+            context: OperationContext with entity_type
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with entity list
+        """
+        if context.entity_type == EntityType.PROJECT:
+            projects = self.state_manager.get_all_projects()
+            return ExecutionResult(
+                success=True,
+                results={
+                    'query_type': 'simple',
+                    'entity_type': 'project',
+                    'entities': [
+                        {'id': p.id, 'name': p.project_name, 'description': p.description}
+                        for p in projects
+                    ],
+                    'count': len(projects)
+                }
+            )
+
+        elif context.entity_type == EntityType.MILESTONE:
+            milestones = self.state_manager.list_milestones(project_id)
+            return ExecutionResult(
+                success=True,
+                results={
+                    'query_type': 'simple',
+                    'entity_type': 'milestone',
+                    'entities': [
+                        {'id': m.id, 'name': m.name, 'description': m.description}
+                        for m in milestones
+                    ],
+                    'count': len(milestones)
+                }
+            )
+
+        else:  # EPIC, STORY, TASK, SUBTASK
+            task_type_map = {
+                EntityType.EPIC: TaskType.EPIC,
+                EntityType.STORY: TaskType.STORY,
+                EntityType.TASK: TaskType.TASK,
+                EntityType.SUBTASK: TaskType.SUBTASK
+            }
+            task_type = task_type_map.get(context.entity_type)
+
+            tasks = self.state_manager.list_tasks(task_type=task_type, limit=50)
+            return ExecutionResult(
+                success=True,
+                results={
+                    'query_type': 'simple',
+                    'entity_type': context.entity_type.value,
+                    'entities': [
+                        {
+                            'id': t.id,
+                            'title': t.title,
+                            'description': t.description,
+                            'status': t.status.value
+                        }
+                        for t in tasks
+                    ],
+                    'count': len(tasks)
+                }
+            )
+
+    def _query_hierarchical(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute HIERARCHICAL query (show task hierarchies: epics → stories → tasks).
+
+        Args:
+            context: OperationContext
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with hierarchical task structure
+        """
+        # Get all epics for project
+        epics = self.state_manager.list_tasks(task_type=TaskType.EPIC, limit=50)
+
+        hierarchy = []
+        for epic in epics:
+            # Get stories for this epic
+            stories = self.state_manager.get_epic_stories(epic.id)
+
+            epic_data = {
+                'epic_id': epic.id,
+                'epic_title': epic.title,
+                'epic_status': epic.status.value,
+                'stories': []
+            }
+
+            for story in stories:
+                # Get tasks for this story
+                tasks = self.state_manager.get_story_tasks(story.id)
+
+                story_data = {
+                    'story_id': story.id,
+                    'story_title': story.title,
+                    'story_status': story.status.value,
+                    'tasks': [
+                        {'task_id': t.id, 'task_title': t.title, 'task_status': t.status.value}
+                        for t in tasks
+                    ]
+                }
+
+                epic_data['stories'].append(story_data)
+
+            hierarchy.append(epic_data)
+
+        return ExecutionResult(
+            success=True,
+            results={
+                'query_type': 'hierarchical',
+                'project_id': project_id,
+                'hierarchy': hierarchy,
+                'epic_count': len(hierarchy)
+            }
+        )
+
+    def _query_next_steps(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute NEXT_STEPS query (show next pending tasks).
+
+        Args:
+            context: OperationContext
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with next pending tasks
+        """
+        # Get all pending/active tasks for project
+        all_tasks = self.state_manager.list_tasks(limit=100)
+        pending_tasks = [
+            t for t in all_tasks
+            if t.status in [TaskStatus.READY, TaskStatus.PENDING, TaskStatus.RUNNING]
+            and t.project_id == project_id
+        ]
+
+        # Sort by priority (assuming higher = more important)
+        pending_tasks.sort(key=lambda t: t.priority, reverse=True)
+
+        return ExecutionResult(
+            success=True,
+            results={
+                'query_type': 'next_steps',
+                'project_id': project_id,
+                'tasks': [
+                    {
+                        'id': t.id,
+                        'title': t.title,
+                        'status': t.status.value,
+                        'priority': t.priority,
+                        'task_type': t.task_type.value
+                    }
+                    for t in pending_tasks[:10]  # Top 10 next steps
+                ],
+                'count': len(pending_tasks)
+            }
+        )
+
+    def _query_backlog(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute BACKLOG query (show all pending tasks).
+
+        Args:
+            context: OperationContext
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with all pending tasks
+        """
+        # Get all pending tasks
+        all_tasks = self.state_manager.list_tasks(limit=200)
+        pending_tasks = [
+            t for t in all_tasks
+            if t.status in [TaskStatus.READY, TaskStatus.PENDING, TaskStatus.RUNNING]
+            and t.project_id == project_id
+        ]
+
+        return ExecutionResult(
+            success=True,
+            results={
+                'query_type': 'backlog',
+                'project_id': project_id,
+                'tasks': [
+                    {
+                        'id': t.id,
+                        'title': t.title,
+                        'status': t.status.value,
+                        'priority': t.priority,
+                        'task_type': t.task_type.value
+                    }
+                    for t in pending_tasks
+                ],
+                'count': len(pending_tasks)
+            }
+        )
+
+    def _query_roadmap(self, context: OperationContext, project_id: int) -> ExecutionResult:
+        """Execute ROADMAP query (show milestones and associated epics).
+
+        Args:
+            context: OperationContext
+            project_id: Project ID
+
+        Returns:
+            ExecutionResult with roadmap data
+        """
+        # Get all milestones for project
+        milestones = self.state_manager.list_milestones(project_id)
+
+        roadmap = []
+        for milestone in milestones:
+            milestone_data = {
+                'milestone_id': milestone.id,
+                'milestone_name': milestone.name,
+                'milestone_status': milestone.status.value if hasattr(milestone, 'status') else 'ACTIVE',
+                'required_epics': []
+            }
+
+            # Get required epics
+            if milestone.required_epic_ids:
+                for epic_id in milestone.required_epic_ids:
+                    epic = self.state_manager.get_task(epic_id)
+                    if epic:
+                        milestone_data['required_epics'].append({
+                            'epic_id': epic.id,
+                            'epic_title': epic.title,
+                            'epic_status': epic.status.value
+                        })
+
+            roadmap.append(milestone_data)
+
+        return ExecutionResult(
+            success=True,
+            results={
+                'query_type': 'roadmap',
+                'project_id': project_id,
+                'milestones': roadmap,
+                'milestone_count': len(roadmap)
+            }
+        )
+
+    # ==================== Legacy Methods ====================
+
+    def execute_legacy(
+        self,
         validated_command: Dict[str, Any],
         project_id: Optional[int] = None,
         confirmed: bool = False
     ) -> ExecutionResult:
-        """Execute validated command.
+        """Execute validated command (DEPRECATED - use execute(OperationContext)).
+
+        This method provides backward compatibility with the old EntityExtractor API.
+        Will be removed in v1.7.0.
 
         Args:
             validated_command: Validated command from CommandValidator
@@ -109,11 +805,18 @@ class CommandExecutor:
             ExecutionResult with success status, created IDs, and errors
 
         Example:
-            >>> result = executor.execute({
+            >>> result = executor.execute_legacy({
             ...     'entity_type': 'story',
             ...     'entities': [{'title': 'Login', 'epic_id': 5}]
             ... })
         """
+        warnings.warn(
+            "execute_legacy() is deprecated and will be removed in v1.7.0. "
+            "Use execute(OperationContext) instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         if not validated_command:
             return ExecutionResult(
                 success=False,
