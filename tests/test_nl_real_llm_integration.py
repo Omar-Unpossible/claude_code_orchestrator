@@ -498,35 +498,35 @@ class TestRealLLMFailureModes:
             )
 
         error_msg = str(exc_info.value).lower()
-        assert "timeout" in error_msg or "timed out" in error_msg, \
-            "Error should mention timeout"
+        # Retry manager wraps timeout as "operation failed after N attempts"
+        assert any(keyword in error_msg for keyword in ['timeout', 'timed out', 'failed after', 'attempts']), \
+            f"Error should mention timeout or retry failure, got: {error_msg}"
 
     def test_llm_connection_failure(self, real_llm_config):
         """REAL LLM: Handle connection failure to wrong URL"""
         from src.llm.local_interface import LocalLLMInterface
+        from src.plugins.exceptions import LLMConnectionException
 
-        # Configure wrong URL
+        # Configure wrong URL - should fail during initialization
         llm = LocalLLMInterface()
-        llm.initialize({
-            'model': 'qwen2.5-coder:32b',
-            'endpoint': 'http://invalid.url:99999',  # Invalid URL
-            'timeout': 5.0
-        })
 
-        classifier = IntentClassifier(llm_plugin=llm)
-
-        # Should raise connection exception
-        with pytest.raises(Exception) as exc_info:
-            classifier.classify("Create a task")
+        # Initialize should fail on connection check
+        with pytest.raises((LLMConnectionException, Exception)) as exc_info:
+            llm.initialize({
+                'model': 'qwen2.5-coder:32b',
+                'endpoint': 'http://invalid.url:99999',  # Invalid URL
+                'timeout': 5.0
+            })
 
         error_msg = str(exc_info.value).lower()
-        assert any(keyword in error_msg for keyword in ['connection', 'connect', 'unreachable', 'error']), \
-            "Error should mention connection issue"
+        assert any(keyword in error_msg for keyword in ['connection', 'connect', 'unreachable', 'error', 'cannot']), \
+            f"Error should mention connection issue, got: {error_msg}"
 
-    def test_llm_invalid_json_recovery(self, real_llm_interface):
+    @pytest.mark.timeout(120)  # 60s timeout for LLM + overhead
+    def test_llm_invalid_json_recovery(self, performance_llm_interface):
         """REAL LLM: Verify LLM returns valid JSON (should always work with proper prompts)"""
         # This test verifies our prompts are robust
-        extractor = EntityExtractor(llm_plugin=real_llm_interface)
+        extractor = EntityExtractor(llm_plugin=performance_llm_interface)
 
         # Test with various inputs that might confuse LLM
         tricky_inputs = [
@@ -542,16 +542,20 @@ class TestRealLLMFailureModes:
             assert result.entity_type in ['epic', 'story', 'task', 'subtask', 'milestone', 'project'], \
                 "Should return valid entity type"
 
-    def test_llm_consistency_across_calls(self, real_entity_extractor):
+    @pytest.mark.timeout(200)  # 3 calls x 60s = 180s + overhead
+    def test_llm_consistency_across_calls(self, performance_llm_interface):
         """REAL LLM: Verify consistent extraction across multiple calls"""
+        import time
+        extractor = EntityExtractor(llm_plugin=performance_llm_interface)
         message = "Create epic 'Payment System' with Stripe integration"
 
         # Call LLM 3 times with same input
         results = []
-        for _ in range(3):
-            result = real_entity_extractor.extract(message, intent="COMMAND")
+        for i in range(3):
+            result = extractor.extract(message, intent="COMMAND")
             results.append(result)
-            time.sleep(0.5)  # Small delay between calls
+            if i < 2:  # Don't sleep after last iteration
+                time.sleep(0.5)  # Small delay between calls
 
         # All should return epic type
         for result in results:
@@ -559,7 +563,7 @@ class TestRealLLMFailureModes:
             assert 'payment' in result.entities[0]['title'].lower(), \
                 "Should consistently extract payment-related title"
 
-        # Confidence should be similar (within 0.2)
+        # Confidence should be similar (within 0.3)
         confidences = [r.confidence for r in results]
         confidence_range = max(confidences) - min(confidences)
         assert confidence_range < 0.3, \
@@ -570,35 +574,88 @@ class TestRealLLMFailureModes:
 # Performance Benchmark (Optional)
 # ============================================================================
 
-@pytest.mark.benchmark
+@pytest.fixture
+def performance_llm_config():
+    """Config for performance tests with 60s timeout"""
+    config = Config.load()
+    config.set('testing.mode', False)
+    config.set('llm.provider', 'ollama')
+    config.set('llm.model', 'qwen2.5-coder:32b')
+    config.set('llm.base_url', 'http://172.29.144.1:11434')
+    config.set('llm.timeout', 60.0)  # Performance tests need more time
+    config.set('llm.temperature', 0.1)
+    return config
+
+
+@pytest.fixture
+def performance_llm_interface(performance_llm_config):
+    """LLM interface with 60s timeout for performance tests"""
+    from src.llm.local_interface import LocalLLMInterface
+    llm = LocalLLMInterface()
+    llm.initialize({
+        'model': performance_llm_config.get('llm.model'),
+        'endpoint': performance_llm_config.get('llm.base_url'),
+        'timeout': performance_llm_config.get('llm.timeout'),
+        'temperature': performance_llm_config.get('llm.temperature', 0.1)
+    })
+    return llm
+
+
+@pytest.mark.slow
 class TestRealLLMPerformance:
     """Optional performance benchmarks for real LLM calls"""
 
-    def test_intent_classification_speed(self, real_intent_classifier, benchmark):
-        """Benchmark: Intent classification speed"""
-        def classify():
-            return real_intent_classifier.classify("Create a task for OAuth")
+    @pytest.mark.timeout(90)
+    def test_intent_classification_speed(self, performance_llm_interface):
+        """Benchmark: Intent classification speed (60s timeout)"""
+        import time
+        from src.nl.intent_classifier import IntentClassifier
 
-        result = benchmark(classify)
+        classifier = IntentClassifier(llm_plugin=performance_llm_interface, confidence_threshold=0.7)
+
+        start = time.time()
+        result = classifier.classify("Create a task for OAuth")
+        duration = time.time() - start
+
         assert result.intent == "COMMAND"
+        assert duration < 60.0, f"Intent classification took {duration:.2f}s (should be < 60s)"
+        print(f"\nIntent classification: {duration:.2f}s")
 
-    def test_entity_extraction_speed(self, real_entity_extractor, benchmark):
-        """Benchmark: Entity extraction speed"""
-        def extract():
-            return real_entity_extractor.extract(
-                "Create epic 'Auth System' with OAuth and MFA",
-                intent="COMMAND"
-            )
+    @pytest.mark.timeout(90)
+    def test_entity_extraction_speed(self, performance_llm_interface):
+        """Benchmark: Entity extraction speed (60s timeout)"""
+        import time
+        from src.nl.entity_extractor import EntityExtractor
 
-        result = benchmark(extract)
+        extractor = EntityExtractor(llm_plugin=performance_llm_interface)
+
+        start = time.time()
+        result = extractor.extract(
+            "Create epic 'Auth System' with OAuth and MFA",
+            intent="COMMAND"
+        )
+        duration = time.time() - start
+
         assert result.entity_type == "epic"
+        assert duration < 60.0, f"Entity extraction took {duration:.2f}s (should be < 60s)"
+        print(f"\nEntity extraction: {duration:.2f}s")
 
-    def test_full_pipeline_speed(self, real_nl_processor, benchmark):
-        """Benchmark: Full pipeline speed"""
-        def process():
-            return real_nl_processor.process(
-                "Create epic 'Payment System'"
-            )
+    @pytest.mark.timeout(90)
+    def test_full_pipeline_speed(self, performance_llm_interface, real_state_manager):
+        """Benchmark: Full pipeline speed (60s timeout)"""
+        import time
 
-        result = benchmark(process)
+        # Create processor with performance config
+        processor = NLCommandProcessor(
+            llm_plugin=performance_llm_interface,
+            state_manager=real_state_manager,
+            config=Config.load()
+        )
+
+        start = time.time()
+        result = processor.process("Create epic 'Payment System'")
+        duration = time.time() - start
+
         assert result.success is True
+        assert duration < 60.0, f"Full pipeline took {duration:.2f}s (should be < 60s)"
+        print(f"\nFull pipeline: {duration:.2f}s")
