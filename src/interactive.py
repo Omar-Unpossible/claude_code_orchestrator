@@ -709,9 +709,10 @@ class InteractiveMode:
                 # Display result
                 print(f"\n{nl_response.response}\n")
 
-                # Update current project if changed
-                if nl_response.execution_result and 'project_id' in nl_response.execution_result:
-                    self.current_project = nl_response.execution_result['project_id']
+                # Update current project if changed (for project query/creation)
+                if nl_response.execution_result and hasattr(nl_response.execution_result, 'results'):
+                    if 'project_id' in nl_response.execution_result.results:
+                        self.current_project = nl_response.execution_result.results['project_id']
 
             else:
                 # Fallback: LLM-only response (no execution)
