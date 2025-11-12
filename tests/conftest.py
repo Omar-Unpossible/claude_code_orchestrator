@@ -1,9 +1,11 @@
 """Pytest configuration and shared fixtures."""
 
 import gc
+import json
 import time
 import threading
 import pytest
+from typing import Dict, Any, List
 from unittest.mock import Mock, MagicMock
 from src.plugins.registry import AgentRegistry, LLMRegistry
 from src.core.config import Config
@@ -271,3 +273,232 @@ def sample_project(state_manager):
     )
 
     return project
+
+
+# ============================================================================
+# Mock LLM Response Fixtures (Valid Obra Schema)
+# ============================================================================
+
+@pytest.fixture
+def mock_llm_responses() -> Dict[str, str]:
+    """
+    Valid JSON responses matching Obra entity schema.
+
+    Used by mock LLMs to return realistic, parseable responses.
+    Each response matches the schema in src/nl/schemas/obra_schema.json.
+
+    Returns:
+        Dictionary mapping entity_type -> valid JSON response
+    """
+    return {
+        # Epic creation
+        "epic": json.dumps({
+            "entity_type": "epic",
+            "entities": [{
+                "title": "User Authentication System",
+                "description": "Complete auth with OAuth, MFA, session management",
+                "priority": 3
+            }],
+            "confidence": 0.92,
+            "reasoning": "Clear epic with title, description, and priority"
+        }),
+
+        # Story creation
+        "story": json.dumps({
+            "entity_type": "story",
+            "entities": [{
+                "title": "Password Reset Flow",
+                "description": "As a user, I want to reset my password so I can regain access",
+                "epic_id": 1
+            }],
+            "confidence": 0.88,
+            "reasoning": "User story format with epic reference"
+        }),
+
+        # Task creation
+        "task": json.dumps({
+            "entity_type": "task",
+            "entities": [{
+                "title": "Implement password hashing",
+                "description": "Use bcrypt for secure password storage",
+                "story_id": 1,
+                "dependencies": []
+            }],
+            "confidence": 0.90,
+            "reasoning": "Technical task with clear title and story reference"
+        }),
+
+        # Subtask creation
+        "subtask": json.dumps({
+            "entity_type": "subtask",
+            "entities": [{
+                "title": "Write unit tests for password validation",
+                "parent_task_id": 1
+            }],
+            "confidence": 0.93,
+            "reasoning": "Clear subtask with parent reference"
+        }),
+
+        # Milestone creation
+        "milestone": json.dumps({
+            "entity_type": "milestone",
+            "entities": [{
+                "name": "Auth Complete",
+                "description": "All authentication features implemented",
+                "required_epic_ids": [1, 2]
+            }],
+            "confidence": 0.94,
+            "reasoning": "Milestone with epic dependencies"
+        }),
+
+        # Project query
+        "project": json.dumps({
+            "entity_type": "project",
+            "entities": [],
+            "confidence": 0.85,
+            "reasoning": "Project-level information request"
+        }),
+
+        # Multi-entity (batch creation)
+        "multi_task": json.dumps({
+            "entity_type": "task",
+            "entities": [
+                {"title": "Task 1", "description": "First task"},
+                {"title": "Task 2", "description": "Second task"},
+                {"title": "Task 3", "description": "Third task"}
+            ],
+            "confidence": 0.87,
+            "reasoning": "Batch task creation with 3 items"
+        }),
+
+        # Intent classification - COMMAND
+        "intent_command": json.dumps({
+            "intent": "COMMAND",
+            "confidence": 0.95,
+            "reasoning": "Clear action verb 'create' indicates command intent"
+        }),
+
+        # Intent classification - QUESTION
+        "intent_question": json.dumps({
+            "intent": "QUESTION",
+            "confidence": 0.92,
+            "reasoning": "Question word 'what' and query pattern indicate information request"
+        }),
+
+        # Invalid responses for error testing
+        "invalid_null_entity_type": json.dumps({
+            "entity_type": None,
+            "entities": [{"title": "Test"}],
+            "confidence": 0.8,
+            "reasoning": "Test case"
+        }),
+
+        "invalid_missing_entity_type": json.dumps({
+            "entities": [{"title": "Test"}],
+            "confidence": 0.8,
+            "reasoning": "Test case"
+        })
+    }
+
+
+@pytest.fixture
+def mock_llm_smart(mock_llm_responses):
+    """
+    Smart mock LLM that returns valid responses based on input.
+
+    Analyzes the prompt to determine entity type and returns
+    appropriate valid JSON from mock_llm_responses fixture.
+
+    Usage:
+        mock = mock_llm_smart
+        llm_interface.llm = mock
+    """
+    mock = MagicMock()
+
+    def smart_generate(prompt: str, **kwargs) -> str:
+        """Return appropriate response based on prompt content"""
+        prompt_lower = prompt.lower()
+
+        # Intent classification
+        if '"intent":' in prompt_lower or 'classify' in prompt_lower:
+            # Extract the actual user message for more accurate classification
+            user_msg_marker = "## user message"
+            if user_msg_marker in prompt_lower:
+                msg_start = prompt_lower.find(user_msg_marker) + len(user_msg_marker)
+                user_msg = prompt_lower[msg_start:].strip()
+            else:
+                user_msg = prompt_lower
+
+            # Check for Obra-specific work item entities
+            obra_work_items = ['project', 'epic', 'story', 'task', 'subtask', 'milestone']
+            has_obra_work_items = any(item in user_msg for item in obra_work_items)
+
+            # Check for Obra command verbs (when used with work items)
+            obra_commands = ['create', 'update', 'delete', 'show', 'list', 'add']
+            has_obra_command = any(cmd in user_msg for cmd in obra_commands)
+
+            # Question words
+            has_question_word = any(word in user_msg for word in ['what', 'how', 'why', 'when', 'where', 'which'])
+
+            # Logic:
+            # 1. If mentions Obra work items -> COMMAND (even with question words like "What is the current project?")
+            # 2. If mentions "current project/epic/etc" -> COMMAND
+            # 3. If has Obra commands AND work items -> COMMAND
+            # 4. General programming questions (no work items) -> QUESTION
+            if has_obra_work_items:
+                return mock_llm_responses["intent_command"]
+            elif 'current' in user_msg and has_obra_command:
+                return mock_llm_responses["intent_command"]
+            elif has_question_word and not has_obra_work_items:
+                return mock_llm_responses["intent_question"]
+            else:
+                return mock_llm_responses["intent_command"]
+
+        # Entity extraction - detect entity type from prompt
+        # Look for the user message section (after "## User Message to Extract")
+        user_message_marker = "## user message to extract"
+        if user_message_marker in prompt_lower:
+            # Extract just the user message part
+            user_msg_start = prompt_lower.find(user_message_marker) + len(user_message_marker)
+            user_message = prompt_lower[user_msg_start:].strip()
+        else:
+            user_message = prompt_lower
+
+        # Check user message for entity type keywords (most specific first)
+        if 'current project' in user_message or 'show me the active project' in user_message or \
+           'which project' in user_message or user_message.strip().startswith('show project') or \
+           user_message.strip().startswith('project'):
+            return mock_llm_responses["project"]
+        elif 'subtask' in user_message:
+            return mock_llm_responses["subtask"]
+        elif 'milestone' in user_message:
+            return mock_llm_responses["milestone"]
+        elif 'user story' in user_message or (('story' in user_message or 'stories' in user_message) and 'epic' not in user_message):
+            return mock_llm_responses["story"]
+        elif 'epic' in user_message:
+            return mock_llm_responses["epic"]
+        elif 'task' in user_message or 'tasks' in user_message:
+            # Check for batch creation
+            if any(num in user_message for num in ['3 tasks', 'three tasks', 'multiple']):
+                return mock_llm_responses["multi_task"]
+            else:
+                return mock_llm_responses["task"]
+
+        # Default to task if unclear
+        return mock_llm_responses["task"]
+
+    mock.generate.side_effect = smart_generate
+    return mock
+
+
+@pytest.fixture
+def mock_llm_simple(mock_llm_responses):
+    """
+    Simple mock LLM that always returns task entity.
+
+    Use when you need a basic mock and don't care about
+    specific entity types (e.g., testing error handling).
+    """
+    mock = MagicMock()
+    mock.generate.return_value = mock_llm_responses["task"]
+    return mock

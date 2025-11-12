@@ -45,12 +45,12 @@ class ExtractedEntities:
     """Result of entity extraction.
 
     Attributes:
-        entity_type: Type of work item (epic, story, task, subtask, milestone)
+        entity_type: Type of work item (project, epic, story, task, subtask, milestone)
         entities: List of extracted entity dictionaries with work item properties
         confidence: Confidence score from 0.0 to 1.0
         reasoning: Brief explanation of extraction decisions
     """
-    entity_type: Literal['epic', 'story', 'task', 'subtask', 'milestone']
+    entity_type: Literal['project', 'epic', 'story', 'task', 'subtask', 'milestone']
     entities: List[Dict[str, Any]] = field(default_factory=list)
     confidence: float = 0.0
     reasoning: str = ""
@@ -60,7 +60,7 @@ class ExtractedEntities:
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
 
-        valid_types = ['epic', 'story', 'task', 'subtask', 'milestone']
+        valid_types = ['project', 'epic', 'story', 'task', 'subtask', 'milestone']
         if self.entity_type not in valid_types:
             raise ValueError(
                 f"entity_type must be one of {valid_types}, got {self.entity_type}"

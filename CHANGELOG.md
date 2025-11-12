@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **NL Test Suite**: Fixed 10 failing tests in NL command system (90% pass rate achieved - 55/61 mock tests)
+  - Replaced broken mock LLM fixtures with `mock_llm_smart` and `mock_llm_simple` in `tests/conftest.py`
+  - Fixed `test_nl_entity_extractor_bug_prevention.py` (6/6 tests now passing, was 1/6)
+  - Fixed `test_nl_command_processor_integration.py` (25/25 tests now passing, was 21/25)
+  - Fixed `test_nl_e2e_integration.py` (24/30 tests passing, 1 MagicMock leak fixed)
+  - Added 'project' as valid entity type in `ExtractedEntities` class (was missing, causing 3 failures)
+  - All mock tests now execute in ~15s (improved from ~31s target)
+
+### Added
+- **Real LLM Integration Tests**: Created 33 new tests using actual Ollama/Qwen (5-10min execution)
+  - File: `tests/test_nl_real_llm_integration.py`
+  - Intent classification accuracy tests (8 tests) - Validates COMMAND vs QUESTION classification
+  - Entity extraction accuracy tests (10 tests) - Validates extraction of all entity types
+  - Full pipeline E2E tests (8 tests) - Complete workflow validation with database verification
+  - LLM failure mode tests (4 tests) - Timeout, connection, error handling
+  - Performance benchmark tests (3 tests) - Speed measurement for optimization
+  - Validates production behavior with real LLM, not just mocked logic
+- **NL Testing Strategy Documentation**: Comprehensive guide on when to use mock vs real LLM tests
+  - File: `docs/testing/NL_TESTING_STRATEGY.md`
+  - Decision matrix for test approach selection (mock vs real LLM)
+  - Test suite organization and execution commands
+  - Pytest markers for integration tests (`@pytest.mark.integration`, `@pytest.mark.requires_ollama`)
+  - CI/CD configuration guidance (mock on commit, real LLM on merge)
+  - Performance benchmarks and troubleshooting guide
+  - Migration guide for updating existing tests
+- **Real LLM Testing Guide**: Detailed setup and troubleshooting documentation
+  - File: `docs/development/REAL_LLM_TESTING_GUIDE.md`
+  - Prerequisites and Ollama setup instructions
+  - Running tests in different modes (development, pre-commit, pre-merge, CI/CD)
+  - Comprehensive troubleshooting section
+  - Performance expectations and optimization tips
+- **Testing Documentation Index**: Centralized testing documentation reference
+  - File: `docs/testing/README.md`
+  - Links to all testing guides and strategies
+  - Quick reference commands
+  - Test file overview with execution times
+- **Pytest Markers**: Added new markers for integration testing
+  - `@pytest.mark.requires_ollama` - Tests requiring Ollama LLM service
+  - `@pytest.mark.benchmark` - Performance benchmark tests (requires pytest-benchmark plugin)
+
+### Changed
+- **Test Fixtures**: Improved mock LLM fixtures in `tests/conftest.py`
+  - `mock_llm_responses`: Dictionary of valid JSON templates for all Obra entity types (project, epic, story, task, subtask, milestone)
+  - `mock_llm_smart`: Context-aware mock that returns appropriate responses based on user message keywords
+    - Intelligently classifies intent (COMMAND for Obra entities, QUESTION for general info)
+    - Returns correct entity type based on message content
+    - Prevents MagicMock objects from leaking into responses
+  - `mock_llm_simple`: Basic mock for simple test cases (always returns task entity)
+  - `real_llm_*` fixtures: Module-scoped fixtures for real LLM integration tests (shared across tests for performance)
+- **TEST_GUIDELINES.md**: Added comprehensive Natural Language Command Testing section
+  - Dual testing strategy explanation (mock vs real LLM)
+  - Example usage for both mock and real LLM tests
+  - Prerequisites for real LLM tests (Ollama setup)
+  - Best practices and cross-references to detailed guides
+
+### Technical Details
+- **Mock Fixture Intelligence**:
+  - `mock_llm_smart` analyzes user messages to determine entity type
+  - Checks for Obra work item keywords (project, epic, story, task, etc.)
+  - Distinguishes between COMMAND (queries Obra data) and QUESTION (general programming)
+  - Returns valid JSON matching `src/nl/schemas/obra_schema.json`
+- **Real LLM Test Architecture**:
+  - Module-scoped fixtures reuse config/state across tests (performance optimization)
+  - Helper functions (`assert_valid_intent_result`, `assert_valid_extraction_result`) for validation
+  - Tests properly marked with pytest markers for filtering
+  - Default pytest run skips integration tests (fast development workflow)
+- **Test Execution Modes**:
+  - Development: Mock tests only (15s, no Ollama required)
+  - Integration: Real LLM tests only (5-10min, requires Ollama)
+  - Full: Both mock + real LLM (88+ tests, ~10min total)
+
+### Documentation
+- Created `docs/testing/NL_TESTING_STRATEGY.md` - Comprehensive testing strategy
+- Created `docs/development/REAL_LLM_TESTING_GUIDE.md` - Real LLM testing guide
+- Created `docs/testing/README.md` - Testing documentation index
+- Updated `docs/development/TEST_GUIDELINES.md` - Added NL testing section
+- Updated `pytest.ini` - Added `requires_ollama` and `benchmark` markers
+
 ### Planned
 - Budget & Cost Controls
 - Metrics & Reporting System

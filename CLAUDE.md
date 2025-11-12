@@ -10,7 +10,19 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 **Terminology**: The **Orchestrator** (validation, quality scoring, prompt optimization) and **Implementer** (code generation) are the two LLM agents. Shorthand: **Orc** and **Imp** (for efficient communication in this file only - use formal terms in code/docs).
 
-**Status**: Production-ready - 790+ tests (91% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6), Agile hierarchy (v1.3.0), Project Infrastructure Maintenance (v1.4.0).
+**Current Version**: **v1.5.0** (November 11, 2025)
+
+**Status**: Production-ready - 770+ tests (88% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6)
+
+**Key Features Implemented**:
+- ✅ Hybrid local-remote architecture (M0-M9)
+- ✅ Multi-stage validation pipeline with quality-based iteration
+- ✅ Natural Language Command Interface (v1.3.0 - ADR-014)
+- ✅ Agile/Scrum work hierarchy - Epics, Stories, Tasks, Subtasks, Milestones (v1.3.0 - ADR-013)
+- ✅ Project Infrastructure Maintenance System (v1.4.0 - ADR-015)
+- ✅ Interactive UX improvements - Natural language defaults to orchestrator (v1.5.0)
+- ✅ LLM-First Prompt Engineering (PHASE_6) - 35% token efficiency, 100% parse success
+- ✅ Retry logic, Task dependencies, Git integration, Configuration profiles (M9)
 
 **Complete Details**: `docs/design/OBRA_SYSTEM_OVERVIEW.md` - Full system architecture, design principles, capabilities, and development guidelines.
 
@@ -27,11 +39,13 @@ When starting a new session, read these documents in priority order:
 
 ### Key References
 - **Documentation Index**: `docs/README.md` - Browse all docs
-- **ADRs**: `docs/decisions/` - Architecture decisions (13 ADRs)
+- **ADRs**: `docs/decisions/` - Architecture decisions (14 ADRs total)
 - **Phase Reports**: `docs/development/phase-reports/` - Latest work summaries
 - **Configuration**: `docs/guides/CONFIGURATION_PROFILES_GUIDE.md`
-- **Interactive Mode**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md`
+- **Interactive Mode**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` - v1.5.0 UX improvements
+- **Natural Language Interface**: `docs/guides/NL_COMMAND_GUIDE.md` - Natural language command guide
 - **Agile Workflow**: `docs/guides/AGILE_WORKFLOW_GUIDE.md` - Epic/story/milestone workflows
+- **Project Infrastructure**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` - Automatic doc maintenance
 - **Flexible LLM**: `docs/business_dev/FLEXIBLE_LLM_ORCHESTRATOR_STRATEGY.md` - Dual deployment model
 
 ## Architecture Principles
@@ -145,23 +159,33 @@ When starting a new session, read these documents in priority order:
 
 **See**: `docs/design/LLM_FIRST_PROMPT_ENGINEERING_FRAMEWORK.md` for detailed design
 
-### 10. Interactive Orchestration (Phase 1-2)
-**Real-time command injection for human-in-the-loop control:**
+### 10. Interactive Orchestration (v1.5.0 UX Improvement)
+**Real-time command injection and natural language interface:**
 
-- **Interactive Commands** (8 commands):
-  - `/pause`, `/resume`, `/to-claude <message>`, `/to-obra <message>`
-  - `/override-decision <decision>`, `/status`, `/help`, `/stop`
+- **UX Improvement (v1.5.0)**:
+  - **Natural language (no slash) defaults to orchestrator** - Just type naturally to communicate with Obra
+  - **ALL system commands require `/` prefix** - Including `/help`, `/status`, `/pause`, etc.
+  - **Invalid slash commands rejected** - Helpful error messages guide users
+
+- **Interactive Commands**:
+  - **Natural text (no slash)** - Send message to orchestrator (DEFAULT)
+  - `/help` - Show help message
+  - `/status` - Show current task status, iteration, quality score
+  - `/pause` / `/resume` - Pause/resume execution
+  - `/stop` - Stop execution gracefully
+  - `/to-impl <message>` - Send message to implementer (Claude Code)
+  - `/override-decision <choice>` - Override orchestrator's decision
 
 - **Interactive Checkpoints** (6 injection points):
   - Before agent execution, after agent response, before validation
   - After validation (low confidence), before decision execution, on error/exception
 
 - **Key Components**:
-  - `CommandProcessor` (376 lines): Parses and executes commands
-  - `InputManager` (176 lines): Non-blocking input with prompt_toolkit
+  - `CommandProcessor`: Parses commands and routes natural language to orchestrator
+  - `InputManager`: Non-blocking input with prompt_toolkit and tab completion
   - `TaskStoppedException`: Graceful shutdown signal
 
-**See**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` for command reference
+**See**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` for v1.5.0 command reference
 
 ### 11. Session Management Architecture
 **Per-iteration session model for maximum reliability:**
@@ -186,7 +210,7 @@ When starting a new session, read these documents in priority order:
 
 **See**: `docs/guides/SESSION_MANAGEMENT_GUIDE.md` for complete guide
 
-### 12. Agile/Scrum Work Hierarchy (ADR-013)
+### 12. Agile/Scrum Work Hierarchy (v1.3.0 - ADR-013)
 **Industry-standard terminology for organizing work at scale:**
 
 - **Work Item Hierarchy**:
@@ -252,6 +276,66 @@ When starting a new session, read these documents in priority order:
 
 **See**: `docs/guides/AGILE_WORKFLOW_GUIDE.md` for complete workflow examples
 **See**: `docs/decisions/ADR-013-adopt-agile-work-hierarchy.md` for rationale
+
+### 13. Natural Language Command Interface (v1.3.0 - ADR-014)
+**Conversational command execution with automatic intent detection:**
+
+- **Unified NL Interface** (Stories 1-5):
+  - **IntentClassifier**: Automatically detect COMMAND vs QUESTION intent (95%+ accuracy)
+  - **EntityExtractor**: Schema-aware extraction (90%+ accuracy on Obra entities)
+  - **CommandValidator**: Business rule validation before execution
+  - **CommandExecutor**: StateManager integration with transaction safety
+  - **ResponseFormatter**: Color-coded responses with contextual suggestions
+
+- **Pipeline Architecture**:
+  ```
+  User Input
+      ↓
+  IntentClassifier (LLM) → COMMAND or QUESTION
+      ↓
+  ├─ COMMAND → EntityExtractor → CommandValidator → CommandExecutor
+  └─ QUESTION → Informational Response
+  ```
+
+- **Natural Language Examples**:
+  - "Create an epic for user authentication" → Creates epic
+  - "Add a story for password reset to epic 5" → Creates story
+  - "Show me all open tasks" → Lists tasks
+  - "What's the status of milestone 3?" → Shows milestone status
+
+- **Configuration**: `nl_commands` section with confidence thresholds, LLM provider, and master enable switch
+
+- **Performance**: <3s end-to-end latency (P95), 95% intent accuracy, 90% entity extraction accuracy
+
+**See**: `docs/guides/NL_COMMAND_GUIDE.md` for complete user guide
+**See**: `docs/decisions/ADR-014-natural-language-command-interface.md` for architecture
+
+### 14. Project Infrastructure Maintenance (v1.4.0 - ADR-015)
+**Automatic documentation maintenance and freshness tracking:**
+
+- **DocumentationManager Component**:
+  - Freshness checking (30/60/90 day thresholds)
+  - Automatic maintenance task creation with rich context
+  - Implementation plan archiving
+  - CHANGELOG update automation
+  - ADR creation suggestions
+
+- **Event-Driven Triggers**:
+  - Epic completion hook: Creates maintenance task when `requires_adr=True` or `has_architectural_changes=True`
+  - Milestone achievement hook: Creates comprehensive maintenance task with all epic context
+  - Periodic freshness checks: Threading-based scheduler (configurable interval, default 7 days)
+
+- **StateManager Integration**:
+  - 4 new Task fields: `requires_adr`, `has_architectural_changes`, `changes_summary`, `documentation_status`
+  - 1 new Milestone field: `version`
+  - Database migration 004 with indexed fields
+
+- **Configuration System**: New `documentation:` section with master enable/disable, per-trigger config, freshness thresholds
+
+- **Test Coverage**: 50 tests (42 unit + 8 integration), 91% coverage
+
+**See**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` for complete user guide
+**See**: `docs/decisions/ADR-015-project-infrastructure-maintenance-system.md` for architecture
 
 ## Code Standards
 
@@ -543,22 +627,60 @@ See `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md` for detailed setup instructions.
 ### When Stuck
 
 - **System overview**: Read `docs/design/OBRA_SYSTEM_OVERVIEW.md` for complete system understanding
-- **Architecture decisions**: Check `docs/decisions/` for ADRs (12 total)
+- **Architecture decisions**: Check `docs/decisions/` for ADRs (14 total)
 - **Latest changes**: Review `CHANGELOG.md` and `docs/development/phase-reports/`
 - **Technical architecture**: Consult `docs/architecture/ARCHITECTURE.md`
+- **Natural language interface**: See `docs/guides/NL_COMMAND_GUIDE.md` for conversational commands
+- **Project maintenance**: See `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` for auto-doc maintenance
 - **Testing issues**: Check `docs/development/WSL2_TEST_CRASH_POSTMORTEM.md` for WSL2 crash prevention
 - **Configuration**: See `docs/guides/CONFIGURATION_PROFILES_GUIDE.md` for profile setup
 - **Historical context**: Browse `docs/archive/README.md` for archived milestones and analysis
 
-## Future Roadmap
+## Future Development
 
-See `docs/design/design_future.md` for detailed roadmap including:
-- v1.3: Budget & Cost Controls, Metrics & Reporting, Checkpoint System
-- v1.4: Web UI dashboard, Multi-project orchestration
-- v2.0: Distributed architecture, Claude-Driven Parallelization
+**Note**: Obra v1.5.0 provides a production-ready foundation. Future enhancements focus on security, observability, and enterprise features based on user demand.
+
+### Proposed Enhancement Areas
+
+**Security Hardening**:
+- Input sanitization (prompt injection detection)
+- Output sanitization (PII/secret redaction)
+- Git operation confirmation prompts
+- Security audit trail
+- Secrets management integration
+
+**Template System**:
+- Domain-specific prompt templates (Bug Fix, Refactoring, Frontend, API, IaC)
+- Auto-detection via keywords
+- 40% quality improvement for specialized domains
+- Template registry pattern
+
+**Observability**:
+- Structured JSON logging
+- Correlation IDs for task lifecycle tracing
+- Approval gate timestamps
+- Privacy-preserving log analysis
+- Pre-commit hooks for quality checks
+
+**Multi-Agent Orchestration**:
+- ParallelAgentCoordinator maturation
+- Hierarchical delegation (multi-agent epics)
+- Standard message format for agents
+- Summarization for completed phases
+- Circuit breaker patterns
+
+**Enterprise Features** (if demand validated):
+- GDPR/HIPAA/SOC2 compliance frameworks
+- Web UI dashboard (real-time monitoring)
+- Distributed orchestration (multi-cloud)
+- Advanced RAG integration
+
+**See**: Enhancement proposals in `docs/design/enhancements/` for detailed specifications and rationale
 
 ---
 
 **Last Updated**: November 11, 2025
-**Version**: v1.4.0 (Project Infrastructure Maintenance System)
-**Test Coverage**: 91% (790+ tests)
+**Version**: v1.5.0 (Interactive UX Improvements - Natural Language Defaults to Orchestrator)
+**Previous Versions**: v1.4.0 (Project Infrastructure), v1.3.0 (Natural Language Interface), v1.2.0 (LLM-First Prompts)
+**Test Coverage**: 88% overall (770+ tests, 70 test files)
+**ADRs**: 14 architecture decision records

@@ -2,8 +2,8 @@
 
 **Document Type**: System Architecture & Design Principles
 **Audience**: Developers, Claude Code AI, Product Managers
-**Last Updated**: November 5, 2025
-**Version**: 1.2+
+**Last Updated**: November 11, 2025
+**Version**: 1.5.0
 
 ---
 
@@ -358,7 +358,7 @@ class ClaudeCodeLocalAgent(AgentPlugin):
 ### Battle-Tested Reliability
 
 **Testing Coverage**:
-- **695+ tests** across all modules
+- **770+ tests** across all modules (70 test files)
 - **88% overall coverage** (exceeds 85% target)
 - **96-99% coverage** on critical modules (DecisionEngine, QualityController, ContextManager)
 - **100/100 tests passing** for interactive streaming
@@ -536,6 +536,6 @@ See `docs/design/design_future.md` for detailed roadmap.
 
 ---
 
-**Last Updated**: November 5, 2025
-**Version**: 1.2+ (Real-World Validation & Refinement)
+**Last Updated**: November 11, 2025
+**Version**: 1.5.0 (Interactive UX Improvements)
 **Status**: Production-Ready

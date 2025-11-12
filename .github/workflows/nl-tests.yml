@@ -1,0 +1,150 @@
+name: NL Command Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/nl/**'
+      - 'tests/test_nl_*.py'
+      - 'prompts/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/nl/**'
+      - 'tests/test_nl_*.py'
+      - 'prompts/**'
+
+jobs:
+  # ============================================================================
+  # Job 1: Mock Tests (Fast - runs on every commit)
+  # ============================================================================
+  mock-tests:
+    name: Mock LLM Tests (Fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-timeout
+
+      - name: Run mock tests
+        run: |
+          pytest tests/test_nl_*.py \
+            --ignore=tests/test_nl_real_llm_integration.py \
+            -v \
+            -m "not integration" \
+            --cov=src/nl \
+            --cov-report=term \
+            --cov-report=xml \
+            --cov-report=html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: nl-mock-tests
+          name: NL Mock Tests Coverage
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: nl-mock-coverage-report
+          path: htmlcov/
+
+      - name: Check coverage threshold
+        run: |
+          coverage report --fail-under=75
+
+  # ============================================================================
+  # Job 2: Real LLM Tests (Slow - runs on merge to main only)
+  # ============================================================================
+  real-llm-tests:
+    name: Real LLM Integration Tests (Slow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Only run on merge to main or manual trigger
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-timeout
+
+      - name: Start Ollama service
+        run: |
+          docker pull ollama/ollama:latest
+          docker run -d \
+            --name ollama \
+            -p 11434:11434 \
+            -v ollama-data:/root/.ollama \
+            ollama/ollama
+
+          # Wait for Ollama to be ready
+          timeout 60 bash -c 'until curl -s http://localhost:11434/api/tags > /dev/null; do sleep 2; done'
+
+      - name: Pull Qwen model
+        run: |
+          # Use smaller model for CI (7B instead of 32B)
+          docker exec ollama ollama pull qwen2.5-coder:7b
+
+      - name: Configure Obra for CI
+        run: |
+          # Update config to use local Ollama
+          export OBRA_LLM_BASE_URL=http://localhost:11434
+          export OBRA_LLM_MODEL=qwen2.5-coder:7b
+
+      - name: Run real LLM tests
+        env:
+          OBRA_LLM_BASE_URL: http://localhost:11434
+          OBRA_LLM_MODEL: qwen2.5-coder:7b
+        run: |
+          pytest tests/test_nl_real_llm_integration.py \
+            -v \
+            -m integration \
+            --tb=short \
+            --timeout=60
+
+      - name: Stop Ollama
+        if: always()
+        run: |
+          docker stop ollama
+          docker rm ollama
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: real-llm-test-results
+          path: |
+            pytest.log
+            test-results/

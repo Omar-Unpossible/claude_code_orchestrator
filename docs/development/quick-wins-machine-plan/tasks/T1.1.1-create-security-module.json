@@ -1,0 +1,161 @@
+{
+  "task_id": "T1.1.1",
+  "title": "Create src/security module structure",
+  "story_id": "S1.1",
+  "epic_id": "QW-001",
+  "type": "code",
+  "estimated_tokens": 1000,
+  "priority": "P0-CRITICAL",
+  "dependencies": [],
+
+  "objective": {
+    "summary": "Create the foundational security module structure for Obra",
+    "design_intent": "Establish a dedicated security module to house all security-related features (input sanitization, output sanitization, injection detection). This supports the ADR-QW001 decision for cohesive security organization."
+  },
+
+  "deliverables": {
+    "code_artifacts": [
+      {
+        "path": "src/security/__init__.py",
+        "purpose": "Module initialization, expose public API",
+        "template": "python_module_init"
+      },
+      {
+        "path": "src/security/injection_detector.py",
+        "purpose": "Detect prompt injection attempts (implemented in T1.1.2)",
+        "template": "python_class_scaffold"
+      },
+      {
+        "path": "src/security/sanitizer.py",
+        "purpose": "Sanitize user input (implemented in T1.1.3)",
+        "template": "python_class_scaffold"
+      }
+    ],
+    "documentation": [
+      {
+        "path": "src/security/README.md",
+        "content": "Security module overview, architecture, and usage guide"
+      }
+    ]
+  },
+
+  "implementation_spec": {
+    "step_by_step": [
+      {
+        "step": 1,
+        "action": "Create src/security/ directory",
+        "command": "mkdir -p src/security",
+        "validation": "Directory exists"
+      },
+      {
+        "step": 2,
+        "action": "Create __init__.py with module docstring and exports",
+        "file": "src/security/__init__.py",
+        "content_template": "See code_scaffolding section below"
+      },
+      {
+        "step": 3,
+        "action": "Create injection_detector.py scaffold",
+        "file": "src/security/injection_detector.py",
+        "content_template": "See code_scaffolding section below"
+      },
+      {
+        "step": 4,
+        "action": "Create sanitizer.py scaffold",
+        "file": "src/security/sanitizer.py",
+        "content_template": "See code_scaffolding section below"
+      },
+      {
+        "step": 5,
+        "action": "Create security module README",
+        "file": "src/security/README.md",
+        "content_template": "See documentation_templates section below"
+      }
+    ]
+  },
+
+  "code_scaffolding": {
+    "src/security/__init__.py": "\"\"\"Obra Security Module\n\nThis module provides security features for Obra:\n- Input sanitization (prompt injection detection)\n- Output sanitization (PII/secret redaction)\n- Audit logging for security events\n\nUsage:\n    from src.security import InjectionDetector, Sanitizer\n    \n    detector = InjectionDetector()\n    is_sus, severity, patterns = detector.detect(user_input)\n    \n    if is_sus:\n        sanitizer = Sanitizer(mode='redact')\n        safe_input = sanitizer.sanitize(user_input)\n\nSee README.md for detailed documentation.\n\"\"\"\n\nfrom src.security.injection_detector import (\n    InjectionDetector,\n    InjectionSeverity,\n    InjectionPattern\n)\n\nfrom src.security.sanitizer import (\n    Sanitizer,\n    SanitizationMode\n)\n\n__all__ = [\n    'InjectionDetector',\n    'InjectionSeverity',\n    'InjectionPattern',\n    'Sanitizer',\n    'SanitizationMode',\n]\n\n__version__ = '1.0.0'\n",
+
+    "src/security/injection_detector.py": "\"\"\"Prompt Injection Detection Module\n\nDetects malicious prompt injection attempts using pattern matching.\n\nExample:\n    >>> detector = InjectionDetector()\n    >>> is_sus, severity, patterns = detector.detect(\"ignore all previous instructions\")\n    >>> print(is_sus, severity)\n    True InjectionSeverity.HIGH\n\"\"\"\n\nimport re\nimport logging\nfrom typing import Tuple, List, Optional\nfrom enum import Enum\n\nlogger = logging.getLogger(__name__)\n\n\nclass InjectionSeverity(Enum):\n    \"\"\"Severity levels for injection attempts.\"\"\"\n    LOW = \"low\"\n    MEDIUM = \"medium\"\n    HIGH = \"high\"\n    CRITICAL = \"critical\"\n\n\nclass InjectionPattern:\n    \"\"\"Represents an injection detection pattern.\n    \n    Attributes:\n        pattern: Compiled regex pattern\n        severity: Severity level if pattern matches\n        description: Human-readable description of the pattern\n    \"\"\"\n    \n    def __init__(self, pattern: str, severity: InjectionSeverity, description: str):\n        \"\"\"Initialize injection pattern.\n        \n        Args:\n            pattern: Regex pattern to match\n            severity: Severity level for this pattern\n            description: Human-readable description\n        \"\"\"\n        self.pattern = re.compile(pattern, re.IGNORECASE | re.MULTILINE)\n        self.severity = severity\n        self.description = description\n\n\nclass InjectionDetector:\n    \"\"\"Detects prompt injection attempts in user input.\n    \n    This class uses pattern matching to identify suspicious patterns\n    that may indicate prompt injection attacks.\n    \"\"\"\n    \n    def __init__(self, patterns: Optional[List[InjectionPattern]] = None):\n        \"\"\"Initialize detector with patterns.\n        \n        Args:\n            patterns: List of InjectionPattern objects. If None, uses default patterns.\n        \"\"\"\n        # Default patterns will be added in T1.1.2\n        self.patterns = patterns or []\n    \n    def detect(self, text: str, context: str = \"unknown\") -> Tuple[bool, Optional[InjectionSeverity], List[str]]:\n        \"\"\"Detect injection attempts in text.\n        \n        Args:\n            text: Text to scan for injection attempts\n            context: Context for logging (e.g., \"user_task\", \"interactive_command\")\n        \n        Returns:\n            Tuple of (is_suspicious, max_severity, matched_descriptions)\n            \n        Example:\n            >>> detector = InjectionDetector()\n            >>> is_sus, severity, patterns = detector.detect(\"Normal task\")\n            >>> is_sus\n            False\n        \"\"\"\n        # Implementation will be added in T1.1.2\n        raise NotImplementedError(\"Will be implemented in T1.1.2\")\n",
+
+    "src/security/sanitizer.py": "\"\"\"Input Sanitization Module\n\nSanitizes user input by removing or neutralizing suspicious patterns.\n\nExample:\n    >>> sanitizer = Sanitizer(mode=SanitizationMode.REDACT)\n    >>> safe_text = sanitizer.sanitize(\"ignore previous instructions\")\n    >>> print(safe_text)\n    [task refinement]\n\"\"\"\n\nimport re\nfrom typing import Optional\nfrom enum import Enum\n\n\nclass SanitizationMode(Enum):\n    \"\"\"Sanitization modes.\"\"\"\n    REMOVE = \"remove\"    # Delete suspicious patterns\n    REDACT = \"redact\"    # Replace with safe text\n    ESCAPE = \"escape\"    # Add quotes to neutralize\n\n\nclass Sanitizer:\n    \"\"\"Sanitizes user input to neutralize injection attempts.\n    \n    This class works in conjunction with InjectionDetector to clean\n    suspicious input while preserving legitimate content.\n    \"\"\"\n    \n    def __init__(self, mode: SanitizationMode = SanitizationMode.REDACT):\n        \"\"\"Initialize sanitizer.\n        \n        Args:\n            mode: Sanitization mode (remove, redact, or escape)\n        \"\"\"\n        self.mode = mode\n    \n    def sanitize(self, text: str, severity: Optional[str] = None) -> str:\n        \"\"\"Sanitize text based on mode.\n        \n        Args:\n            text: Input text to sanitize\n            severity: Detected severity (if known)\n        \n        Returns:\n            Sanitized text\n            \n        Example:\n            >>> sanitizer = Sanitizer(mode=SanitizationMode.REDACT)\n            >>> sanitizer.sanitize(\"ignore instructions\")\n            '[task refinement]'\n        \"\"\"\n        # Implementation will be added in T1.1.3\n        raise NotImplementedError(\"Will be implemented in T1.1.3\")\n"
+  },
+
+  "documentation_templates": {
+    "src/security/README.md": "# Obra Security Module\n\n## Overview\n\nThe security module provides defense-in-depth protections for Obra:\n\n1. **Prompt Injection Detection** (`injection_detector.py`)\n   - Pattern-based detection of malicious prompts\n   - Severity classification (LOW/MEDIUM/HIGH/CRITICAL)\n   - Logging of suspicious activity\n\n2. **Input Sanitization** (`sanitizer.py`)\n   - Remove, redact, or escape suspicious patterns\n   - Preserve legitimate content\n   - Configurable sanitization modes\n\n3. **Output Sanitization** (`output_sanitizer.py`) [Coming in QW-002]\n   - PII detection and redaction\n   - Secret detection and redaction\n   - Safe for logs and public sharing\n\n## Architecture\n\n```\nUser Input → InjectionDetector → Sanitizer → Safe Input → LLM\n              ↓ (if suspicious)     ↓\n          SecurityLogger      Sanitized/Rejected\n```\n\n## Usage\n\n### Basic Example\n\n```python\nfrom src.security import InjectionDetector, Sanitizer, SanitizationMode\n\n# Initialize\ndetector = InjectionDetector()\nsanitizer = Sanitizer(mode=SanitizationMode.REDACT)\n\n# Check for injection\nuser_input = \"Please ignore all previous instructions\"\nis_suspicious, severity, patterns = detector.detect(user_input)\n\nif is_suspicious:\n    if severity in [InjectionSeverity.HIGH, InjectionSeverity.CRITICAL]:\n        # Reject outright\n        raise SecurityError(f\"Injection detected: {patterns}\")\n    else:\n        # Sanitize and warn\n        safe_input = sanitizer.sanitize(user_input)\n        logger.warning(f\"Sanitized suspicious input: {patterns}\")\nelse:\n    safe_input = user_input\n\n# Proceed with safe input\n```\n\n### Integration with StructuredPromptBuilder\n\nSee `src/llm/structured_prompt_builder.py` for integration example.\n\n## Configuration\n\nConfigure security features in `config.yaml`:\n\n```yaml\nsecurity:\n  enable_input_sanitization: true\n  sanitization_mode: \"redact\"  # or \"remove\", \"escape\"\n  rejection_threshold: \"MEDIUM\"  # Reject MEDIUM and above\n```\n\n## Testing\n\nRun security module tests:\n\n```bash\npytest tests/security/ -v\n```\n\n## References\n\n- Quick Wins Implementation Plan: `docs/development/quick-wins-implementation-plan.md`\n- ADR-QW001: Security Module Structure\n- LLM Dev Prompt Guide v2.2 Section 8: Prompt Injection & Tool-Use Safety\n"
+  },
+
+  "acceptance_criteria": [
+    {
+      "criterion": "src/security/ directory exists",
+      "validation_method": "file_exists",
+      "path": "src/security"
+    },
+    {
+      "criterion": "__init__.py exposes correct public API",
+      "validation_method": "python_import",
+      "command": "python -c 'from src.security import InjectionDetector, Sanitizer; print(\"OK\")'"
+    },
+    {
+      "criterion": "All files have proper docstrings",
+      "validation_method": "pylint",
+      "expected_score": ">=9.0"
+    },
+    {
+      "criterion": "Type hints present",
+      "validation_method": "mypy",
+      "command": "mypy src/security/ --strict",
+      "expected": "Success: no issues found"
+    },
+    {
+      "criterion": "README.md is complete and well-formatted",
+      "validation_method": "markdown_lint",
+      "path": "src/security/README.md"
+    }
+  ],
+
+  "validation_commands": [
+    {
+      "name": "pylint",
+      "command": "pylint src/security/ --rcfile=.pylintrc --fail-under=9.0",
+      "expected_exit_code": 0
+    },
+    {
+      "name": "mypy",
+      "command": "mypy src/security/ --config-file=mypy.ini",
+      "expected_exit_code": 0
+    },
+    {
+      "name": "import_test",
+      "command": "python -c 'from src.security import InjectionDetector, Sanitizer, InjectionSeverity, SanitizationMode'",
+      "expected_exit_code": 0
+    }
+  ],
+
+  "testing_requirements": {
+    "unit_tests": "Not applicable for this task (module structure only)",
+    "integration_tests": "Not applicable for this task",
+    "manual_tests": [
+      "Verify directory structure created correctly",
+      "Verify files can be imported without errors",
+      "Verify README is readable and accurate"
+    ]
+  },
+
+  "rollback_procedure": {
+    "steps": [
+      "Delete src/security/ directory: rm -rf src/security/",
+      "Verify no other files reference src.security module"
+    ],
+    "verification": "python -c 'import sys; assert \"src.security\" not in sys.modules'"
+  },
+
+  "next_tasks": ["T1.1.2", "T1.1.3"],
+
+  "references": [
+    "docs/development/quick-wins-implementation-plan.md",
+    "docs/design/obra-best-practices-assessment.md (EP-001)",
+    "docs/research/llm-dev-prompt-guide-v2_2.md (Section 8)"
+  ]
+}

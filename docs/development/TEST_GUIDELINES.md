@@ -498,12 +498,100 @@ After following these guidelines, you should see:
 
 ---
 
+## Natural Language Command Testing
+
+**New in v1.3.0**: NL command system has dual testing strategy.
+
+**See**: [NL Testing Strategy](../testing/NL_TESTING_STRATEGY.md) for complete guide.
+
+### Quick Tips
+
+- **Use `mock_llm_smart` fixture** for fast mock tests (15s total execution)
+- **Mark real LLM tests** with `@pytest.mark.integration` and `@pytest.mark.requires_ollama`
+- **Run mock tests locally** for development (instant feedback)
+- **Run real LLM tests in CI** for validation (5-10min, requires Ollama)
+
+### Mock vs Real LLM Tests
+
+| Test Type | Use Case | Speed | Requirements |
+|-----------|----------|-------|--------------|
+| Mock | Code logic, error handling | 15s | None |
+| Real LLM | Prompt engineering, accuracy | 5-10min | Ollama + Qwen model |
+
+### Example Usage
+
+**Mock test (fast)**:
+```python
+def test_with_mock(mock_llm_smart):
+    """Fast test using smart mock fixture"""
+    extractor = EntityExtractor(llm_plugin=mock_llm_smart)
+    result = extractor.extract("Create epic 'Test'", "COMMAND")
+    assert result.entity_type == "epic"
+    # Executes in ~0.1s
+```
+
+**Real LLM test (slow, validates accuracy)**:
+```python
+@pytest.mark.integration
+@pytest.mark.requires_ollama
+def test_with_real_llm(real_entity_extractor):
+    """Slow test using actual Ollama/Qwen LLM"""
+    result = real_entity_extractor.extract("Create epic 'Test'", "COMMAND")
+    assert result.entity_type == "epic"
+    assert result.confidence >= 0.7  # Validate real LLM accuracy
+    # Executes in ~0.5-2.0s
+```
+
+### Running NL Tests
+
+```bash
+# Development: Mock tests only (fast - 15s)
+pytest tests/test_nl_*.py -v -m "not integration"
+
+# Validation: Real LLM tests (slow - 5-10min, requires Ollama)
+pytest tests/test_nl_real_llm_integration.py -v -m integration
+
+# Full: Both mock + real LLM (88+ tests, ~10min)
+pytest tests/test_nl_*.py -v -m ""
+```
+
+### Prerequisites for Real LLM Tests
+
+Real LLM tests require Ollama service running:
+
+```bash
+# On host machine (Windows with RTX 5090)
+ollama serve
+
+# Pull model
+ollama pull qwen2.5-coder:32b
+
+# Verify from WSL2
+curl http://172.29.144.1:11434/api/tags
+```
+
+### Best Practices
+
+1. **Write mock tests first** - Fast feedback during development
+2. **Add real LLM tests for prompt changes** - Validate production behavior
+3. **Use smart fixtures** - Don't create inline mocks (broken JSON)
+4. **Set confidence thresholds** - Real LLM tests should validate accuracy (≥0.7)
+5. **Module-scoped fixtures** - Reuse config/state for performance
+
+**See Also**:
+- [NL Testing Strategy](../testing/NL_TESTING_STRATEGY.md) - Complete decision matrix
+- [Real LLM Testing Guide](REAL_LLM_TESTING_GUIDE.md) - Detailed setup and troubleshooting
+- [Testing Documentation Index](../testing/README.md) - All testing resources
+
+---
+
 ## References
 
 - **Root Cause Analysis:** See WSL2 crash investigation (2025-11-01)
 - **Fixed Tests:** M2 test suite optimization commit
 - **Fixtures:** `tests/conftest.py`
 - **Configuration:** `pytest.ini`
+- **NL Testing:** `docs/testing/NL_TESTING_STRATEGY.md` ⭐ NEW!
 
 ---
 
