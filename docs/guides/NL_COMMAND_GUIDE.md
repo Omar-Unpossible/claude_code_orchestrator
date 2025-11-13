@@ -419,13 +419,131 @@ Add a story to the User Authentication epic
 
 Obra automatically resolves "User Authentication" to Epic #5.
 
-### Destructive Operation Confirmation
+### Destructive Operation Confirmation (Enhanced in v1.7.1)
 
-Delete, update, and execute operations require confirmation:
+**Story 9 Enhancement**: Rich, interactive confirmation workflow with color-coded prompts, cascade implications, and dry-run simulation.
+
+Delete, update, and execute operations now show comprehensive confirmation prompts:
 
 ```
 Delete epic 5
-⚠ This will delete Epic #5 (User Authentication). Confirm? (y/n)
+======================================================================
+🗑️  DESTRUCTIVE OPERATION CONFIRMATION
+======================================================================
+
+Operation: DELETE
+Entity: epic (ID: 5)
+Name: User Authentication System
+Description: Complete auth with OAuth, MFA, session management
+Created: 2025-11-13 10:30
+
+⚠️  CASCADE WARNING
+This operation will affect 7 additional entities:
+  • 3 story(s)
+  • 4 task(s)
+
+Estimated Impact:
+  • Files affected: 14
+  • Data deleted: ~60 KB
+  • Duration: ~0.4s
+
+Choose an action:
+  [y] Confirm and proceed
+  [n] Abort operation
+  [s] Simulate/dry-run (preview changes)
+  [c] Show cascade details
+  [h] Help (explain options)
+======================================================================
+Choice (y/n/s/c/h)?
+```
+
+**New Interactive Options** (v1.7.1):
+
+- **[s] Simulate Mode**: Preview before/after state without executing
+  ```
+  --- SIMULATION MODE (DRY RUN) ---
+
+  BEFORE:
+    • Entity exists: Yes
+    • Child entities: 7
+
+  AFTER (if confirmed):
+    • Entity exists: No (deleted)
+    • Child entities: 0 (cascade deleted)
+      - 3 story(s) will be deleted
+      - 4 task(s) will be deleted
+
+  Impact:
+    • Reversible: No (no undo available)
+    • Backup recommended: Yes
+    • Database transactions: Atomic
+
+  --- END SIMULATION ---
+  ```
+
+- **[c] Cascade Details**: See exactly what will be affected
+  ```
+  === CASCADE DETAILS ===
+
+  Total affected entities: 7
+
+  STORIES: (3 total)
+    • OAuth Integration Story (ID: 8)
+    • Password Reset Story (ID: 9)
+    • Multi-Factor Auth Story (ID: 10)
+
+  TASKS: (4 total)
+    • Implement login form (ID: 15)
+    • Add JWT token generation (ID: 16)
+    • Create user session management (ID: 17)
+    • Write integration tests (ID: 18)
+
+  === END CASCADE DETAILS ===
+  ```
+
+- **[h] Help**: Contextual guidance and recovery options
+  ```
+  === CONFIRMATION HELP ===
+
+  [y] Confirm and proceed
+      Execute the destructive operation immediately.
+      This action CANNOT be undone.
+
+  [n] Abort operation
+      Cancel the operation safely.
+      No changes will be made to the database.
+
+  [s] Simulate/dry-run
+      Preview what will happen without executing.
+      Shows before/after state and cascade effects.
+      Safe to use - returns to this prompt afterward.
+
+  [c] Show cascade details
+      Display detailed list of all affected entities.
+
+  [h] Help
+      Display this help message.
+
+  Recovery Options:
+    • Backup: Create database backup before confirming
+    • Alternative: Consider UPDATE instead of DELETE
+    • Archive: Use soft-delete (status='archived') when possible
+
+  === END HELP ===
+  ```
+
+**Benefits of Enhanced Confirmation**:
+- ✅ **Visual Hierarchy**: Color-coded prompts (red for DELETE, yellow for UPDATE)
+- ✅ **Cascade Awareness**: See exactly what child entities will be affected
+- ✅ **Risk-Free Preview**: Simulate operations before committing
+- ✅ **Informed Decisions**: Comprehensive impact assessment
+- ✅ **Recovery Guidance**: Contextual help and alternatives
+
+**Audit Logging**: All destructive operations logged to `logs/destructive_operations_audit.jsonl` with cascade information.
+
+**Non-Interactive Mode**: Use `--confirm-destructive` CLI flag to bypass confirmation (use with caution):
+```bash
+python -m src.cli execute --task-id 42 --confirm-destructive
 ```
 
 ---

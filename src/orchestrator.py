@@ -429,7 +429,13 @@ class Orchestrator:
         return self._request_confirmation_interactive(task)
 
     def _request_confirmation_interactive(self, task: Task) -> bool:
-        """Request user confirmation for destructive operation in interactive mode.
+        """Request user confirmation for destructive operation with rich UI.
+
+        Enhanced in v1.7.1 (Story 9) with:
+        - Color-coded prompts
+        - Cascade implications
+        - Dry-run simulation
+        - Contextual help
 
         Args:
             task: Task requiring confirmation
@@ -440,32 +446,82 @@ class Orchestrator:
         Raises:
             TaskStoppedException: If user declined or timeout
         """
+        # Import colorama with graceful fallback
+        try:
+            from colorama import Fore, Back, Style, init
+            init(autoreset=True)
+        except ImportError:
+            # Graceful fallback if colorama not available
+            class MockColorama:
+                def __getattr__(self, name):
+                    return ""
+            Fore = Back = Style = MockColorama()
+
         operation = task.task_metadata.get('operation_type')
         entity_type = task.task_metadata.get('entity_type')
         entity_id = task.task_metadata.get('entity_identifier')
 
-        # Display operation details
-        print("\n" + "=" * 60)
-        print(f"⚠️  DESTRUCTIVE OPERATION CONFIRMATION REQUIRED")
-        print("=" * 60)
-        print(f"Operation: {operation}")
-        print(f"Entity: {entity_type} (ID: {entity_id})")
-        print(f"Original Message: {task.task_metadata.get('original_message')}")
+        # Get entity details for rich display
+        entity_details = self._get_entity_details(entity_type, entity_id)
 
-        # TODO Story 9: Show cascade implications, before/after state
+        # Color-code by operation
+        if operation == 'DELETE':
+            header_color = Fore.RED + Back.WHITE
+            op_symbol = "🗑️"
+        elif operation == 'UPDATE':
+            header_color = Fore.YELLOW + Back.BLACK
+            op_symbol = "✏️"
+        else:
+            header_color = Fore.CYAN
+            op_symbol = "⚙️"
 
-        print("\nConfirm destructive operation?")
-        print("  y/yes    - Confirm and proceed")
-        print("  n/no     - Abort operation")
-        print("  d/details - Show full operation details")
-        print("=" * 60)
+        # Display rich header
+        print("\n" + "=" * 70)
+        print(header_color + f"{op_symbol}  DESTRUCTIVE OPERATION CONFIRMATION" + Style.RESET_ALL)
+        print("=" * 70)
 
-        # Get user input with timeout
+        # Entity summary
+        print(f"\n{Fore.CYAN}Operation:{Style.RESET_ALL} {Fore.WHITE + Style.BRIGHT}{operation}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Entity:{Style.RESET_ALL} {entity_type} (ID: {entity_id})")
+        if entity_details:
+            print(f"{Fore.CYAN}Name:{Style.RESET_ALL} {entity_details.get('name', 'N/A')}")
+            desc = entity_details.get('description', 'N/A')
+            if len(desc) > 100:
+                desc = desc[:100] + "..."
+            print(f"{Fore.CYAN}Description:{Style.RESET_ALL} {desc}")
+            print(f"{Fore.CYAN}Created:{Style.RESET_ALL} {entity_details.get('created_at', 'N/A')}")
+
+        # Cascade implications
+        cascade_info = self._get_cascade_implications(entity_type, entity_id, operation)
+        if cascade_info['has_cascade']:
+            print(f"\n{Fore.YELLOW + Style.BRIGHT}⚠️  CASCADE WARNING{Style.RESET_ALL}")
+            print(f"This operation will affect {Fore.RED + Style.BRIGHT}{cascade_info['total_affected']}{Style.RESET_ALL} additional entities:")
+            for affected_type, count in cascade_info['affected_entities'].items():
+                print(f"  • {count} {affected_type}(s)")
+
+        # Impact assessment
+        impact = self._assess_operation_impact(entity_type, entity_id, operation)
+        if impact['estimated_changes'] > 0:
+            print(f"\n{Fore.CYAN}Estimated Impact:{Style.RESET_ALL}")
+            print(f"  • Files affected: {impact['files_affected']}")
+            print(f"  • Data deleted: ~{impact['estimated_size']}")
+            print(f"  • Duration: ~{impact['estimated_duration']:.1f}s")
+
+        # Options
+        print(f"\n{Fore.GREEN}Choose an action:{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}[y]{Style.RESET_ALL} Confirm and proceed")
+        print(f"  {Fore.RED}[n]{Style.RESET_ALL} Abort operation")
+        print(f"  {Fore.CYAN}[s]{Style.RESET_ALL} Simulate/dry-run (preview changes)")
+        print(f"  {Fore.CYAN}[c]{Style.RESET_ALL} Show cascade details")
+        print(f"  {Fore.CYAN}[h]{Style.RESET_ALL} Help (explain options)")
+        print("=" * 70)
+
+        # Get input with timeout
         timeout = self.config.get('breakpoints.confirmation_timeout_seconds', 60)
 
         try:
             response = self.input_manager.get_input_with_timeout(
-                prompt="Confirm (y/n/d)? ",
+                prompt=f"{Fore.WHITE}Choice (y/n/s/c/h)? {Style.RESET_ALL}",
                 timeout=timeout
             )
         except TimeoutError:
@@ -475,28 +531,292 @@ class Orchestrator:
 
         response = response.lower().strip()
 
+        # Handle responses
         if response in ['y', 'yes']:
-            self._audit_log_destructive_op(task, confirmed=True, method='interactive')
-            print("✓ Confirmed. Proceeding with destructive operation...\n")
+            self._audit_log_destructive_op(task, confirmed=True, method='interactive', cascade_info=cascade_info)
+            print(f"{Fore.GREEN}✓ Confirmed. Proceeding...{Style.RESET_ALL}\n")
             return True
-        elif response in ['d', 'details']:
-            # Show full operation context
-            print("\nOperation Context:")
-            pprint(task.task_metadata)
-            # Recurse to ask again after showing details
-            return self._request_confirmation_interactive(task)
-        else:
+
+        elif response in ['n', 'no']:
             self._audit_log_destructive_op(task, confirmed=False, method='user_declined')
-            print("✗ Operation aborted.\n")
+            print(f"{Fore.RED}✗ Operation aborted.{Style.RESET_ALL}\n")
             raise TaskStoppedException("User declined destructive operation")
 
-    def _audit_log_destructive_op(self, task: Task, confirmed: bool, method: str):
+        elif response in ['s', 'sim', 'simulate']:
+            # Show simulation
+            self._simulate_destructive_operation(task, entity_type, entity_id, operation)
+            # Recurse to ask again after simulation
+            return self._request_confirmation_interactive(task)
+
+        elif response in ['c', 'cascade']:
+            # Show cascade details
+            self._display_cascade_details(cascade_info)
+            # Recurse to ask again after showing details
+            return self._request_confirmation_interactive(task)
+
+        elif response in ['h', 'help']:
+            # Show help
+            self._display_confirmation_help()
+            # Recurse to ask again after showing help
+            return self._request_confirmation_interactive(task)
+
+        else:
+            print(f"{Fore.YELLOW}Invalid choice. Please select y/n/s/c/h.{Style.RESET_ALL}")
+            return self._request_confirmation_interactive(task)
+
+    def _get_entity_details(
+        self,
+        entity_type: str,
+        entity_id: any
+    ) -> Optional[Dict[str, Any]]:
+        """Get detailed information about an entity.
+
+        Args:
+            entity_type: Type of entity (project, epic, story, task)
+            entity_id: Entity identifier
+
+        Returns:
+            Dictionary with entity details or None if not found
+        """
+        try:
+            if entity_type == 'project':
+                project = self.state_manager.get_project(int(entity_id))
+                if project:
+                    return {
+                        'name': project.project_name,
+                        'description': project.description or 'N/A',
+                        'created_at': project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else 'N/A',
+                        'status': project.status.value if hasattr(project.status, 'value') else str(project.status)
+                    }
+            elif entity_type in ['task', 'epic', 'story']:
+                task = self.state_manager.get_task(int(entity_id))
+                if task:
+                    return {
+                        'name': task.title or f"{entity_type.capitalize()} {entity_id}",
+                        'description': task.description or 'N/A',
+                        'created_at': task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else 'N/A',
+                        'status': task.status.value if task.status else 'N/A'
+                    }
+        except Exception as e:
+            logger.warning(f"Failed to get entity details for {entity_type} {entity_id}: {e}")
+
+        return None
+
+    def _get_cascade_implications(
+        self,
+        entity_type: str,
+        entity_id: any,
+        operation: str
+    ) -> Dict[str, Any]:
+        """Determine what entities will be affected by this operation.
+
+        Args:
+            entity_type: Type of entity (project, epic, story, task)
+            entity_id: Entity identifier
+            operation: Operation type (DELETE, UPDATE)
+
+        Returns:
+            Dictionary with cascade information:
+            {
+                'has_cascade': bool,
+                'total_affected': int,
+                'affected_entities': {'task': 5, 'epic': 1},
+                'details': [{'type': 'task', 'id': 1, 'name': '...'}]
+            }
+        """
+        cascade_info = {
+            'has_cascade': False,
+            'total_affected': 0,
+            'affected_entities': {},
+            'details': []
+        }
+
+        # Only DELETE operations have cascades
+        if operation != 'DELETE':
+            return cascade_info
+
+        try:
+            if entity_type == 'project':
+                # Project deletion cascades to all tasks, epics, stories
+                project_id = int(entity_id)
+                tasks = self.state_manager.get_tasks_by_project(project_id)
+                epics = [t for t in tasks if t.task_type and t.task_type.value == 'epic']
+                stories = [t for t in tasks if t.task_type and t.task_type.value == 'story']
+                regular_tasks = [t for t in tasks if not t.task_type or t.task_type.value == 'task']
+
+                cascade_info['affected_entities'] = {
+                    'epics': len(epics),
+                    'stories': len(stories),
+                    'tasks': len(regular_tasks)
+                }
+                cascade_info['total_affected'] = len(tasks)
+                cascade_info['has_cascade'] = len(tasks) > 0
+
+                # Add details
+                for epic in epics:
+                    cascade_info['details'].append({
+                        'type': 'epic',
+                        'id': epic.id,
+                        'name': epic.title or f"Epic {epic.id}"
+                    })
+                for story in stories:
+                    cascade_info['details'].append({
+                        'type': 'story',
+                        'id': story.id,
+                        'name': story.title or f"Story {story.id}"
+                    })
+                for task in regular_tasks:
+                    cascade_info['details'].append({
+                        'type': 'task',
+                        'id': task.id,
+                        'name': task.title or f"Task {task.id}"
+                    })
+
+            elif entity_type == 'epic':
+                # Epic deletion cascades to stories and tasks
+                epic_id = int(entity_id)
+                epic_task = self.state_manager.get_task(epic_id)
+                if epic_task and epic_task.task_type and epic_task.task_type.value == 'epic':
+                    # Get all tasks with this epic_id
+                    all_tasks = self.state_manager.get_tasks_by_project(epic_task.project_id)
+                    stories = [t for t in all_tasks if t.epic_id == epic_id and t.task_type and t.task_type.value == 'story']
+                    tasks = [t for t in all_tasks if t.epic_id == epic_id and (not t.task_type or t.task_type.value == 'task')]
+
+                    cascade_info['affected_entities'] = {
+                        'stories': len(stories),
+                        'tasks': len(tasks)
+                    }
+                    cascade_info['total_affected'] = len(stories) + len(tasks)
+                    cascade_info['has_cascade'] = cascade_info['total_affected'] > 0
+
+                    # Add details
+                    for story in stories:
+                        cascade_info['details'].append({
+                            'type': 'story',
+                            'id': story.id,
+                            'name': story.title or f"Story {story.id}"
+                        })
+                    for task in tasks:
+                        cascade_info['details'].append({
+                            'type': 'task',
+                            'id': task.id,
+                            'name': task.title or f"Task {task.id}"
+                        })
+
+            elif entity_type == 'story':
+                # Story deletion cascades to tasks
+                story_id = int(entity_id)
+                story_task = self.state_manager.get_task(story_id)
+                if story_task and story_task.task_type and story_task.task_type.value == 'story':
+                    # Get all tasks with this story_id
+                    all_tasks = self.state_manager.get_tasks_by_project(story_task.project_id)
+                    tasks = [t for t in all_tasks if t.story_id == story_id and (not t.task_type or t.task_type.value == 'task')]
+
+                    cascade_info['affected_entities'] = {'tasks': len(tasks)}
+                    cascade_info['total_affected'] = len(tasks)
+                    cascade_info['has_cascade'] = len(tasks) > 0
+
+                    # Add details
+                    for task in tasks:
+                        cascade_info['details'].append({
+                            'type': 'task',
+                            'id': task.id,
+                            'name': task.title or f"Task {task.id}"
+                        })
+
+            elif entity_type == 'task':
+                # Task deletion cascades to subtasks
+                task_id = int(entity_id)
+                task_obj = self.state_manager.get_task(task_id)
+                if task_obj:
+                    # Get child tasks (subtasks)
+                    all_tasks = self.state_manager.get_tasks_by_project(task_obj.project_id)
+                    subtasks = [t for t in all_tasks if t.parent_task_id == task_id]
+
+                    cascade_info['affected_entities'] = {'subtasks': len(subtasks)}
+                    cascade_info['total_affected'] = len(subtasks)
+                    cascade_info['has_cascade'] = len(subtasks) > 0
+
+                    # Add details
+                    for subtask in subtasks:
+                        cascade_info['details'].append({
+                            'type': 'subtask',
+                            'id': subtask.id,
+                            'name': subtask.title or f"Subtask {subtask.id}"
+                        })
+
+        except Exception as e:
+            logger.warning(f"Failed to get cascade implications: {e}")
+
+        return cascade_info
+
+    def _assess_operation_impact(
+        self,
+        entity_type: str,
+        entity_id: any,
+        operation: str
+    ) -> Dict[str, Any]:
+        """Assess the impact of a destructive operation.
+
+        Args:
+            entity_type: Type of entity
+            entity_id: Entity identifier
+            operation: Operation type
+
+        Returns:
+            Dictionary with impact assessment:
+            {
+                'estimated_changes': int,
+                'files_affected': int,
+                'estimated_size': str,
+                'estimated_duration': float
+            }
+        """
+        impact = {
+            'estimated_changes': 0,
+            'files_affected': 0,
+            'estimated_size': '0 KB',
+            'estimated_duration': 0.1
+        }
+
+        try:
+            # Get cascade info to estimate impact
+            cascade_info = self._get_cascade_implications(entity_type, entity_id, operation)
+            total_entities = 1 + cascade_info['total_affected']
+
+            # Estimate changes (rough heuristic)
+            impact['estimated_changes'] = total_entities
+            impact['files_affected'] = min(total_entities * 2, 50)  # Rough estimate
+
+            # Estimate size (very rough)
+            estimated_kb = total_entities * 5  # ~5KB per entity
+            if estimated_kb < 1024:
+                impact['estimated_size'] = f"{estimated_kb} KB"
+            else:
+                impact['estimated_size'] = f"{estimated_kb / 1024:.1f} MB"
+
+            # Estimate duration (seconds)
+            impact['estimated_duration'] = max(0.1, total_entities * 0.05)
+
+        except Exception as e:
+            logger.warning(f"Failed to assess operation impact: {e}")
+
+        return impact
+
+    def _audit_log_destructive_op(
+        self,
+        task: Task,
+        confirmed: bool,
+        method: str,
+        cascade_info: Optional[Dict[str, Any]] = None
+    ):
         """Log destructive operation for audit trail.
 
         Args:
             task: Task being executed
             confirmed: Whether operation was confirmed
             method: Confirmation method (interactive/auto_confirm/auto_abort/timeout/user_declined)
+            cascade_info: Optional cascade information to include in audit
         """
         audit_entry = {
             'timestamp': datetime.now(UTC).isoformat(),
@@ -510,6 +830,11 @@ class Orchestrator:
             'original_message': task.task_metadata.get('original_message')
         }
 
+        # Add cascade information if provided
+        if cascade_info:
+            audit_entry['cascade_affected'] = cascade_info.get('total_affected', 0)
+            audit_entry['cascade_entities'] = cascade_info.get('affected_entities', {})
+
         # Log to audit file (append mode)
         audit_file = self.config.get('audit.destructive_operations_file',
                                        'logs/destructive_operations_audit.jsonl')
@@ -519,6 +844,151 @@ class Orchestrator:
             f.write(json.dumps(audit_entry) + '\n')
 
         logger.info(f"Audit logged: {audit_entry}")
+
+    def _simulate_destructive_operation(
+        self,
+        task: Task,
+        entity_type: str,
+        entity_id: any,
+        operation: str
+    ) -> None:
+        """Simulate destructive operation and show preview.
+
+        Args:
+            task: Task being simulated
+            entity_type: Type of entity
+            entity_id: Entity identifier
+            operation: Operation type
+        """
+        try:
+            from colorama import Fore, Style, init
+            init(autoreset=True)
+        except ImportError:
+            # Graceful fallback if colorama not available
+            class MockColorama:
+                def __getattr__(self, name):
+                    return ""
+            Fore = Style = MockColorama()
+
+        print(f"\n{Fore.CYAN + Style.BRIGHT}--- SIMULATION MODE (DRY RUN) ---{Style.RESET_ALL}\n")
+
+        # Get current state
+        entity = self._get_entity_details(entity_type, entity_id)
+        cascade_info = self._get_cascade_implications(entity_type, entity_id, operation)
+
+        print(f"{Fore.YELLOW}BEFORE:{Style.RESET_ALL}")
+        if entity:
+            print(f"  • Entity exists: {Fore.GREEN}Yes{Style.RESET_ALL}")
+            print(f"  • ID: {entity_id}")
+            print(f"  • Name: {entity.get('name', 'N/A')}")
+            print(f"  • Status: {entity.get('status', 'N/A')}")
+        else:
+            print(f"  • Entity: {entity_type} {entity_id}")
+        if cascade_info['has_cascade']:
+            print(f"  • Child entities: {cascade_info['total_affected']}")
+
+        print(f"\n{Fore.YELLOW}AFTER (if confirmed):{Style.RESET_ALL}")
+        if operation == 'DELETE':
+            print(f"  • Entity exists: {Fore.RED}No{Style.RESET_ALL} (deleted)")
+            if cascade_info['has_cascade']:
+                print(f"  • Child entities: {Fore.RED}0{Style.RESET_ALL} (cascade deleted)")
+                for affected_type, count in cascade_info['affected_entities'].items():
+                    print(f"    - {count} {affected_type}(s) will be deleted")
+        elif operation == 'UPDATE':
+            print(f"  • Entity exists: {Fore.GREEN}Yes{Style.RESET_ALL} (modified)")
+            print(f"  • Changes: {task.task_metadata.get('update_fields', 'N/A')}")
+
+        print(f"\n{Fore.CYAN}Impact:{Style.RESET_ALL}")
+        print(f"  • Reversible: {Fore.RED}No{Style.RESET_ALL} (no undo available)")
+        print(f"  • Backup recommended: {Fore.YELLOW}Yes{Style.RESET_ALL}")
+        print(f"  • Database transactions: {Fore.GREEN}Atomic{Style.RESET_ALL}")
+
+        print(f"\n{Fore.CYAN + Style.BRIGHT}--- END SIMULATION ---{Style.RESET_ALL}\n")
+
+    def _display_cascade_details(self, cascade_info: Dict[str, Any]) -> None:
+        """Display detailed list of all affected entities.
+
+        Args:
+            cascade_info: Cascade information from _get_cascade_implications
+        """
+        try:
+            from colorama import Fore, Style, init
+            init(autoreset=True)
+        except ImportError:
+            class MockColorama:
+                def __getattr__(self, name):
+                    return ""
+            Fore = Style = MockColorama()
+
+        print(f"\n{Fore.CYAN + Style.BRIGHT}=== CASCADE DETAILS ==={Style.RESET_ALL}\n")
+
+        if not cascade_info['has_cascade']:
+            print(f"{Fore.GREEN}No cascade effects.{Style.RESET_ALL} This operation affects only the specified entity.\n")
+            return
+
+        print(f"Total affected entities: {Fore.RED + Style.BRIGHT}{cascade_info['total_affected']}{Style.RESET_ALL}\n")
+
+        # Group by type
+        grouped = {}
+        for detail in cascade_info['details']:
+            entity_type = detail['type']
+            if entity_type not in grouped:
+                grouped[entity_type] = []
+            grouped[entity_type].append(detail)
+
+        # Display each group
+        for entity_type, entities in grouped.items():
+            print(f"{Fore.YELLOW}{entity_type.upper()}S:{Style.RESET_ALL} ({len(entities)} total)")
+            for entity in entities[:10]:  # Limit to 10 per type for readability
+                print(f"  • {entity['name']} (ID: {entity['id']})")
+            if len(entities) > 10:
+                print(f"  ... and {len(entities) - 10} more")
+            print()
+
+        print(f"{Fore.CYAN + Style.BRIGHT}=== END CASCADE DETAILS ==={Style.RESET_ALL}\n")
+
+    def _display_confirmation_help(self) -> None:
+        """Display help text for confirmation options."""
+        try:
+            from colorama import Fore, Style, init
+            init(autoreset=True)
+        except ImportError:
+            class MockColorama:
+                def __getattr__(self, name):
+                    return ""
+            Fore = Style = MockColorama()
+
+        print(f"\n{Fore.CYAN + Style.BRIGHT}=== CONFIRMATION HELP ==={Style.RESET_ALL}\n")
+
+        print(f"{Fore.GREEN}[y] Confirm and proceed{Style.RESET_ALL}")
+        print("    Execute the destructive operation immediately.")
+        print("    This action CANNOT be undone.")
+        print("    Use this when you're certain about the operation.\n")
+
+        print(f"{Fore.RED}[n] Abort operation{Style.RESET_ALL}")
+        print("    Cancel the operation safely.")
+        print("    No changes will be made to the database.")
+        print("    Use this if you're unsure or want to reconsider.\n")
+
+        print(f"{Fore.CYAN}[s] Simulate/dry-run{Style.RESET_ALL}")
+        print("    Preview what will happen without executing.")
+        print("    Shows before/after state and cascade effects.")
+        print("    Safe to use - returns to this prompt afterward.\n")
+
+        print(f"{Fore.CYAN}[c] Show cascade details{Style.RESET_ALL}")
+        print("    Display detailed list of all affected entities.")
+        print("    Shows exact tasks, epics, stories that will be changed.")
+        print("    Helps understand full impact of operation.\n")
+
+        print(f"{Fore.CYAN}[h] Help{Style.RESET_ALL}")
+        print("    Display this help message.\n")
+
+        print(f"{Fore.YELLOW}Recovery Options:{Style.RESET_ALL}")
+        print("  • Backup: Create database backup before confirming")
+        print("  • Alternative: Consider UPDATE instead of DELETE")
+        print("  • Archive: Use soft-delete (status='archived') when possible\n")
+
+        print(f"{Fore.CYAN + Style.BRIGHT}=== END HELP ==={Style.RESET_ALL}\n")
 
     def initialize(self) -> None:
         """Initialize all components.

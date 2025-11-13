@@ -23,6 +23,9 @@ watchdog>=3.0.0
 jinja2>=3.1.0
 requests>=2.31.0
 
+# UI dependencies (v1.7.1 - Story 9)
+colorama>=0.4.6  # Cross-platform color terminal output
+
 # Will be added later
 # click>=8.1.0
 # rich>=13.5.0

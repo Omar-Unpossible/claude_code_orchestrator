@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2025-11-13
+
+### Added
+- **Enhanced Confirmation Workflow UI (Story 9 - ADR-017)**:
+  - Color-coded confirmation prompts (red for DELETE, yellow for UPDATE, cyan for other)
+  - Cascade implications discovery showing all affected child entities
+  - Dry-run simulation mode ([s] option) - preview before/after state without executing
+  - Cascade details view ([c] option) - detailed list of all affected entities
+  - Contextual help system ([h] option) - explains each option and suggests alternatives
+  - Visual hierarchy with emojis (🗑️ for DELETE, ✏️ for UPDATE, ⚙️ for other)
+  - Impact assessment (estimated files affected, data deleted, duration)
+  - Enhanced audit logging with cascade information
+  - Graceful fallback if colorama not installed
+
+### Changed
+- **Confirmation workflow enhanced with 5 interactive options** (y/n/s/c/h):
+  - [y] Confirm and proceed (unchanged)
+  - [n] Abort operation (unchanged)
+  - [s] Simulate/dry-run - NEW: Preview changes without executing
+  - [c] Show cascade details - NEW: Display all affected entities
+  - [h] Help - NEW: Contextual guidance and recovery options
+- **Audit logging** now includes cascade information (total_affected, cascade_entities)
+- `_request_confirmation_interactive()` fully rewritten with rich UI
+
+### Fixed
+- ProjectState attribute access: Use `status` instead of `state` in `_get_entity_details()`
+
+### Documentation
+- **User Guide**: Updated `docs/guides/NL_COMMAND_GUIDE.md` with Story 9 enhancements
+  - Comprehensive examples of rich confirmation prompts
+  - Simulation mode examples
+  - Cascade details examples
+  - Help system examples
+  - Benefits and use cases
+
+### Dependencies
+- Added `colorama>=0.4.6` for cross-platform color terminal output
+
+### Tests
+- **24 new tests** for Story 9 confirmation UI (`tests/test_story9_confirmation_ui.py`)
+  - _get_entity_details(): 4 tests
+  - _get_cascade_implications(): 6 tests
+  - _assess_operation_impact(): 2 tests
+  - _simulate_destructive_operation(): 2 tests
+  - _display_cascade_details(): 2 tests
+  - _display_confirmation_help(): 1 test
+  - Enhanced confirmation interactive: 6 tests
+  - Colorama fallback: 1 test
+
 ## [1.7.0] - 2025-11-13
 
 ### Added
