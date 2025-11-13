@@ -10,9 +10,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 **Terminology**: The **Orchestrator** (validation, quality scoring, prompt optimization) and **Implementer** (code generation) are the two LLM agents. Shorthand: **Orc** and **Imp** (for efficient communication in this file only - use formal terms in code/docs).
 
-**Current Version**: **v1.7.0** (November 13, 2025)
+**Current Version**: **v1.7.2** (November 13, 2025)
 
-**Status**: Production-ready - 794+ tests (88% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6)
+**Status**: Production-ready - 815+ tests (88% coverage), 19 critical bugs fixed through real orchestration, validated performance (PHASE_6)
 
 **Key Features Implemented**:
 - ✅ Hybrid local-remote architecture (M0-M9)
@@ -779,8 +779,8 @@ See `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md` for detailed setup instructions.
 
 ---
 
-**Last Updated**: November 11, 2025
-**Version**: v1.5.0 (Interactive UX Improvements - Natural Language Defaults to Orchestrator)
-**Previous Versions**: v1.4.0 (Project Infrastructure), v1.3.0 (Natural Language Interface), v1.2.0 (LLM-First Prompts)
-**Test Coverage**: 88% overall (770+ tests, 70 test files)
-**ADRs**: 14 architecture decision records
+**Last Updated**: November 13, 2025
+**Version**: v1.7.2 (Testing Infrastructure Foundation - Story 0)
+**Previous Versions**: v1.7.1 (Observability), v1.7.0 (Unified Execution), v1.5.0 (Interactive UX), v1.4.0 (Project Infrastructure)
+**Test Coverage**: 88% overall (815+ tests, 72 test files)
+**ADRs**: 17 architecture decision records

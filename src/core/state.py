@@ -86,6 +86,11 @@ class StateManager:
         if not database_url.startswith('sqlite'):
             engine_kwargs['pool_size'] = 10
             engine_kwargs['max_overflow'] = 20
+        else:
+            # For SQLite, disable same-thread check to allow FileWatcher (watchdog observer)
+            # to record file changes from background threads. Safe because StateManager
+            # has its own thread-safe locking (RLock).
+            engine_kwargs['connect_args'] = {'check_same_thread': False}
 
         self._engine = create_engine(database_url, **engine_kwargs)
 
@@ -452,12 +457,16 @@ class StateManager:
 
         Args:
             task_id: Task ID
-            status: New status
+            status: New status (TaskStatus enum or string)
             metadata: Optional metadata to update
 
         Returns:
             Updated Task
         """
+        # Convert string to enum if needed (defensive programming)
+        if isinstance(status, str):
+            status = TaskStatus(status)
+
         with self._lock:
             try:
                 with self.transaction():

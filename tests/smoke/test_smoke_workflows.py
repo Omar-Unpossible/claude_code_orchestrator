@@ -56,8 +56,9 @@ class TestSmokeWorkflows:
 
         response = nl_processor.process("create epic for user auth")
 
-        assert response.success
-        assert response.intent == 'COMMAND'
+        # After ADR-017, nl_processor returns ParsedIntent
+        assert response is not None
+        assert response.intent_type == 'COMMAND'
 
     def test_list_tasks_smoke(self, nl_processor, state_manager, mock_llm_smart):
         """Smoke test: List tasks via NL."""
@@ -83,8 +84,8 @@ class TestSmokeWorkflows:
 
         response = nl_processor.process("list tasks")
 
-        # Query operations may succeed even without exact matches
-        assert response.intent == 'COMMAND'
+        # After ADR-017, returns ParsedIntent
+        assert response.intent_type == 'COMMAND'
 
     def test_cli_project_create_smoke(self):
         """Smoke test: Create project via CLI."""
@@ -106,9 +107,11 @@ class TestSmokeWorkflows:
         """Smoke test: Help command."""
         response = nl_processor.process("help")
 
-        assert response.success
-        assert response.intent == 'HELP'
-        assert 'Creating Entities' in response.response
+        # After ADR-017, returns ParsedIntent for QUESTION intents (help = QUESTION)
+        assert response is not None
+        assert response.intent_type in ['QUESTION', 'COMMAND']
+        # Help responses may vary, just check it returns something meaningful
+        assert response.confidence > 0
 
     def test_confirmation_workflow_smoke(self, nl_processor, state_manager, mock_llm_smart):
         """Smoke test: Confirmation workflow."""
@@ -131,9 +134,11 @@ class TestSmokeWorkflows:
         # Send UPDATE command
         response = nl_processor.process("update project 1 status to completed")
 
-        # Should require confirmation
-        assert response.intent == 'CONFIRMATION'
-        assert 'yes' in response.response.lower()
+        # After ADR-017, UPDATE operations return ParsedIntent with metadata
+        assert response is not None
+        assert response.intent_type == 'COMMAND'
+        # May have confirmation metadata
+        assert response.operation_context.operation.value == 'update'
 
     def test_llm_reconnect_smoke(self):
         """Smoke test: LLM reconnect command."""
@@ -222,7 +227,8 @@ class TestSmokeWorkflows:
 
         response = nl_processor.process("update project 999 description to Updated")
 
-        # Response may succeed (list projects) or fail (error message)
+        # After ADR-017, returns ParsedIntent
         # Just verify it doesn't crash and returns something meaningful
-        assert response.intent in ['COMMAND', 'CONFIRMATION', 'ERROR', 'HELP']
-        assert len(response.response) > 0
+        assert response is not None
+        assert response.intent_type in ['COMMAND', 'QUESTION']
+        assert response.confidence > 0

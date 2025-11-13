@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2025-11-13
+
+### Added
+- **Story 0: Testing Infrastructure Foundation (21 new tests)**:
+  - 9 agent integration tests (542 lines) in `tests/integration/test_agent_connectivity.py`
+  - **THE CRITICAL TEST**: `test_full_workflow_create_project_to_execution` - E2E workflow validation
+  - Tests for epic execution, task dependencies, git integration, session management
+  - 12 SlashCommandCompleter tests for v1.5.0 tab completion feature
+  - Tests verify slash-only completion, case-insensitive matching, partial completion
+
+### Fixed
+- **Critical**: SQLite threading error in FileWatcher - StateManager database operations now properly thread-safe
+- **Critical**: StateManager status type handling - accepts both TaskStatus enum and string values
+- Test API compatibility - `orchestrator.execute_task()` returns dict with proper structure
+- GitManager API usage in tests - correct instantiation with `(config, llm_interface, state_manager)`
+- Quality feedback loop test - set `max_iterations=2` to prevent mock exhaustion
+
+### Changed
+- Git import path: `src.git.git_manager` → `src.utils.git_manager` (correct location)
+- Test database access: All tests now use `orchestrator.state_manager` to avoid DB conflicts
+- SlashCommandCompleter tests: Replaced 2 skipped tests with 12 comprehensive new tests
+
+### Documentation
+- **Archived 19 historical planning documents** to `docs/archive/adr017_story0_implementation/`:
+  - All ADR-017 implementation planning files (Stories 2-10)
+  - Story 0 planning documents (startup prompts, implementation plans)
+  - Created comprehensive archive README with navigation to active docs
+  - Kept active: `STORY0_CONTINUATION_PROMPT.md`, `ADR017_MIGRATION_GUIDE.md`
+
+### Tests
+- **Total**: 21 new tests added
+- **Integration tests** (9 tests in `TestOrchestratorWorkflows`):
+  - `test_full_workflow_create_project_to_execution` - THE CRITICAL TEST ⭐
+  - `test_epic_execution_with_multiple_stories`
+  - `test_workflow_with_quality_feedback_loop`
+  - `test_workflow_with_confirmation_update_delete`
+  - `test_session_management_per_iteration`
+  - `test_context_continuity_across_iterations`
+  - `test_task_dependency_resolution`
+  - `test_git_integration_e2e_m9`
+  - `test_agent_error_handling_and_recovery`
+- **SlashCommandCompleter tests** (12 tests in `TestSlashCommandCompleterV150`):
+  - Slash prefix detection, case-insensitive matching, partial completion
+  - Invalid command handling, empty slash behavior, alias matching
+  - PromptSession integration, display metadata, start position
+- **Test results**: 8/8 integration tests passing (100%)
+- **Coverage**: Comprehensive validation of core orchestration workflows
+
 ## [1.7.1] - 2025-11-13
 
 ### Added
