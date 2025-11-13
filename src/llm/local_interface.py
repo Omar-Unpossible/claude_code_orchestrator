@@ -356,6 +356,7 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
             'model': self.model,
             'prompt': prompt,
             'stream': False,
+            'keep_alive': -1,  # Keep model loaded indefinitely
             'options': {
                 'temperature': kwargs.get('temperature', self.temperature),
                 'num_predict': kwargs.get('max_tokens', self.max_tokens),
@@ -410,6 +411,7 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
             'model': self.model,
             'prompt': prompt,
             'stream': True,
+            'keep_alive': -1,  # Keep model loaded indefinitely
             'options': {
                 'temperature': kwargs.get('temperature', self.temperature),
                 'num_predict': kwargs.get('max_tokens', self.max_tokens),

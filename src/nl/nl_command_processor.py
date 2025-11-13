@@ -35,6 +35,7 @@ from typing import Dict, Any, List, Optional
 from colorama import Fore, Style
 from core.state import StateManager
 from core.config import Config
+from core.metrics import get_metrics_collector
 from plugins.base import LLMPlugin
 from nl.intent_classifier import IntentClassifier
 from nl.command_validator import CommandValidator
@@ -48,6 +49,8 @@ from src.nl.entity_type_classifier import EntityTypeClassifier
 from src.nl.entity_identifier_extractor import EntityIdentifierExtractor
 from src.nl.parameter_extractor import ParameterExtractor
 from src.nl.question_handler import QuestionHandler
+from src.nl.fast_path_matcher import FastPathMatcher
+from src.nl.query_cache import QueryCache
 
 # Legacy component (deprecated)
 try:
@@ -174,6 +177,15 @@ class NLCommandProcessor:
             llm_plugin=llm_plugin
         )
 
+        # Initialize fast path matcher
+        self.fast_path_matcher = FastPathMatcher()
+
+        # Initialize query cache
+        self.query_cache = QueryCache(
+            ttl_seconds=config.get('nl_commands.query_cache.ttl_seconds', 60),
+            max_entries=config.get('nl_commands.query_cache.max_entries', 1000)
+        )
+
         # Legacy entity extractor (deprecated, for backward compatibility)
         if LEGACY_ENTITY_EXTRACTOR:
             schema_path = config.get('nl_commands.schema_path', 'src/nl/schemas/obra_schema.json')
@@ -240,6 +252,9 @@ class NLCommandProcessor:
             ...     # Route to orchestrator for execution
             ...     task = converter.convert(parsed_intent.operation_context, project_id=1)
         """
+        metrics = get_metrics_collector()
+        start = time.time()
+
         if not message or not message.strip():
             return ParsedIntent(
                 intent_type="QUESTION",
@@ -276,6 +291,49 @@ class NLCommandProcessor:
             # Else: treat as new command (implicit cancellation)
             self.pending_confirmation = None
 
+        # TRY FAST PATH FIRST (bypass LLM for common queries)
+        fast_path_context = self.fast_path_matcher.match(message)
+        if fast_path_context:
+            logger.info(f"Fast path matched: {message} → {fast_path_context.entity_type.value}")
+
+            # Build ParsedIntent from fast path result
+            parsed_intent = ParsedIntent(
+                intent_type='COMMAND',
+                operation_context=fast_path_context,
+                original_message=message,
+                confidence=1.0,
+                requires_execution=True,
+                metadata={'fast_path': True}
+            )
+
+            # Record metrics
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_nl_command(
+                operation=fast_path_context.operation.value,
+                latency_ms=latency_ms,
+                success=True
+            )
+
+            return parsed_intent
+
+        # CHECK CACHE (before LLM pipeline)
+        cached_result = self.query_cache.get(message, context)
+        if cached_result:
+            logger.info(f"Cache hit: {message}")
+
+            # Record metrics
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_nl_command(
+                operation='QUERY',
+                latency_ms=latency_ms,
+                success=True
+            )
+
+            return cached_result
+
+        # Fall back to full LLM pipeline
+        logger.debug(f"Fast path miss and cache miss, using LLM pipeline: {message}")
+
         # Build conversation context
         conv_context = self._build_conversation_context(context)
 
@@ -289,11 +347,11 @@ class NLCommandProcessor:
 
             # Step 2: Route based on intent
             if intent_result.intent == 'CLARIFICATION_NEEDED':
-                return self._handle_clarification(message, intent_result, conv_context)
+                parsed_intent = self._handle_clarification(message, intent_result, conv_context)
             elif intent_result.intent == 'QUESTION':
-                return self._handle_question(message, intent_result, conv_context)
+                parsed_intent = self._handle_question(message, intent_result, conv_context)
             elif intent_result.intent == 'COMMAND':
-                return self._handle_command(
+                parsed_intent = self._handle_command(
                     message,
                     intent_result,
                     conv_context,
@@ -302,7 +360,7 @@ class NLCommandProcessor:
                 )
             else:
                 logger.warning(f"Unknown intent: {intent_result.intent}")
-                return ParsedIntent(
+                parsed_intent = ParsedIntent(
                     intent_type="QUESTION",
                     operation_context=None,
                     original_message=message,
@@ -317,8 +375,33 @@ class NLCommandProcessor:
                     metadata={'unknown_intent': intent_result.intent}
                 )
 
+            # CACHE RESULT (only for QUERY operations)
+            if (parsed_intent.operation_context and
+                parsed_intent.operation_context.operation == OperationType.QUERY):
+                self.query_cache.put(message, context, parsed_intent)
+
+            # Record total NL command latency BEFORE return
+            latency_ms = (time.time() - start) * 1000
+            operation_type = parsed_intent.operation_context.operation.value if parsed_intent.operation_context else 'unknown'
+            metrics.record_nl_command(
+                operation=operation_type,
+                latency_ms=latency_ms,
+                success=True
+            )
+
+            return parsed_intent
+
         except Exception as e:
             logger.exception(f"NL processing failed: {e}")
+
+            # Record failed NL command
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_nl_command(
+                operation='error',
+                latency_ms=latency_ms,
+                success=False
+            )
+
             return ParsedIntent(
                 intent_type="QUESTION",
                 operation_context=None,
@@ -464,6 +547,18 @@ class NLCommandProcessor:
         4. ParameterExtractor → parameters (status, priority, etc.)
         5. Build OperationContext → validate → return ParsedIntent (NO EXECUTION!)
 
+        Query Type Determination (for QUERY operations):
+        - Priority 1: LLM-extracted query_type from ParameterExtractor (Stage 4)
+        - Priority 2: Keyword matching fallback if LLM didn't extract
+          - HIERARCHICAL: workplan, hierarchy, hierarchical, plan, plans
+          - NEXT_STEPS: next, next steps, what's next
+          - BACKLOG: backlog, pending, todo
+          - ROADMAP: roadmap, milestone
+          - SIMPLE: default if no matches
+
+        This prioritization allows the LLM's semantic understanding to take precedence
+        while maintaining robust fallback behavior for reliability.
+
         Args:
             message: User message
             intent_result: Intent classification result
@@ -532,17 +627,33 @@ class NLCommandProcessor:
             # Determine query type for QUERY operations
             query_type = None
             if operation_result.operation_type == OperationType.QUERY:
-                # Check for hierarchical keywords
-                if any(keyword in message.lower() for keyword in ['workplan', 'hierarchy', 'hierarchical']):
-                    query_type = QueryType.HIERARCHICAL
-                elif any(keyword in message.lower() for keyword in ['next', 'next steps', "what's next"]):
-                    query_type = QueryType.NEXT_STEPS
-                elif any(keyword in message.lower() for keyword in ['backlog', 'pending', 'todo']):
-                    query_type = QueryType.BACKLOG
-                elif any(keyword in message.lower() for keyword in ['roadmap', 'milestone']):
-                    query_type = QueryType.ROADMAP
-                else:
-                    query_type = QueryType.SIMPLE
+                # PRIORITY 1: Check if ParameterExtractor found query_type (LLM extraction)
+                if 'query_type' in parameter_result.parameters:
+                    query_type_str = parameter_result.parameters['query_type']
+                    # Convert string to enum
+                    try:
+                        query_type = QueryType(query_type_str)
+                        logger.debug(f"Using LLM-extracted query_type: {query_type}")
+                    except ValueError:
+                        logger.warning(
+                            f"Invalid query_type '{query_type_str}' from LLM, "
+                            f"falling back to keyword matching"
+                        )
+
+                # PRIORITY 2: Keyword fallback if LLM didn't extract or conversion failed
+                if query_type is None:
+                    # Check for hierarchical keywords (added 'plan' and 'plans')
+                    if any(keyword in message.lower() for keyword in
+                           ['workplan', 'hierarchy', 'hierarchical', 'plan', 'plans']):
+                        query_type = QueryType.HIERARCHICAL
+                    elif any(keyword in message.lower() for keyword in ['next', 'next steps', "what's next"]):
+                        query_type = QueryType.NEXT_STEPS
+                    elif any(keyword in message.lower() for keyword in ['backlog', 'pending', 'todo']):
+                        query_type = QueryType.BACKLOG
+                    elif any(keyword in message.lower() for keyword in ['roadmap', 'milestone']):
+                        query_type = QueryType.ROADMAP
+                    else:
+                        query_type = QueryType.SIMPLE
 
             operation_context = OperationContext(
                 operation=operation_result.operation_type,

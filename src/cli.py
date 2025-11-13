@@ -1516,6 +1516,107 @@ def llm_switch(ctx, llm_type: str, model: Optional[str]):
         sys.exit(1)
 
 
+# ============================================================================
+# Metrics Commands (Performance Monitoring)
+# ============================================================================
+
+@cli.group(name='metrics_detailed')
+def metrics_detailed():
+    """View detailed performance metrics (alternative to 'obra metrics')."""
+    pass
+
+
+@metrics_detailed.command(name='nl')
+def metrics_nl():
+    """View NL command performance metrics."""
+    from src.core.metrics import get_metrics_collector
+
+    metrics = get_metrics_collector()
+    nl_metrics = metrics.get_nl_command_metrics()
+
+    click.echo("\nNL Command Performance (last 5 minutes)")
+    click.echo("=" * 60)
+    click.echo(f"Total Commands:     {nl_metrics['count']}")
+    click.echo(f"Success Rate:       {nl_metrics['success_rate']:.1%}")
+    click.echo(f"Avg Latency:        {nl_metrics['avg_latency']:.0f}ms")
+    click.echo()
+
+    if nl_metrics['by_operation']:
+        click.echo("By Operation:")
+        for op, data in nl_metrics['by_operation'].items():
+            click.echo(f"  {op:8s}  {data['count']:3d} commands, {data['success_rate']:.1%} success")
+
+    click.echo()
+
+
+@metrics_detailed.command(name='llm')
+def metrics_llm():
+    """View LLM performance metrics."""
+    from src.core.metrics import get_metrics_collector
+
+    metrics = get_metrics_collector()
+    llm_metrics = metrics.get_llm_metrics()
+
+    click.echo("\nLLM Performance (last 5 minutes)")
+    click.echo("=" * 60)
+    click.echo(f"Total Requests:     {llm_metrics['count']}")
+    click.echo(f"Success Rate:       {llm_metrics['success_rate']:.1%}")
+    click.echo(f"Avg Latency:        {llm_metrics['avg_latency']:.0f}ms")
+    click.echo(f"P50 Latency:        {llm_metrics['latency_p50']:.0f}ms")
+    click.echo(f"P95 Latency:        {llm_metrics['latency_p95']:.0f}ms")
+    click.echo(f"P99 Latency:        {llm_metrics['latency_p99']:.0f}ms")
+    click.echo()
+
+    if llm_metrics['by_provider']:
+        click.echo("By Provider:")
+        for provider, data in llm_metrics['by_provider'].items():
+            click.echo(f"  {provider:12s}  {data['count']:3d} requests, {data['success_rate']:.1%} success")
+
+    click.echo()
+
+
+@metrics_detailed.command(name='health')
+def metrics_health():
+    """View system health status."""
+    from src.core.metrics import get_metrics_collector
+
+    metrics = get_metrics_collector()
+    health = metrics.get_health_status()
+
+    # Color-code status
+    status_color = {
+        'healthy': 'green',
+        'degraded': 'yellow',
+        'unhealthy': 'red'
+    }.get(health['status'], 'white')
+
+    click.echo("\nSystem Health")
+    click.echo("=" * 60)
+    click.secho(f"Status: {health['status'].upper()}", fg=status_color, bold=True)
+    click.echo()
+
+    if health['alerts']:
+        click.echo("Alerts:")
+        for alert in health['alerts']:
+            click.secho(f"  ⚠️  {alert}", fg='yellow')
+        click.echo()
+
+    click.echo("Components:")
+    click.echo(f"  LLM:       {'✓' if health['llm']['available'] else '✗'} "
+               f"({health['llm']['success_rate']:.1%} success, "
+               f"{health['llm']['latency_p95']:.0f}ms P95)")
+    click.echo(f"  Agent:     {'✓' if health['agent']['available'] else '✗'} "
+               f"({health['agent']['success_rate']:.1%} success)")
+    click.echo(f"  Database:  {'✓' if health['database']['available'] else '✗'}")
+    click.echo()
+
+    if health['recommendations']:
+        click.echo("Recommendations:")
+        for rec in health['recommendations']:
+            click.echo(f"  • {rec}")
+        click.echo()
+
+
 @cli.command()
 @click.pass_context
 def health(ctx):

@@ -26,12 +26,14 @@ Example:
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Optional, Union
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from plugins.base import LLMPlugin
 from core.exceptions import OrchestratorException
+from src.core.metrics import get_metrics_collector
 from src.nl.base import EntityIdentifierExtractorInterface
 from src.nl.types import OperationType, EntityType, IdentifierResult
 
@@ -141,6 +143,9 @@ class EntityIdentifierExtractor(EntityIdentifierExtractorInterface):
             ValueError: If user_input is empty
             EntityIdentifierExtractionException: If LLM call fails or no identifier found
         """
+        metrics = get_metrics_collector()
+        start = time.time()
+
         if not user_input or not user_input.strip():
             raise ValueError("user_input cannot be empty")
 
@@ -153,7 +158,12 @@ class EntityIdentifierExtractor(EntityIdentifierExtractorInterface):
                 f"Calling LLM for identifier extraction: {user_input[:50]}... "
                 f"(entity={entity_type.value}, operation={operation.value})"
             )
-            response = self.llm.generate(prompt, max_tokens=200, temperature=0.1)
+            response = self.llm.generate(
+                prompt,
+                max_tokens=100,  # Reduced from 200
+                temperature=0.1,
+                stop=["\n```", "}\n", "}\r\n"]
+            )
             logger.debug(f"LLM response: {response[:200]}...")
 
             # Parse response
@@ -173,6 +183,15 @@ class EntityIdentifierExtractor(EntityIdentifierExtractorInterface):
             logger.info(
                 f"Extracted identifier: {identifier} (type={type(identifier).__name__}, "
                 f"confidence={confidence:.2f})"
+            )
+
+            # Record metrics BEFORE return
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_llm_request(
+                provider='ollama',
+                latency_ms=latency_ms,
+                success=True,
+                model=self.llm.model if hasattr(self.llm, 'model') else 'unknown'
             )
 
             return result

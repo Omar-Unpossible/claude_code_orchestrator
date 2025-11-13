@@ -26,12 +26,14 @@ Example:
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Optional
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from plugins.base import LLMPlugin
 from core.exceptions import OrchestratorException
+from src.core.metrics import get_metrics_collector
 from src.nl.base import EntityTypeClassifierInterface
 from src.nl.types import OperationType, EntityType, EntityTypeResult
 
@@ -135,6 +137,9 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
             ValueError: If user_input is empty
             EntityTypeClassificationException: If LLM call fails or response unparseable
         """
+        metrics = get_metrics_collector()
+        start = time.time()
+
         if not user_input or not user_input.strip():
             raise ValueError("user_input cannot be empty")
 
@@ -147,7 +152,12 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
                 f"Calling LLM for entity type classification: {user_input[:50]}... "
                 f"(operation={operation.value})"
             )
-            response = self.llm.generate(prompt, max_tokens=200, temperature=0.1)
+            response = self.llm.generate(
+                prompt,
+                max_tokens=100,  # Reduced from 200
+                temperature=0.1,
+                stop=["\n```", "}\n", "}\r\n"]
+            )
             logger.debug(f"LLM response: {response[:200]}...")
 
             # Parse response
@@ -167,6 +177,15 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
             logger.info(
                 f"Classified entity type: {entity_type.value} "
                 f"(confidence={confidence:.2f}, operation={operation.value})"
+            )
+
+            # Record metrics BEFORE return
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_llm_request(
+                provider='ollama',
+                latency_ms=latency_ms,
+                success=True,
+                model=self.llm.model if hasattr(self.llm, 'model') else 'unknown'
             )
 
             return result

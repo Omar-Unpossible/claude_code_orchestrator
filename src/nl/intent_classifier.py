@@ -22,6 +22,7 @@ Example:
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal
@@ -29,6 +30,7 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from plugins.base import LLMPlugin
 from core.exceptions import OrchestratorException
+from src.core.metrics import get_metrics_collector
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +170,9 @@ class IntentClassifier:
             >>> print(f"{result.intent} (confidence: {result.confidence})")
             COMMAND (confidence: 0.95)
         """
+        metrics = get_metrics_collector()
+        start = time.time()
+
         if not message or not message.strip():
             return IntentResult(
                 intent='CLARIFICATION_NEEDED',
@@ -194,8 +199,9 @@ class IntentClassifier:
             logger.debug(f"Classifying intent for message: {message[:100]}...")
             response = self.llm_plugin.generate(
                 prompt,
-                temperature=0.3,  # Low temperature for consistent classification
-                max_tokens=500
+                temperature=0.1,  # Very low for classification
+                max_tokens=100,  # Reduced from 500 (JSON output is small)
+                stop=["\n```", "}\n", "}\r\n"]  # Stop after JSON closes
             )
         except Exception as e:
             raise IntentClassificationException(
@@ -234,6 +240,15 @@ class IntentClassifier:
 
         logger.info(
             f"Classified as {result.intent} with confidence {result.confidence:.2f}"
+        )
+
+        # Record metrics BEFORE return
+        latency_ms = (time.time() - start) * 1000
+        metrics.record_llm_request(
+            provider='ollama',
+            latency_ms=latency_ms,
+            success=True,
+            model=self.llm_plugin.model if hasattr(self.llm_plugin, 'model') else 'unknown'
         )
 
         return result
