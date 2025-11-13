@@ -244,6 +244,57 @@ class ParameterResult:
 
 
 @dataclass
+class ParsedIntent:
+    """Parsed intent from NL command processor (ADR-017).
+
+    After ADR-017, NLCommandProcessor returns ParsedIntent instead of
+    executing commands. This enables routing through orchestrator for
+    validation and quality control.
+
+    Attributes:
+        intent_type: "COMMAND" or "QUESTION"
+        operation_context: OperationContext for COMMAND intents
+        original_message: User's original NL input
+        confidence: Aggregate confidence from pipeline stages
+        requires_execution: True for COMMAND, False for QUESTION
+        question_context: Context for QUESTION intents
+        metadata: Additional metadata (classification scores, etc.)
+    """
+    intent_type: str  # "COMMAND" or "QUESTION"
+    operation_context: Optional['OperationContext']
+    original_message: str
+    confidence: float
+    requires_execution: bool
+    question_context: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Validate intent structure."""
+        if self.intent_type not in ["COMMAND", "QUESTION"]:
+            raise ValueError(f"intent_type must be 'COMMAND' or 'QUESTION', got {self.intent_type}")
+
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
+
+        # COMMAND intents must have operation_context
+        if self.intent_type == "COMMAND" and self.operation_context is None:
+            raise ValueError("COMMAND intent requires operation_context")
+
+        # QUESTION intents should have question_context
+        if self.intent_type == "QUESTION" and self.question_context is None:
+            # Initialize empty context if not provided
+            self.question_context = {}
+
+    def is_command(self) -> bool:
+        """Check if this is a COMMAND intent."""
+        return self.intent_type == "COMMAND"
+
+    def is_question(self) -> bool:
+        """Check if this is a QUESTION intent."""
+        return self.intent_type == "QUESTION"
+
+
+@dataclass
 class QuestionResponse:
     """Response to a user question.
 
@@ -284,6 +335,7 @@ __all__ = [
     "EntityTypeResult",
     "IdentifierResult",
     "ParameterResult",
+    "ParsedIntent",
     "QuestionResponse",
 
     # Backwards compatibility

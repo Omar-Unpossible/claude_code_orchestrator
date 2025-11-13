@@ -502,3 +502,47 @@ def mock_llm_simple(mock_llm_responses):
     mock = MagicMock()
     mock.generate.return_value = mock_llm_responses["task"]
     return mock
+
+
+# ============================================================================
+# Integration Test Fixtures
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def integration_llm():
+    """Real LLM for integration tests (session-scoped for performance)."""
+    from src.llm.local_interface import LocalLLMInterface
+
+    llm = LocalLLMInterface()
+    llm.initialize({
+        'model': 'qwen2.5-coder:32b',
+        'endpoint': 'http://10.0.75.1:11434',
+        'timeout': 60.0,
+        'temperature': 0.1
+    })
+    return llm
+
+
+@pytest.fixture
+def integration_state_manager():
+    """StateManager for integration tests (in-memory DB)."""
+    from src.core.state import StateManager
+
+    state = StateManager(database_url='sqlite:///:memory:')
+    yield state
+    state.close()
+
+
+@pytest.fixture
+def integration_workspace():
+    """Temporary workspace for integration tests."""
+    import tempfile
+    import shutil
+    import os
+
+    workspace = tempfile.mkdtemp(prefix='integration_test_')
+    yield workspace
+
+    # Cleanup
+    if os.path.exists(workspace):
+        shutil.rmtree(workspace)

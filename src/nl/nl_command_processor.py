@@ -29,8 +29,10 @@ Example:
 
 import logging
 import warnings
+import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
+from colorama import Fore, Style
 from core.state import StateManager
 from core.config import Config
 from plugins.base import LLMPlugin
@@ -38,7 +40,7 @@ from nl.intent_classifier import IntentClassifier
 from nl.command_validator import CommandValidator
 from nl.command_executor import CommandExecutor, ExecutionResult
 from nl.response_formatter import ResponseFormatter
-from src.nl.types import OperationContext, OperationType, EntityType, QueryType
+from src.nl.types import OperationContext, OperationType, EntityType, QueryType, ParsedIntent
 
 # New ADR-016 components
 from src.nl.operation_classifier import OperationClassifier
@@ -75,6 +77,22 @@ class NLResponse:
     updated_context: Dict[str, Any] = field(default_factory=dict)
     forwarded_to_claude: bool = False
     execution_result: Optional['ExecutionResult'] = None
+
+
+@dataclass
+class PendingOperation:
+    """Pending operation awaiting user confirmation.
+
+    Attributes:
+        context: OperationContext for the pending operation
+        project_id: Project ID for the operation
+        timestamp: Timestamp when confirmation was requested
+        original_message: Original user message that triggered confirmation
+    """
+    context: OperationContext
+    project_id: int
+    timestamp: float
+    original_message: str
 
 
 class NLCommandProcessor:
@@ -186,6 +204,10 @@ class NLCommandProcessor:
         # Conversation context tracking
         self.conversation_history: List[Dict[str, Any]] = []
 
+        # Confirmation workflow tracking
+        self.pending_confirmation: Optional[PendingOperation] = None
+        self.confirmation_timeout = config.get('nl_commands.confirmation_timeout', 60)
+
         logger.info(
             f"NLCommandProcessor initialized (threshold={confidence_threshold}, "
             f"max_turns={max_context_turns})"
@@ -197,29 +219,62 @@ class NLCommandProcessor:
         context: Optional[Dict[str, Any]] = None,
         project_id: Optional[int] = None,
         confirmed: bool = False
-    ) -> NLResponse:
-        """Process natural language message through pipeline.
+    ) -> ParsedIntent:
+        """Process natural language message and return parsed intent (ADR-017).
+
+        After ADR-017, this method returns ParsedIntent instead of executing.
+        Caller routes to orchestrator for execution.
 
         Args:
             message: User's natural language message
             context: Optional conversation context
-            project_id: Optional project ID (uses default if not specified)
-            confirmed: True if user confirmed destructive operation
+            project_id: Optional project ID (stored in metadata)
+            confirmed: True if user confirmed destructive operation (stored in metadata)
 
         Returns:
-            NLResponse with formatted response and metadata
+            ParsedIntent with operation_context for COMMAND or question_context for QUESTION
 
         Example:
-            >>> response = processor.process("Create epic for user auth")
-            >>> if response.success:
-            ...     print(response.response)
+            >>> parsed_intent = processor.process("Create epic for user auth")
+            >>> if parsed_intent.is_command():
+            ...     # Route to orchestrator for execution
+            ...     task = converter.convert(parsed_intent.operation_context, project_id=1)
         """
         if not message or not message.strip():
-            return NLResponse(
-                response="Please provide a message",
-                intent="INVALID",
-                success=False
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=message or "",
+                confidence=1.0,
+                requires_execution=False,
+                question_context={
+                    'question': message or "",
+                    'question_type': 'error',
+                    'answer': "Please provide a message",
+                    'error': True
+                },
+                metadata={'invalid_input': True}
             )
+
+        # Check for help request
+        message_lower = message.lower().strip()
+        if message_lower in ['help', '?', 'help me']:
+            return self._show_help()
+
+        # Check for entity-specific help
+        if message_lower.startswith('help '):
+            entity_type = message_lower.split()[1] if len(message_lower.split()) > 1 else None
+            if entity_type:
+                return self._show_entity_help(entity_type)
+
+        # Check for confirmation response first
+        if self.pending_confirmation:
+            if self._is_confirmation_response(message):
+                return self._handle_confirmation_response(message, project_id)
+            elif self._is_cancellation_response(message):
+                return self._handle_cancellation()
+            # Else: treat as new command (implicit cancellation)
+            self.pending_confirmation = None
 
         # Build conversation context
         conv_context = self._build_conversation_context(context)
@@ -247,19 +302,150 @@ class NLCommandProcessor:
                 )
             else:
                 logger.warning(f"Unknown intent: {intent_result.intent}")
-                return NLResponse(
-                    response=f"Unrecognized intent: {intent_result.intent}",
-                    intent=intent_result.intent,
-                    success=False
+                return ParsedIntent(
+                    intent_type="QUESTION",
+                    operation_context=None,
+                    original_message=message,
+                    confidence=0.0,
+                    requires_execution=False,
+                    question_context={
+                        'question': message,
+                        'question_type': 'error',
+                        'answer': f"Unrecognized intent: {intent_result.intent}",
+                        'error': True
+                    },
+                    metadata={'unknown_intent': intent_result.intent}
                 )
 
         except Exception as e:
             logger.exception(f"NL processing failed: {e}")
-            return NLResponse(
-                response=f"Processing error: {str(e)}",
-                intent="ERROR",
-                success=False
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=message,
+                confidence=0.0,
+                requires_execution=False,
+                question_context={
+                    'question': message,
+                    'question_type': 'error',
+                    'answer': f"Processing error: {str(e)}",
+                    'error': True
+                },
+                metadata={'processing_error': str(e)}
             )
+
+    def process_and_execute(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+        project_id: Optional[int] = None,
+        confirmed: bool = False
+    ) -> NLResponse:
+        """Process and execute NL message (DEPRECATED - ADR-017).
+
+        This method maintains backward compatibility with pre-ADR-017 code.
+        New code should use process() and route through orchestrator.
+
+        Args:
+            message: Natural language message
+            context: Optional conversation context
+            project_id: Optional project ID
+            confirmed: User confirmation status
+
+        Returns:
+            NLResponse with execution results
+
+        Deprecated:
+            Since v1.7.0: Use process() which returns ParsedIntent, then route to orchestrator
+        """
+        warnings.warn(
+            "process_and_execute() is deprecated. Use process() and route to orchestrator.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
+        # Parse intent
+        parsed_intent = self.process(message, context, project_id, confirmed)
+
+        # Handle questions inline (no execution needed)
+        if parsed_intent.is_question():
+            answer = parsed_intent.question_context.get('answer', 'No answer available')
+            return NLResponse(
+                response=answer,
+                intent='QUESTION',
+                success=not parsed_intent.question_context.get('error', False),
+                updated_context=parsed_intent.metadata
+            )
+
+        # Handle commands (need execution)
+        if parsed_intent.is_command():
+            # Check if already executed (confirmation workflow)
+            if parsed_intent.metadata.get('executed'):
+                return NLResponse(
+                    response=parsed_intent.metadata.get('execution_response', 'Operation completed'),
+                    intent='COMMAND',
+                    success=parsed_intent.metadata.get('execution_success', True),
+                    execution_result=parsed_intent.metadata.get('execution_result')
+                )
+
+            # Check if validation failed
+            if parsed_intent.metadata.get('validation_failed'):
+                errors = parsed_intent.metadata.get('validation_errors', ['Validation failed'])
+                error_response = self.response_formatter._format_error(
+                    type('ExecutionResult', (), {
+                        'success': False,
+                        'errors': errors,
+                        'results': {}
+                    })()
+                )
+                return NLResponse(
+                    response=error_response,
+                    intent='COMMAND',
+                    success=False
+                )
+
+            # Execute via command_executor (old way)
+            try:
+                execution_result = self.command_executor.execute(
+                    parsed_intent.operation_context,
+                    project_id=project_id,
+                    confirmed=confirmed
+                )
+
+                # Format response
+                response = self.response_formatter.format(
+                    execution_result,
+                    intent='COMMAND',
+                    operation=parsed_intent.operation_context.operation.value
+                )
+
+                return NLResponse(
+                    response=response,
+                    intent='COMMAND',
+                    success=execution_result.success,
+                    execution_result=execution_result
+                )
+            except Exception as e:
+                logger.exception(f"Execution failed in process_and_execute: {e}")
+                error_response = self.response_formatter._format_error(
+                    type('ExecutionResult', (), {
+                        'success': False,
+                        'errors': [str(e)],
+                        'results': {}
+                    })()
+                )
+                return NLResponse(
+                    response=error_response,
+                    intent='COMMAND',
+                    success=False
+                )
+
+        # Fallback
+        return NLResponse(
+            response="Unable to process message",
+            intent='ERROR',
+            success=False
+        )
 
     def _handle_command(
         self,
@@ -268,25 +454,25 @@ class NLCommandProcessor:
         context: Dict[str, Any],
         project_id: Optional[int],
         confirmed: bool
-    ) -> NLResponse:
-        """Handle COMMAND intent through 5-stage pipeline (ADR-016).
+    ) -> ParsedIntent:
+        """Handle COMMAND intent through 5-stage pipeline (ADR-017).
 
         Pipeline stages:
         1. OperationClassifier → OperationType (CREATE/UPDATE/DELETE/QUERY)
         2. EntityTypeClassifier → EntityType (project/epic/story/task/milestone)
         3. EntityIdentifierExtractor → identifier (name or ID)
         4. ParameterExtractor → parameters (status, priority, etc.)
-        5. Build OperationContext → validate → execute
+        5. Build OperationContext → validate → return ParsedIntent (NO EXECUTION!)
 
         Args:
             message: User message
             intent_result: Intent classification result
             context: Conversation context
-            project_id: Optional project ID
-            confirmed: User confirmation status
+            project_id: Optional project ID (stored in metadata)
+            confirmed: User confirmation status (stored in metadata)
 
         Returns:
-            NLResponse with execution results
+            ParsedIntent with OperationContext (execution happens elsewhere)
         """
         try:
             # Stage 1: Classify operation type (CREATE/UPDATE/DELETE/QUERY)
@@ -378,99 +564,84 @@ class NLCommandProcessor:
             validation_result = self.command_validator.validate(operation_context)
 
             if not validation_result.valid:
-                # Validation failed - return error with suggestions
+                # Validation failed - store error in metadata
                 logger.warning(f"Validation failed: {validation_result.errors}")
-                response = self.response_formatter._format_error(
-                    type('ExecutionResult', (), {
-                        'success': False,
-                        'errors': validation_result.errors,
-                        'results': {}
-                    })()
+
+                return ParsedIntent(
+                    intent_type="COMMAND",
+                    operation_context=operation_context,
+                    original_message=message,
+                    confidence=aggregate_confidence,
+                    requires_execution=False,  # Don't execute if validation failed
+                    metadata={
+                        'intent_confidence': intent_result.confidence,
+                        'entity_confidence': aggregate_confidence,
+                        'operation': str(operation_context.operation),
+                        'entity_type': str(operation_context.entity_type),
+                        'project_id': project_id,
+                        'confirmed': confirmed,
+                        'validation_failed': True,
+                        'validation_errors': validation_result.errors
+                    }
                 )
 
-                # Update context with failed validation
-                updated_context = self._update_conversation_context(
-                    message,
-                    intent_result.intent,
-                    {'validation_failed': True, 'errors': validation_result.errors}
-                )
-
-                return NLResponse(
-                    response=response,
-                    intent='COMMAND',
-                    success=False,
-                    updated_context=updated_context
-                )
-
-            # Step 7: Execute validated command
-            logger.debug(f"Step 7: Executing command")
-            execution_result = self.command_executor.execute(
-                operation_context,
-                project_id=project_id,
-                confirmed=confirmed
-            )
-
+            # Step 7: Return ParsedIntent (NO EXECUTION!)
             logger.info(
-                f"Execution complete: success={execution_result.success}, "
-                f"created_ids={execution_result.created_ids}"
+                f"Returning ParsedIntent for orchestrator execution: "
+                f"{operation_context.operation.value} {operation_context.entity_type.value}"
             )
 
-            # Step 8: Format response
-            response = self.response_formatter.format(
-                execution_result,
-                intent='COMMAND',
-                operation=operation_context.operation.value
-            )
-
-            # Update conversation context
-            updated_context = self._update_conversation_context(
-                message,
-                intent_result.intent,
-                {
-                    'execution_success': execution_result.success,
-                    'created_ids': execution_result.created_ids,
-                    'entity_type': operation_context.entity_type.value,
-                    'operation': operation_context.operation.value
+            return ParsedIntent(
+                intent_type="COMMAND",
+                operation_context=operation_context,
+                original_message=message,
+                confidence=aggregate_confidence,
+                requires_execution=True,
+                metadata={
+                    'intent_confidence': intent_result.confidence,
+                    'entity_confidence': aggregate_confidence,
+                    'operation': str(operation_context.operation),
+                    'entity_type': str(operation_context.entity_type),
+                    'project_id': project_id,
+                    'confirmed': confirmed
                 }
-            )
-
-            return NLResponse(
-                response=response,
-                intent='COMMAND',
-                success=execution_result.success,
-                updated_context=updated_context,
-                execution_result=execution_result
             )
 
         except ValueError as e:
             # OperationContext validation error (e.g., UPDATE without identifier)
             logger.warning(f"OperationContext validation error: {e}")
-            error_response = self.response_formatter._format_error(
-                type('ExecutionResult', (), {
-                    'success': False,
-                    'errors': [str(e)],
-                    'results': {}
-                })()
-            )
-            return NLResponse(
-                response=error_response,
-                intent='COMMAND',
-                success=False
+
+            # Still return ParsedIntent but mark validation as failed
+            return ParsedIntent(
+                intent_type="COMMAND",
+                operation_context=None,  # Invalid context
+                original_message=message,
+                confidence=0.0,
+                requires_execution=False,
+                metadata={
+                    'validation_failed': True,
+                    'validation_errors': [str(e)],
+                    'project_id': project_id,
+                    'confirmed': confirmed
+                }
             )
 
         except Exception as e:
             logger.exception(f"Command handling failed at pipeline stage: {e}")
-            error_response = self.response_formatter._format_error(
-                type('ExecutionResult', (), {
-                    'success': False,
-                    'errors': [f"Pipeline error: {str(e)}"],
-                    'results': {}
-                })()
-            )
-            return NLResponse(
-                response=error_response,
-                intent='COMMAND',
-                success=False
+
+            # Return ParsedIntent with pipeline error
+            return ParsedIntent(
+                intent_type="COMMAND",
+                operation_context=None,
+                original_message=message,
+                confidence=0.0,
+                requires_execution=False,
+                metadata={
+                    'pipeline_error': True,
+                    'error_message': str(e),
+                    'project_id': project_id,
+                    'confirmed': confirmed
+                }
             )
 
     def _handle_question(
@@ -478,8 +649,8 @@ class NLCommandProcessor:
         message: str,
         intent_result: Any,
         context: Dict[str, Any]
-    ) -> NLResponse:
-        """Handle QUESTION intent via QuestionHandler (ADR-016).
+    ) -> ParsedIntent:
+        """Handle QUESTION intent via QuestionHandler (ADR-017).
 
         Routes informational questions to the QuestionHandler which:
         1. Classifies question type (NEXT_STEPS/STATUS/BLOCKERS/PROGRESS/GENERAL)
@@ -493,7 +664,7 @@ class NLCommandProcessor:
             context: Conversation context
 
         Returns:
-            NLResponse with informational answer
+            ParsedIntent with question_context (execution not needed for questions)
         """
         try:
             logger.debug(f"Handling QUESTION: {message}")
@@ -506,28 +677,29 @@ class NLCommandProcessor:
                 f"confidence={question_response.confidence:.2f}"
             )
 
-            # Update conversation context
-            updated_context = self._update_conversation_context(
-                message,
-                intent_result.intent,
-                {
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=message,
+                confidence=question_response.confidence,
+                requires_execution=False,
+                question_context={
+                    'question': message,
                     'question_type': question_response.question_type.value,
-                    'entities': question_response.entities
+                    'answer': question_response.answer,
+                    'entities': question_response.entities,
+                    'data': question_response.data
+                },
+                metadata={
+                    'intent_confidence': intent_result.confidence,
+                    'question_confidence': question_response.confidence
                 }
-            )
-
-            return NLResponse(
-                response=question_response.answer,
-                intent='QUESTION',
-                success=True,
-                updated_context=updated_context,
-                forwarded_to_claude=False  # Handled internally
             )
 
         except Exception as e:
             logger.exception(f"Question handling failed: {e}")
 
-            # Fallback behavior - suggest rephrasing as command
+            # Return ParsedIntent with error context
             fallback_response = (
                 f"I couldn't answer that question: {str(e)}\n\n"
                 f"Try rephrasing as a command like:\n"
@@ -536,10 +708,22 @@ class NLCommandProcessor:
                 f"  • 'What's the status of epic Y'"
             )
 
-            return NLResponse(
-                response=fallback_response,
-                intent='QUESTION',
-                success=False
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=message,
+                confidence=0.0,
+                requires_execution=False,
+                question_context={
+                    'question': message,
+                    'question_type': 'general',
+                    'answer': fallback_response,
+                    'error': str(e)
+                },
+                metadata={
+                    'intent_confidence': intent_result.confidence,
+                    'error': True
+                }
             )
 
     def _handle_clarification(
@@ -547,8 +731,8 @@ class NLCommandProcessor:
         message: str,
         intent_result: Any,
         context: Dict[str, Any]
-    ) -> NLResponse:
-        """Handle CLARIFICATION_NEEDED intent - ask user for clarification.
+    ) -> ParsedIntent:
+        """Handle CLARIFICATION_NEEDED intent - ask user for clarification (ADR-017).
 
         Args:
             message: User message
@@ -556,7 +740,7 @@ class NLCommandProcessor:
             context: Conversation context
 
         Returns:
-            NLResponse with clarification request
+            ParsedIntent with clarification context (QUESTION type)
         """
         # Generate suggestions based on detected entities
         suggestions = []
@@ -572,22 +756,27 @@ class NLCommandProcessor:
                 suggestions.append("Create a work item (epic/story/task)")
                 suggestions.append("List existing work items")
 
-        response = self.response_formatter.format_clarification_request(
-            "I'm not sure what you'd like to do. Did you mean:",
-            suggestions=suggestions if suggestions else None
-        )
+        clarification_message = "I'm not sure what you'd like to do. Did you mean:"
+        if suggestions:
+            clarification_message += "\n" + "\n".join(f"  • {s}" for s in suggestions)
 
-        updated_context = self._update_conversation_context(
-            message,
-            intent_result.intent,
-            {'clarification_requested': True}
-        )
-
-        return NLResponse(
-            response=response,
-            intent='CLARIFICATION_NEEDED',
-            success=False,
-            updated_context=updated_context
+        return ParsedIntent(
+            intent_type="QUESTION",  # Treat clarification as a question
+            operation_context=None,
+            original_message=message,
+            confidence=intent_result.confidence,
+            requires_execution=False,
+            question_context={
+                'question': message,
+                'question_type': 'clarification',
+                'answer': clarification_message,
+                'suggestions': suggestions,
+                'detected_entities': intent_result.detected_entities if hasattr(intent_result, 'detected_entities') else {}
+            },
+            metadata={
+                'intent_confidence': intent_result.confidence,
+                'clarification_needed': True
+            }
         )
 
     def _build_conversation_context(
@@ -694,6 +883,408 @@ class NLCommandProcessor:
                 response=f"✗ Error querying project: {e}",
                 intent='COMMAND',
                 success=False
+            )
+
+    def _is_confirmation_response(self, message: str) -> bool:
+        """Check if message is yes/y/confirm/ok/proceed.
+
+        Args:
+            message: User message to check
+
+        Returns:
+            True if message is a confirmation keyword
+        """
+        confirmation_keywords = {'yes', 'y', 'confirm', 'ok', 'proceed', 'go ahead'}
+        return message.strip().lower() in confirmation_keywords
+
+    def _is_cancellation_response(self, message: str) -> bool:
+        """Check if message is no/n/cancel/abort.
+
+        Args:
+            message: User message to check
+
+        Returns:
+            True if message is a cancellation keyword
+        """
+        cancellation_keywords = {'no', 'n', 'cancel', 'abort', 'stop', 'nevermind'}
+        return message.strip().lower() in cancellation_keywords
+
+    def _handle_confirmation_response(self, message: str, project_id: Optional[int] = None) -> ParsedIntent:
+        """Execute pending operation after user confirms (ADR-017 - temporary execution).
+
+        NOTE: This method still executes via command_executor for backward compatibility.
+        In Story 5, confirmation will route through orchestrator.
+
+        Args:
+            message: User confirmation message
+            project_id: Optional project ID override
+
+        Returns:
+            ParsedIntent with execution result in metadata
+        """
+        # Check timeout
+        if time.time() - self.pending_confirmation.timestamp > self.confirmation_timeout:
+            self.pending_confirmation = None
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=message,
+                confidence=1.0,
+                requires_execution=False,
+                question_context={
+                    'question': message,
+                    'question_type': 'error',
+                    'answer': f"{Fore.YELLOW}Confirmation timeout. Please try again.{Style.RESET_ALL}",
+                    'error': True
+                },
+                metadata={'confirmation_timeout': True}
+            )
+
+        # Execute with confirmed=True (temporary - will be removed in Story 5)
+        execution_result = self.command_executor.execute(
+            self.pending_confirmation.context,
+            project_id=self.pending_confirmation.project_id,
+            confirmed=True
+        )
+
+        # Clear pending state
+        operation = self.pending_confirmation.context.operation.value
+        operation_context = self.pending_confirmation.context
+        self.pending_confirmation = None
+
+        # Format response
+        response = self.response_formatter.format(
+            execution_result,
+            intent='COMMAND',
+            operation=operation
+        )
+
+        return ParsedIntent(
+            intent_type="COMMAND",
+            operation_context=operation_context,
+            original_message=message,
+            confidence=1.0,
+            requires_execution=False,  # Already executed
+            metadata={
+                'confirmed': True,
+                'executed': True,
+                'execution_success': execution_result.success,
+                'execution_response': response,
+                'execution_result': execution_result
+            }
+        )
+
+    def _handle_cancellation(self) -> ParsedIntent:
+        """Cancel pending operation (ADR-017).
+
+        Returns:
+            ParsedIntent confirming cancellation
+        """
+        operation = self.pending_confirmation.context.operation.value
+        entity_type = self.pending_confirmation.context.entity_type.value
+        operation_context = self.pending_confirmation.context
+        self.pending_confirmation = None
+
+        cancellation_message = f"{Fore.GREEN}✓ Cancelled {operation} {entity_type} operation{Style.RESET_ALL}"
+
+        return ParsedIntent(
+            intent_type="COMMAND",
+            operation_context=operation_context,
+            original_message="cancel",
+            confidence=1.0,
+            requires_execution=False,
+            metadata={
+                'cancelled': True,
+                'operation': operation,
+                'entity_type': entity_type,
+                'cancellation_message': cancellation_message
+            }
+        )
+
+    def _execute_with_retry(
+        self,
+        operation_context: OperationContext,
+        project_id: int,
+        confirmed: bool = False,
+        max_retries: int = 3
+    ) -> ExecutionResult:
+        """Execute command with automatic retry for transient failures.
+
+        Args:
+            operation_context: OperationContext for the command
+            project_id: Project ID
+            confirmed: Whether operation is confirmed (for UPDATE/DELETE)
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            ExecutionResult from successful execution or final attempt
+
+        Example:
+            >>> result = processor._execute_with_retry(context, project_id=1)
+        """
+        retryable_errors = [
+            'timeout',
+            'connection',
+            'temporary',
+            'lock',
+            'busy',
+        ]
+
+        result = None
+        for attempt in range(max_retries):
+            try:
+                result = self.command_executor.execute(
+                    operation_context,
+                    project_id=project_id,
+                    confirmed=confirmed
+                )
+
+                # Success or non-retryable failure
+                if result.success or not self._is_retryable(result, retryable_errors):
+                    return result
+
+                # Wait before retry (exponential backoff)
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # 1s, 2s, 4s
+                    logger.info(f"Retrying command (attempt {attempt + 2}/{max_retries})")
+                    time.sleep(wait_time)
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    # Re-raise on final attempt
+                    raise
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                # Wait before retry
+                wait_time = 2 ** attempt
+                time.sleep(wait_time)
+
+        # Return last result
+        return result
+
+    def _is_retryable(self, result: ExecutionResult, retryable_keywords: List[str]) -> bool:
+        """Check if error is retryable based on error message.
+
+        Args:
+            result: ExecutionResult to check
+            retryable_keywords: List of keywords indicating retryable errors
+
+        Returns:
+            True if error appears to be retryable
+
+        Example:
+            >>> is_retry = processor._is_retryable(result, ['timeout', 'lock'])
+        """
+        if not result.errors:
+            return False
+
+        error_msg = result.errors[0].lower()
+        return any(keyword in error_msg for keyword in retryable_keywords)
+
+    def _show_help(self) -> ParsedIntent:
+        """Show general help message (ADR-017).
+
+        Returns:
+            ParsedIntent with help text in question_context
+
+        Example:
+            >>> parsed_intent = processor._show_help()
+            >>> print(parsed_intent.question_context['answer'])  # Shows command examples
+        """
+        help_text = f"""
+{Fore.CYAN}═══ Obra Natural Language Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Creating Entities:{Style.RESET_ALL}
+  • create project 'name'
+  • create epic for [description]
+  • create story in epic <id>
+  • create task with priority HIGH
+  • create milestone 'name'
+
+{Fore.YELLOW}Querying:{Style.RESET_ALL}
+  • list projects
+  • show all epics
+  • list tasks for story 5
+  • show project status
+  • show milestone progress
+
+{Fore.YELLOW}Updating:{Style.RESET_ALL}
+  • update project 5 status to completed
+  • change task 3 priority to LOW
+  • mark epic 2 as blocked
+  • update story 7 description
+
+{Fore.YELLOW}Deleting:{Style.RESET_ALL}
+  • delete project 3
+  • remove task 7
+  • delete epic 5
+
+{Fore.CYAN}Entity-Specific Help:{Style.RESET_ALL}
+  Type 'help <entity>' for more details:
+  • help project
+  • help epic
+  • help story
+  • help task
+  • help milestone
+
+{Fore.GREEN}Tips:{Style.RESET_ALL}
+  • Use project/epic/story/task IDs (#5) or names ('My Project')
+  • Priority: 1-10 or HIGH/MEDIUM/LOW
+  • Status: PENDING/RUNNING/COMPLETED/BLOCKED/READY
+  • Type 'yes' or 'no' to confirm destructive operations
+"""
+        return ParsedIntent(
+            intent_type="QUESTION",
+            operation_context=None,
+            original_message="help",
+            confidence=1.0,
+            requires_execution=False,
+            question_context={
+                'question': "help",
+                'question_type': 'help',
+                'answer': help_text
+            },
+            metadata={'help_type': 'general'}
+        )
+
+    def _show_entity_help(self, entity_type: str) -> ParsedIntent:
+        """Show entity-specific help (ADR-017).
+
+        Args:
+            entity_type: Entity type (project, epic, story, task, milestone)
+
+        Returns:
+            ParsedIntent with entity-specific help in question_context
+
+        Example:
+            >>> parsed_intent = processor._show_entity_help('epic')
+        """
+        help_map = {
+            'project': f"""
+{Fore.CYAN}═══ Project Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Create:{Style.RESET_ALL}
+  • create project 'My New Project'
+  • create project for mobile app
+
+{Fore.YELLOW}Query:{Style.RESET_ALL}
+  • list projects
+  • show all projects
+  • show project 5 status
+
+{Fore.YELLOW}Update:{Style.RESET_ALL}
+  • update project 5 status to completed
+  • mark project 'Mobile App' as inactive
+
+{Fore.YELLOW}Delete:{Style.RESET_ALL}
+  • delete project 3
+  • remove project 'Old Project'
+""",
+            'epic': f"""
+{Fore.CYAN}═══ Epic Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Create:{Style.RESET_ALL}
+  • create epic for user authentication
+  • add epic 'Payment System' to project 1
+
+{Fore.YELLOW}Query:{Style.RESET_ALL}
+  • list epics
+  • show all epics
+  • list epics for project 1
+
+{Fore.YELLOW}Update:{Style.RESET_ALL}
+  • update epic 3 status to blocked
+  • mark epic 'Auth System' as completed
+
+{Fore.YELLOW}Delete:{Style.RESET_ALL}
+  • delete epic 5
+""",
+            'story': f"""
+{Fore.CYAN}═══ Story Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Create:{Style.RESET_ALL}
+  • create story in epic 5
+  • add story 'User Login' for epic 3
+
+{Fore.YELLOW}Query:{Style.RESET_ALL}
+  • list stories
+  • show stories for epic 5
+
+{Fore.YELLOW}Update:{Style.RESET_ALL}
+  • update story 7 priority to high
+  • mark story 2 as completed
+
+{Fore.YELLOW}Delete:{Style.RESET_ALL}
+  • delete story 4
+""",
+            'task': f"""
+{Fore.CYAN}═══ Task Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Create:{Style.RESET_ALL}
+  • create task with priority HIGH
+  • add task 'Write tests' in story 3
+
+{Fore.YELLOW}Query:{Style.RESET_ALL}
+  • list tasks
+  • show tasks for story 5
+  • show my tasks
+
+{Fore.YELLOW}Update:{Style.RESET_ALL}
+  • update task 10 status to running
+  • change task 5 priority to LOW
+
+{Fore.YELLOW}Delete:{Style.RESET_ALL}
+  • delete task 7
+""",
+            'milestone': f"""
+{Fore.CYAN}═══ Milestone Commands ═══{Style.RESET_ALL}
+
+{Fore.YELLOW}Create:{Style.RESET_ALL}
+  • create milestone 'MVP Release'
+  • add milestone for epic completion
+
+{Fore.YELLOW}Query:{Style.RESET_ALL}
+  • list milestones
+  • show milestone status
+  • check milestone 3 progress
+""",
+        }
+
+        entity_help = help_map.get(entity_type)
+        if entity_help:
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=f"help {entity_type}",
+                confidence=1.0,
+                requires_execution=False,
+                question_context={
+                    'question': f"help {entity_type}",
+                    'question_type': 'help',
+                    'answer': entity_help,
+                    'entity_type': entity_type
+                },
+                metadata={'help_type': 'entity', 'entity_type': entity_type}
+            )
+        else:
+            # Unknown entity type
+            error_message = (
+                f"{Fore.YELLOW}Unknown entity type '{entity_type}'{Style.RESET_ALL}\n"
+                f"Available: project, epic, story, task, milestone\n"
+                f"Type 'help' for general help"
+            )
+            return ParsedIntent(
+                intent_type="QUESTION",
+                operation_context=None,
+                original_message=f"help {entity_type}",
+                confidence=1.0,
+                requires_execution=False,
+                question_context={
+                    'question': f"help {entity_type}",
+                    'question_type': 'help',
+                    'answer': error_message,
+                    'error': True
+                },
+                metadata={'help_type': 'entity', 'entity_type': entity_type, 'unknown_entity': True}
             )
 
     def _update_conversation_context(

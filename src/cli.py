@@ -323,11 +323,17 @@ def task_list(ctx, project: Optional[int], status: Optional[str]):
 @click.option('--max-iterations', '-i', type=int, default=10, help='Max iterations')
 @click.option('--stream', is_flag=True, help='Enable real-time streaming output')
 @click.option('--interactive', is_flag=True, help='Enable interactive mode with command injection')
+@click.option('--confirm-destructive', is_flag=True, help='Auto-confirm destructive operations (use with caution)')
 @click.pass_context
-def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interactive: bool):
+def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interactive: bool, confirm_destructive: bool):
     """Execute a single task."""
     try:
         config = ctx.obj['config']
+
+        # Override config if --confirm-destructive flag provided (Story 8, ADR-017)
+        if confirm_destructive:
+            config.set('nl_commands.auto_confirm_destructive', True)
+            click.echo("⚠️  Auto-confirming destructive operations (override enabled)")
 
         # Initialize orchestrator
         orchestrator = Orchestrator(config=config)
@@ -1507,6 +1513,161 @@ def llm_switch(ctx, llm_type: str, model: Optional[str]):
 
     except Exception as e:
         click.echo(f"✗ Switch failed: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.pass_context
+def health(ctx):
+    """Check system health and display metrics.
+
+    Validates:
+    - LLM connectivity and success rate
+    - Agent availability
+    - Database connectivity
+    - Recent metrics and performance
+
+    Examples:
+        $ obra health
+    """
+    try:
+        from src.core.metrics import get_metrics_collector
+        import requests
+
+        click.echo("\n" + "="*70)
+        click.echo("OBRA SYSTEM HEALTH CHECK")
+        click.echo("="*70 + "\n")
+
+        config = ctx.obj['config']
+        metrics = get_metrics_collector()
+
+        # Get health status
+        health_status = metrics.get_health_status()
+
+        # Display overall status
+        status = health_status['status']
+        if status == 'healthy':
+            status_emoji = "✅ HEALTHY"
+            status_color = 'green'
+        elif status == 'degraded':
+            status_emoji = "⚠️  DEGRADED"
+            status_color = 'yellow'
+        else:
+            status_emoji = "❌ UNHEALTHY"
+            status_color = 'red'
+
+        click.echo(f"Overall Status: ", nl=False)
+        click.secho(status_emoji, fg=status_color, bold=True)
+        click.echo()
+
+        # LLM Health
+        click.echo("LLM:")
+        llm_type = config.get('llm.type', 'unknown')
+        llm_model = config.get('llm.model', 'unknown')
+
+        click.echo(f"  Provider: {llm_type}")
+        click.echo(f"  Model: {llm_model}")
+
+        # Check LLM connectivity
+        if llm_type == 'ollama':
+            llm_endpoint = config.get('llm.base_url', 'http://localhost:11434')
+            try:
+                response = requests.get(
+                    f"{llm_endpoint}/api/tags",
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    click.echo(f"  Available: ", nl=False)
+                    click.secho("✓ Yes", fg='green')
+                else:
+                    click.echo(f"  Available: ", nl=False)
+                    click.secho("✗ No (HTTP {})".format(response.status_code), fg='red')
+            except Exception as e:
+                click.echo(f"  Available: ", nl=False)
+                click.secho(f"✗ No ({e})", fg='red')
+        else:
+            click.echo(f"  Available: Unknown (not Ollama)")
+
+        # LLM metrics
+        if health_status['llm_available']:
+            success_rate = health_status['llm_success_rate'] * 100
+            latency_p95 = health_status['llm_latency_p95']
+
+            click.echo(f"  Success Rate: {success_rate:.1f}% (last 5 min)")
+            click.echo(f"  Latency P95: {latency_p95:.0f}ms")
+        else:
+            click.echo(f"  Metrics: No recent requests")
+
+        click.echo()
+
+        # Agent Health
+        click.echo("Agent:")
+        agent_type = config.get('agent.type', 'unknown')
+        click.echo(f"  Type: {agent_type}")
+
+        if health_status['agent_available']:
+            agent_success_rate = health_status['agent_success_rate'] * 100
+            click.echo(f"  Available: ", nl=False)
+            click.secho("✓ Yes", fg='green')
+            click.echo(f"  Success Rate: {agent_success_rate:.1f}%")
+        else:
+            click.echo(f"  Metrics: No recent executions")
+
+        click.echo()
+
+        # Database Health
+        click.echo("Database:")
+        db_url = config.get('database.url', 'unknown')
+        if 'sqlite' in db_url.lower():
+            db_type = "SQLite"
+        elif 'postgresql' in db_url.lower():
+            db_type = "PostgreSQL"
+        else:
+            db_type = "Unknown"
+
+        click.echo(f"  Type: {db_type}")
+
+        if health_status['database_available']:
+            click.echo(f"  Available: ", nl=False)
+            click.secho("✓ Yes", fg='green')
+        else:
+            click.echo(f"  Available: ", nl=False)
+            click.secho("✗ No", fg='red')
+
+        click.echo()
+
+        # Detailed Metrics
+        click.echo("Recent Activity (last 5 minutes):")
+        llm_metrics = metrics.get_llm_metrics()
+        agent_metrics = metrics.get_agent_metrics()
+        nl_metrics = metrics.get_nl_command_metrics()
+
+        click.echo(f"  LLM Requests: {llm_metrics['count']}")
+        click.echo(f"  Agent Executions: {agent_metrics['count']}")
+        click.echo(f"  NL Commands: {nl_metrics['count']}")
+
+        click.echo()
+
+        # Recommendations
+        if status != 'healthy':
+            click.echo("Recommendations:")
+            if health_status['llm_success_rate'] < 0.95:
+                click.echo("  ⚠ LLM success rate low - check LLM connectivity")
+                click.echo("     Run: obra llm status")
+            if health_status['agent_success_rate'] < 0.90:
+                click.echo("  ⚠ Agent success rate low - check agent configuration")
+            if health_status['llm_latency_p95'] > 5000:
+                click.echo("  ⚠ High LLM latency - consider scaling or caching")
+            click.echo()
+
+        click.echo("="*70)
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Health check failed: {e}", err=True)
+        import traceback
+        if ctx.obj.get('verbose'):
+            traceback.print_exc()
         sys.exit(1)
 
 

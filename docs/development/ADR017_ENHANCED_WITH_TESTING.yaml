@@ -1,0 +1,1126 @@
+# Machine-Optimized Implementation Plan (ENHANCED WITH TESTING)
+# Unified Execution Architecture (ADR-017) v1.7.0-v1.7.1
+# WITH Comprehensive Testing Infrastructure Enhancement
+# Optimized for LLM implementation by Claude Code
+
+version: "2.0"
+target_release: "v1.7.0-v1.7.1"
+status: "proposed"
+date: "2025-11-12"
+enhancement: "Integrated testing infrastructure from TESTING_GAP_ANALYSIS"
+
+# Quick Reference
+references:
+  epic_breakdown: "docs/development/ADR017_UNIFIED_EXECUTION_EPIC_BREAKDOWN.md"
+  original_plan: "docs/development/ADR017_UNIFIED_EXECUTION_IMPLEMENTATION_PLAN.yaml"
+  testing_gap_analysis: "docs/testing/TESTING_GAP_ANALYSIS_SUMMARY.md"
+  testing_enhancement_plan: "docs/testing/INTEGRATION_TESTING_ENHANCEMENT_PLAN.md"
+  alignment_review: "docs/code_review/20251112 Alignment Review.md"
+
+# Critical Context
+problem: |
+  1. ARCHITECTURAL: Natural Language commands bypass orchestrator's validation pipeline
+  2. TESTING: 88% code coverage but critical integration gaps (LLM, agent, E2E workflows)
+
+solution: |
+  1. Route ALL commands through unified orchestrator.execute_task()
+  2. Implement comprehensive testing infrastructure FIRST to validate refactor
+
+# Key Insight from Testing Analysis
+testing_insight: |
+  The testing gap analysis revealed that while unit tests are excellent (88% coverage),
+  integration testing has critical gaps:
+  - LLM connectivity: 0% coverage (HIGH RISK)
+  - Agent communication: 5% coverage (CRITICAL RISK)
+  - Full orchestrator E2E: 10% coverage (CRITICAL RISK)
+
+  RECOMMENDATION: Implement testing infrastructure BEFORE architectural refactor
+  so we can validate the refactor at each step with confidence.
+
+# Implementation Strategy
+implementation_strategy:
+  approach: "Test-First Refactoring"
+  rationale: |
+    1. Build testing infrastructure FIRST (Story 0)
+    2. Use tests to validate each refactoring step
+    3. Catch integration issues early
+    4. High confidence in unified architecture
+
+  benefits:
+    - "Tests validate refactor correctness at each step"
+    - "Integration issues caught immediately, not in manual testing"
+    - "Health checks prevent deployment of broken refactor"
+    - "Comprehensive E2E validation of unified architecture"
+
+# Implementation Phases (REORDERED)
+phases:
+  phase0:
+    name: "Testing Infrastructure (FOUNDATION)"
+    target: "v1.7.0 Week 1"
+    stories: ["story0"]
+    rationale: "Build testing foundation BEFORE refactoring"
+
+  phase1:
+    name: "Core Architecture Refactor"
+    target: "v1.7.0 Weeks 2-3"
+    stories: ["story1", "story2", "story3", "story4", "story5"]
+    validation: "Use Story 0 tests to validate each step"
+
+  phase2:
+    name: "Integration Testing & Validation"
+    target: "v1.7.0 Week 4"
+    stories: ["story6", "story7"]
+    validation: "Comprehensive E2E validation with enhanced tests"
+
+  phase3:
+    name: "Safety & Observability"
+    target: "v1.7.1 Week 5"
+    stories: ["story8", "story9", "story10"]
+    enhancement: "Add observability for production monitoring"
+
+# Story Details (ENHANCED WITH TESTING)
+stories:
+  # ==================== STORY 0: Testing Infrastructure (NEW - FOUNDATION) ====================
+  story0:
+    name: "Testing Infrastructure Foundation"
+    duration: "16 hours (2 days)"
+    priority: "P0 - PREREQUISITE"
+    dependencies: []
+    rationale: |
+      Build comprehensive testing infrastructure BEFORE refactoring.
+      This allows us to validate the refactor at each step with confidence.
+
+    files_created:
+      - path: "tests/health/test_system_health.py"
+        lines: 200
+        purpose: "Fast health checks for all critical systems"
+
+      - path: "tests/smoke/test_smoke_workflows.py"
+        lines: 300
+        purpose: "Core workflow smoke tests with mocks"
+
+      - path: "tests/integration/test_llm_connectivity.py"
+        lines: 350
+        purpose: "LLM connectivity and switching validation"
+
+      - path: "tests/integration/test_agent_connectivity.py"
+        lines: 250
+        purpose: "Agent communication validation"
+
+      - path: "tests/integration/test_orchestrator_e2e.py"
+        lines: 600
+        purpose: "THE CRITICAL TEST - full orchestrator workflow"
+
+      - path: "src/core/logging_config.py"
+        lines: 150
+        purpose: "Structured logging for observability"
+
+      - path: "src/core/metrics.py"
+        lines: 200
+        purpose: "Metrics collection and health checks"
+
+    test_tiers:
+      tier1_health_checks:
+        name: "Health Checks (Fast Gate)"
+        tests: 7
+        duration: "<30s"
+        purpose: "Validate all systems operational"
+
+        tests_list:
+          - name: "test_llm_connectivity_ollama"
+            validates: "Ollama reachable and responding"
+            speed: "<5s"
+
+          - name: "test_llm_connectivity_openai_codex"
+            validates: "OpenAI Codex reachable (if configured)"
+            speed: "<10s"
+            skip_if: "No API key configured"
+
+          - name: "test_database_connectivity"
+            validates: "Database accessible and operational"
+            speed: "<1s"
+
+          - name: "test_agent_registry_loaded"
+            validates: "Agent plugins registered (Claude Code local/SSH)"
+            speed: "<1s"
+
+          - name: "test_llm_registry_loaded"
+            validates: "LLM plugins registered (Ollama/OpenAI Codex)"
+            speed: "<1s"
+
+          - name: "test_configuration_valid"
+            validates: "Default configuration loads without errors"
+            speed: "<1s"
+
+          - name: "test_state_manager_initialization"
+            validates: "StateManager can initialize with database"
+            speed: "<2s"
+
+        execution:
+          command: "pytest tests/health/ -v --timeout=30"
+          expected: "7 passed in <30s"
+          ci_cd: "Run on every commit (fast quality gate)"
+
+      tier1_smoke_tests:
+        name: "Smoke Tests (Core Workflows)"
+        tests: 10
+        duration: "<60s"
+        purpose: "Fast validation of core workflows with mocks"
+
+        tests_list:
+          - name: "test_create_project_smoke"
+            workflow: "CLI: obra project create"
+            speed: "<1s"
+
+          - name: "test_create_epic_smoke"
+            workflow: "NL: create epic for user auth"
+            speed: "<1s"
+            uses: "Mocked LLM"
+
+          - name: "test_create_story_smoke"
+            workflow: "NL: create story in epic X"
+            speed: "<1s"
+
+          - name: "test_list_tasks_smoke"
+            workflow: "NL: list tasks"
+            speed: "<1s"
+
+          - name: "test_update_task_smoke"
+            workflow: "NL: update task priority"
+            speed: "<1s"
+
+          - name: "test_llm_status_smoke"
+            workflow: "CLI: obra llm status"
+            speed: "<1s"
+
+          - name: "test_llm_reconnect_smoke"
+            workflow: "CLI: obra llm reconnect"
+            speed: "<2s"
+
+          - name: "test_state_manager_crud_smoke"
+            workflow: "Create/read/update/delete entities"
+            speed: "<1s"
+
+          - name: "test_nl_processor_parse_smoke"
+            workflow: "Parse NL command (no execution)"
+            speed: "<1s"
+
+          - name: "test_orchestrator_init_smoke"
+            workflow: "Initialize orchestrator"
+            speed: "<2s"
+
+        execution:
+          command: "pytest tests/smoke/ -v --timeout=60"
+          expected: "10 passed in <1 minute"
+          ci_cd: "Run on every commit"
+
+      tier2_llm_integration:
+        name: "LLM Integration (Real LLM)"
+        tests: 15
+        duration: "5-8 minutes"
+        purpose: "Validate LLM connectivity, switching, performance"
+
+        test_categories:
+          connectivity:
+            tests: 6
+            scenarios:
+              - "Ollama connection success"
+              - "Ollama connection failure (wrong port)"
+              - "Ollama connection failure (service down)"
+              - "OpenAI Codex connection success"
+              - "LLM timeout handling"
+              - "LLM retry on transient failure"
+
+          switching:
+            tests: 4
+            scenarios:
+              - "Switch Ollama → OpenAI Codex"
+              - "Switch OpenAI Codex → Ollama"
+              - "Switch maintains StateManager state"
+              - "Switch during pending operation"
+
+          performance:
+            tests: 5
+            scenarios:
+              - "Intent classification latency baseline"
+              - "Entity extraction latency baseline"
+              - "Full pipeline latency baseline"
+              - "Accuracy baseline (intent classification)"
+              - "Accuracy baseline (entity extraction)"
+
+        execution:
+          command: "pytest tests/integration/test_llm_*.py -v -m integration"
+          expected: "15 passed in 5-8 minutes"
+          ci_cd: "Run before merge, nightly"
+
+      tier3_agent_integration:
+        name: "Agent Integration (CRITICAL)"
+        tests: 12
+        duration: "10-15 minutes"
+        purpose: "Validate agent communication and orchestration"
+
+        test_categories:
+          agent_connectivity:
+            tests: 4
+            scenarios:
+              - "Claude Code local agent available"
+              - "Agent can send/receive prompts"
+              - "Fresh session creation (per-iteration model)"
+              - "Session isolation verified"
+
+          orchestrator_workflows:
+            tests: 8
+            scenarios:
+              - "CRITICAL: Full workflow (create → execute → commit)"
+              - "Workflow with quality feedback loop"
+              - "Workflow with confirmation (UPDATE/DELETE)"
+              - "Multi-task epic execution"
+              - "Task dependencies (M9)"
+              - "Git integration E2E (M9)"
+              - "Session management (per-iteration)"
+              - "Context continuity across sessions"
+
+        critical_test:
+          name: "test_full_workflow_create_project_to_execution"
+          description: |
+            THE MOST CRITICAL TEST - Validates core value proposition.
+
+            Workflow:
+            1. Create project via StateManager
+            2. Create task via NL command
+            3. Execute task through orchestrator (REAL agent)
+            4. Validate file created
+            5. Validate code quality
+            6. Validate metrics tracked
+
+          validates:
+            - "LLM connectivity works"
+            - "NL command parsing works"
+            - "Task creation works"
+            - "Orchestrator execution works"
+            - "Agent communication works"
+            - "File operations work"
+            - "Quality validation works"
+            - "Full end-to-end workflow"
+
+          speed: "1-2 minutes (real agent execution)"
+          importance: "CRITICAL - If this fails, core product broken"
+
+        execution:
+          command: "pytest tests/integration/test_orchestrator_e2e.py -v --timeout=1800"
+          expected: "12 passed in 10-15 minutes"
+          ci_cd: "Run nightly, on merge to main, or with 'run-e2e' label"
+
+    observability_foundation:
+      structured_logging:
+        component: "StructuredLogger"
+        location: "src/core/logging_config.py"
+
+        log_events:
+          - event: "llm_request"
+            fields: ["provider", "model", "latency_ms", "success", "error"]
+
+          - event: "agent_execution"
+            fields: ["agent_type", "task_id", "iteration", "duration_s", "success", "files_modified"]
+
+          - event: "nl_command"
+            fields: ["command", "intent", "operation", "entity_type", "success", "latency_ms"]
+
+          - event: "orchestrator_step"
+            fields: ["step", "task_id", "duration_ms", "success"]
+
+        integration_points:
+          - "src/llm/local_llm_interface.py (LLM requests)"
+          - "src/agents/claude_code_local_agent.py (Agent execution)"
+          - "src/nl/nl_command_processor.py (NL commands)"
+          - "src/orchestrator.py (Orchestration steps)"
+
+      metrics_collection:
+        component: "MetricsCollector"
+        location: "src/core/metrics.py"
+
+        metrics:
+          - metric: "llm_requests"
+            aggregations: ["count", "success_rate", "latency_p50", "latency_p95", "latency_p99"]
+
+          - metric: "agent_executions"
+            aggregations: ["count", "success_rate", "avg_duration", "files_modified"]
+
+          - metric: "nl_commands"
+            aggregations: ["count", "success_rate", "avg_latency", "by_operation"]
+
+        health_check:
+          endpoint: "obra health"
+          cli_command: "src/cli.py"
+          output:
+            status: "healthy | degraded | unhealthy"
+            llm_available: "bool"
+            llm_success_rate: "float (last 5 min)"
+            llm_latency_p95: "float (ms)"
+            agent_available: "bool"
+            database_available: "bool"
+
+    acceptance_criteria:
+      - "Tier 1 health checks (7 tests) implemented and passing"
+      - "Tier 1 smoke tests (10 tests) implemented and passing"
+      - "Tier 2 LLM integration tests (15 tests) implemented and passing"
+      - "Tier 3 agent integration tests (12 tests) implemented and passing"
+      - "THE CRITICAL TEST (test_full_workflow_create_project_to_execution) passing"
+      - "Structured logging integrated at all critical paths"
+      - "Metrics collection functional"
+      - "obra health command working"
+      - "CI/CD: Tier 1 tests run on every commit (<2 min)"
+      - "Documentation: Testing strategy documented"
+
+    validation:
+      before_proceeding_to_story1: |
+        Run full test suite:
+        $ pytest tests/health tests/smoke -v
+        # Expected: 17 tests in <2 minutes
+
+        $ pytest tests/integration/test_llm_connectivity.py -v -m integration
+        # Expected: 15 tests in 5-8 minutes
+
+        $ pytest tests/integration/test_orchestrator_e2e.py::test_full_workflow_create_project_to_execution -v
+        # Expected: 1 test in 1-2 minutes, PASSING
+
+        If THE CRITICAL TEST passes, we have confidence to proceed with refactor.
+
+  # ==================== STORY 1-9: Original Stories (ENHANCED) ====================
+  # (Keep all original stories 1-9 from previous plan)
+  # ENHANCEMENT: Each story now uses Story 0 tests for validation
+
+  story1:
+    name: "Architecture Documentation (ADR-017)"
+    duration: "8 hours"
+    priority: "P0"
+    dependencies: ["story0"]  # ADDED: Depends on testing infrastructure
+
+    # ... (keep all original Story 1 content)
+
+    validation_enhancement:
+      after_story1_complete: |
+        Verify documentation accuracy by running tests:
+        $ pytest tests/health/ tests/smoke/ -v
+        # All tests should still pass (no code changes in Story 1)
+
+  story2:
+    name: "Create IntentToTaskConverter Component"
+    duration: "12 hours"
+    priority: "P0"
+    dependencies: ["story0"]  # ADDED: Use tests for validation
+
+    # ... (keep all original Story 2 content)
+
+    validation_enhancement:
+      during_development: |
+        Use smoke tests to validate:
+        $ pytest tests/smoke/test_smoke_workflows.py::test_create_epic_smoke -v
+        # Should still pass with IntentToTaskConverter
+
+      after_story2_complete: |
+        Run full smoke test suite:
+        $ pytest tests/smoke/ -v
+        # All smoke tests should pass
+
+        Run THE CRITICAL TEST to ensure no regressions:
+        $ pytest tests/integration/test_orchestrator_e2e.py::test_full_workflow_create_project_to_execution -v
+        # Should still pass (not using new component yet, but validates no breaks)
+
+  story3:
+    name: "Refactor CommandExecutor → NLQueryHelper"
+    duration: "10 hours"
+    priority: "P0"
+    dependencies: ["story0"]
+
+    # ... (keep all original Story 3 content)
+
+    validation_enhancement:
+      after_story3_complete: |
+        Run NL smoke tests (should still work with renamed component):
+        $ pytest tests/smoke/ -v -k "nl_"
+        # All NL smoke tests pass
+
+        Run LLM integration tests:
+        $ pytest tests/integration/test_llm_connectivity.py -v -m integration
+        # All LLM tests pass (validates NL pipeline still functional)
+
+  story4:
+    name: "Update NLCommandProcessor Routing"
+    duration: "10 hours"
+    priority: "P0"
+    dependencies: ["story0", "story2"]
+
+    # ... (keep all original Story 4 content)
+
+    validation_enhancement:
+      after_story4_complete: |
+        CRITICAL VALIDATION - This changes NL pipeline behavior:
+
+        $ pytest tests/smoke/ -v
+        # All smoke tests must pass
+
+        $ pytest tests/integration/test_llm_connectivity.py -v
+        # All LLM integration tests pass
+
+        $ pytest tests/integration/test_agent_connectivity.py -v
+        # All agent tests pass
+
+        This is the integration point - extensive testing required!
+
+  story5:
+    name: "Implement Unified Orchestrator Routing"
+    duration: "12 hours"
+    priority: "P0"
+    dependencies: ["story0", "story2", "story3", "story4"]
+
+    # ... (keep all original Story 5 content)
+
+    validation_enhancement:
+      after_story5_complete: |
+        THIS IS THE BIG MOMENT - Unified architecture is live!
+
+        $ pytest tests/health/ tests/smoke/ -v
+        # All health checks and smoke tests pass
+
+        $ pytest tests/integration/test_llm_connectivity.py -v
+        $ pytest tests/integration/test_agent_connectivity.py -v
+        # All integration tests pass
+
+        THE CRITICAL VALIDATION:
+        $ pytest tests/integration/test_orchestrator_e2e.py::test_full_workflow_create_project_to_execution -v
+        # THIS MUST PASS - Validates unified architecture works end-to-end
+
+        If this passes, unified architecture is functional!
+
+  story6:
+    name: "Integration Testing for Unified Path (ENHANCED)"
+    duration: "20 hours (was 16h)"  # INCREASED: More comprehensive testing
+    priority: "P0"
+    dependencies: ["story0", "story5"]
+
+    enhancement: |
+      Story 6 now includes additional integration tests specifically for
+      unified execution architecture, building on Story 0 foundation.
+
+    files_created:
+      - path: "tests/integration/test_unified_execution.py"
+        lines: 1000 (was 800)
+        purpose: "Comprehensive E2E testing of unified architecture"
+
+      - path: "tests/integration/test_unified_nl_routing.py"
+        lines: 400
+        purpose: "NEW - Validate NL → orchestrator routing"
+
+      - path: "tests/integration/test_unified_quality_validation.py"
+        lines: 350
+        purpose: "NEW - Validate quality pipeline for NL commands"
+
+      - path: "docs/quality/ADR017_INTEGRATION_TEST_REPORT.md"
+        lines: 400
+        purpose: "Test results and validation summary"
+
+    test_organization:
+      enhanced_coverage:
+        nl_routing_tests: 10
+        quality_validation_tests: 8
+        breakpoint_integration_tests: 8
+        regression_tests: 12
+        performance_tests: 7
+        total_new_tests: 45 (was 30)
+
+      test_categories:
+        category1_nl_routing:
+          name: "NL Command Routing (NEW)"
+          tests: 10
+          focus: "Validate all NL commands route through orchestrator"
+
+          scenarios:
+            - name: "test_nl_create_routes_through_orchestrator"
+              validates: "CREATE operation uses unified pipeline"
+
+            - name: "test_nl_update_routes_through_orchestrator"
+              validates: "UPDATE operation uses unified pipeline"
+
+            - name: "test_nl_delete_routes_through_orchestrator"
+              validates: "DELETE operation uses unified pipeline"
+
+            - name: "test_nl_query_uses_nl_query_helper"
+              validates: "QUERY operation uses helper, not direct CRUD"
+
+            - name: "test_nl_context_preserved_in_task"
+              validates: "Original NL message included in task"
+
+            - name: "test_nl_confidence_tracked"
+              validates: "Pipeline confidence tracked through orchestrator"
+
+            - name: "test_nl_to_task_conversion_accuracy"
+              validates: "IntentToTaskConverter creates correct tasks"
+
+            - name: "test_regular_tasks_still_work"
+              validates: "Non-NL tasks unaffected by changes"
+
+            - name: "test_slash_commands_still_work"
+              validates: "CLI commands unaffected"
+
+            - name: "test_api_tasks_still_work"
+              validates: "Programmatic API unaffected"
+
+        category2_quality_validation:
+          name: "Quality Validation for NL (NEW)"
+          tests: 8
+          focus: "Validate quality pipeline applies to NL commands"
+
+          scenarios:
+            - name: "test_nl_command_gets_response_validation"
+              validates: "ResponseValidator runs on NL-sourced tasks"
+
+            - name: "test_nl_command_gets_quality_control"
+              validates: "QualityController runs on NL-sourced tasks"
+
+            - name: "test_nl_command_gets_confidence_scoring"
+              validates: "ConfidenceScorer runs on NL-sourced tasks"
+
+            - name: "test_nl_low_quality_triggers_retry"
+              validates: "Low quality NL responses trigger retry"
+
+            - name: "test_nl_validation_failure_retry"
+              validates: "Validation failures trigger retry for NL"
+
+            - name: "test_nl_max_iterations_respected"
+              validates: "Max iterations limit applies to NL"
+
+            - name: "test_nl_quality_scores_tracked"
+              validates: "Quality scores persisted for NL tasks"
+
+            - name: "test_nl_iterative_improvement_works"
+              validates: "Quality improves across iterations for NL"
+
+        category3_breakpoint_integration:
+          name: "Breakpoints for NL (NEW)"
+          tests: 8
+          focus: "Validate breakpoint system works with NL commands"
+
+          scenarios:
+            - name: "test_nl_low_confidence_triggers_checkpoint"
+              validates: "Low confidence NL intent triggers checkpoint"
+
+            - name: "test_nl_destructive_operation_checkpoint"
+              validates: "UPDATE/DELETE from NL triggers safety checkpoint"
+
+            - name: "test_nl_confirmation_workflow"
+              validates: "Confirmation prompts work for NL commands"
+
+            - name: "test_nl_checkpoint_user_override"
+              validates: "User can override NL decisions"
+
+            - name: "test_nl_checkpoint_abort"
+              validates: "User can abort NL operations"
+
+            - name: "test_nl_non_interactive_abort"
+              validates: "Destructive NL in non-interactive mode aborts"
+
+            - name: "test_nl_checkpoint_context_shown"
+              validates: "Checkpoint shows NL context to user"
+
+            - name: "test_nl_checkpoint_history"
+              validates: "Checkpoint history includes NL commands"
+
+        category4_regression:
+          name: "Regression Tests (Enhanced)"
+          tests: 12
+          focus: "Ensure no existing functionality broken"
+
+          scenarios:
+            - "Regular task execution unchanged"
+            - "Slash commands still functional"
+            - "Epic execution unchanged"
+            - "Story execution unchanged"
+            - "Task dependencies still work"
+            - "Git integration still works"
+            - "Configuration profiles still work"
+            - "LLM switching still works"
+            - "Session management unchanged"
+            - "StateManager CRUD unchanged"
+            - "Existing NL tests still pass (770+ tests)"
+            - "All smoke tests still pass"
+
+        category5_performance:
+          name: "Performance Tests (Enhanced)"
+          tests: 7
+          focus: "Validate latency and throughput acceptable"
+
+          scenarios:
+            - name: "test_nl_command_latency_acceptable"
+              target: "P95 < 3s (including validation overhead)"
+              method: "Execute 20 NL commands, measure latency"
+
+            - name: "test_nl_vs_direct_latency_comparison"
+              target: "NL latency increase < 1s vs v1.6.0"
+              method: "Compare unified vs direct execution"
+
+            - name: "test_memory_overhead_acceptable"
+              target: "<50MB additional memory"
+              method: "Memory profiling 100 NL commands"
+
+            - name: "test_throughput_acceptable"
+              target: "≥40 cmd/min (down from 50, acceptable)"
+              method: "Sustained load test"
+
+            - name: "test_orchestrator_startup_time"
+              target: "<2s orchestrator initialization"
+              method: "Measure init time 10 times"
+
+            - name: "test_health_check_speed"
+              target: "<30s all health checks"
+              method: "Time full health check suite"
+
+            - name: "test_smoke_test_speed"
+              target: "<60s all smoke tests"
+              method: "Time full smoke test suite"
+
+    acceptance_criteria:
+      - "45+ integration tests created (was 30)"
+      - "All tests passing (100% pass rate)"
+      - "All 770+ existing tests still passing"
+      - "THE CRITICAL TEST still passing with unified architecture"
+      - "Coverage ≥85% on orchestration + NL unified paths"
+      - "Performance benchmarks met (P95 < 3s)"
+      - "Test report documenting validation results"
+      - "Regression: 0 existing features broken"
+
+  story7:
+    name: "Documentation Updates"
+    duration: "8 hours"
+    priority: "P1"
+    dependencies: ["story6"]
+
+    # ... (keep all original Story 7 content)
+
+    enhancement:
+      additional_documentation:
+        - file: "docs/testing/UNIFIED_EXECUTION_TESTING_STRATEGY.md"
+          content: "Testing strategy for unified architecture"
+          lines: 200
+
+        - update: "docs/testing/TESTING_GAP_ANALYSIS_SUMMARY.md"
+          content: "Mark gaps as RESOLVED with ADR-017"
+
+        - update: "docs/testing/INTEGRATION_TESTING_ENHANCEMENT_PLAN.md"
+          content: "Mark Tier 1-3 as IMPLEMENTED"
+
+  story8:
+    name: "Safety Enhancements - Destructive Operation Breakpoints"
+    duration: "10 hours"
+    priority: "P1"
+    dependencies: ["story5"]
+    release: "v1.7.1"
+
+    # ... (keep all original Story 8 content)
+
+    validation_enhancement:
+      after_story8_complete: |
+        Test destructive operation confirmation:
+        $ pytest tests/integration/test_unified_execution.py -v -k "confirmation"
+        # All confirmation tests pass
+
+        $ pytest tests/integration/test_orchestrator_e2e.py -v -k "delete"
+        # DELETE operations require confirmation
+
+  story9:
+    name: "Confirmation Workflow UI Polish"
+    duration: "6 hours"
+    priority: "P2"
+    dependencies: ["story8"]
+    release: "v1.7.1"
+
+    # ... (keep all original Story 9 content)
+
+  # ==================== STORY 10: Observability Enhancements (NEW) ====================
+  story10:
+    name: "Observability & Monitoring Enhancements"
+    duration: "8 hours"
+    priority: "P2"
+    dependencies: ["story0", "story5"]
+    release: "v1.7.1"
+
+    purpose: |
+      Enhance observability infrastructure from Story 0 with production-grade
+      monitoring, alerting, and debugging capabilities.
+
+    files_modified:
+      - path: "src/core/logging_config.py"
+        changes: "Add log filtering, correlation IDs, context managers"
+        lines_added: 100
+
+      - path: "src/core/metrics.py"
+        changes: "Add alerting thresholds, trend detection, anomaly detection"
+        lines_added: 150
+
+      - path: "src/cli.py"
+        changes: "Add obra health, obra metrics, obra logs commands"
+        lines_added: 80
+
+    enhancements:
+      structured_logging_v2:
+        correlation_ids:
+          purpose: "Track requests across all components"
+          implementation: |
+            class CorrelationContext:
+                def __init__(self, correlation_id: str = None):
+                    self.correlation_id = correlation_id or str(uuid.uuid4())
+
+                def __enter__(self):
+                    # Set thread-local correlation ID
+                    _correlation_id.set(self.correlation_id)
+
+                def __exit__(self, *args):
+                    _correlation_id.set(None)
+
+          usage: |
+            with CorrelationContext() as ctx:
+                # All logs in this block include correlation_id
+                orchestrator.execute_task(task_id=1)
+
+        log_filtering:
+          by_event: "obra logs --event=llm_request"
+          by_level: "obra logs --level=ERROR"
+          by_correlation: "obra logs --correlation-id=abc123"
+          by_time: "obra logs --since='10 minutes ago'"
+
+      metrics_v2:
+        alerting_thresholds:
+          llm_success_rate:
+            warning: 0.95
+            critical: 0.90
+            action: "Check LLM connectivity, review recent errors"
+
+          llm_latency_p95:
+            warning: 3000  # ms
+            critical: 5000  # ms
+            action: "LLM overloaded, consider scaling or caching"
+
+          agent_success_rate:
+            warning: 0.90
+            critical: 0.80
+            action: "Agent communication issues, check logs"
+
+        trend_detection:
+          sliding_window: "15 minutes"
+          metrics:
+            - "llm_latency_p95 increasing > 50%"
+            - "llm_success_rate decreasing > 10%"
+            - "agent_execution_duration increasing > 100%"
+
+        cli_commands:
+          obra_health:
+            output: "Overall system health with traffic light status"
+            example: |
+              $ obra health
+              Status: HEALTHY ✅
+              LLM: Ollama (qwen2.5-coder:32b)
+                - Available: Yes
+                - Success Rate: 98.2% (last 5 min)
+                - Latency P95: 1234ms
+              Agent: Claude Code Local
+                - Available: Yes
+                - Success Rate: 95.1%
+              Database: SQLite
+                - Available: Yes
+
+          obra_metrics:
+            output: "Detailed metrics with trends"
+            example: |
+              $ obra metrics --window=1h
+              LLM Metrics (last 1 hour):
+                - Requests: 156
+                - Success Rate: 97.4% (↑ 2% from previous hour)
+                - Latency P50: 845ms
+                - Latency P95: 1523ms (↓ 200ms)
+                - Latency P99: 2891ms
+
+          obra_logs:
+            output: "Filtered logs with correlation"
+            example: |
+              $ obra logs --event=nl_command --since='5 minutes ago'
+              2025-11-12T22:45:12Z [nl_command] correlation_id=abc123
+                command: "create epic for auth"
+                intent: COMMAND
+                success: true
+                latency_ms: 234
+
+    test_coverage:
+      unit_tests: 20
+      categories:
+        - "Correlation ID propagation"
+        - "Log filtering"
+        - "Metrics aggregation"
+        - "Alert threshold detection"
+        - "Trend calculation"
+        - "CLI commands (health/metrics/logs)"
+
+      integration_tests: 8
+      scenarios:
+        - "Correlation ID tracked across orchestrator → agent → LLM"
+        - "Logs queryable by various filters"
+        - "Metrics reflect actual system behavior"
+        - "Alerts trigger on threshold violations"
+
+    acceptance_criteria:
+      - "Correlation IDs tracked across all components"
+      - "Structured logs queryable with filters"
+      - "Metrics with alerting thresholds functional"
+      - "CLI commands (health/metrics/logs) working"
+      - "20 unit tests + 8 integration tests passing"
+      - "Documentation updated"
+
+# ==================== ENHANCED TESTING STRATEGY ====================
+testing:
+  test_first_approach:
+    philosophy: "Build tests BEFORE refactoring, use tests to validate each step"
+
+    workflow:
+      step1: "Story 0: Build comprehensive testing infrastructure"
+      step2: "Run THE CRITICAL TEST to establish baseline"
+      step3: "Stories 1-5: Refactor incrementally, validate with tests after each"
+      step4: "Story 6: Add unified execution specific tests"
+      step5: "Story 7-10: Polish, safety, observability"
+
+  tier_structure:
+    tier1_fast_gate:
+      tests: "17 (7 health + 10 smoke)"
+      speed: "<2 minutes"
+      runs: "Every commit"
+      purpose: "Fast feedback, catch obvious breaks"
+
+    tier2_llm_integration:
+      tests: "15"
+      speed: "5-8 minutes"
+      runs: "Before merge, nightly"
+      purpose: "Validate LLM connectivity and switching"
+
+    tier3_agent_integration:
+      tests: "12"
+      speed: "10-15 minutes"
+      runs: "Before merge (with label), nightly"
+      purpose: "Validate core orchestration E2E"
+
+    tier4_unified_execution:
+      tests: "45"
+      speed: "15-20 minutes"
+      runs: "Nightly, before release"
+      purpose: "Comprehensive unified architecture validation"
+
+  execution_strategy:
+    development:
+      command: "pytest tests/health tests/smoke -v"
+      speed: "<2 minutes"
+      frequency: "Continuously during development"
+
+    pre_commit:
+      command: "pytest tests/health tests/smoke -v"
+      speed: "<2 minutes"
+      gate: "Must pass before commit"
+
+    pre_merge:
+      command: |
+        pytest tests/health tests/smoke -v
+        pytest tests/integration/test_llm_*.py -v -m integration
+      speed: "<10 minutes"
+      gate: "Must pass before merge to main"
+
+    nightly:
+      command: "pytest tests/ -v --timeout=3600"
+      speed: "~30 minutes"
+      gate: "Alert if failures"
+
+    before_release:
+      command: |
+        pytest tests/ -v --timeout=3600
+        pytest tests/integration/test_orchestrator_e2e.py::test_full_workflow_create_project_to_execution -v
+      speed: "~30 minutes"
+      gate: "100% pass rate required"
+
+  the_critical_test:
+    name: "test_full_workflow_create_project_to_execution"
+    location: "tests/integration/test_orchestrator_e2e.py"
+    importance: "CRITICAL - Core value proposition validation"
+
+    what_it_validates:
+      - "LLM connectivity functional"
+      - "NL command parsing accurate"
+      - "Task creation successful"
+      - "Orchestrator execution works"
+      - "Agent communication reliable"
+      - "File operations successful"
+      - "Quality validation applied"
+      - "End-to-end workflow complete"
+
+    success_criteria:
+      - "Test passes in <2 minutes"
+      - "File created by agent exists"
+      - "Code quality acceptable"
+      - "Metrics tracked correctly"
+
+    failure_impact:
+      - "Core product broken"
+      - "DO NOT MERGE until fixed"
+      - "DO NOT RELEASE until fixed"
+
+  coverage_targets:
+    unit_tests:
+      total: "870+ tests (770 existing + 100 new)"
+      coverage: "≥90% on new components, ≥88% overall"
+
+    integration_tests:
+      total: "90+ tests (45 existing + 45 new)"
+      coverage: "≥85% on execution paths"
+
+    regression:
+      requirement: "All 770+ existing tests passing (100%)"
+
+# ==================== UPDATED RELEASE PLAN ====================
+releases:
+  v1_7_0:
+    date: "Week 4 (4 weeks from epic start)"  # UPDATED: +1 week for testing
+    scope: "Core refactor + comprehensive testing (Stories 0-7)"
+
+    deliverables:
+      - "Testing infrastructure (Tier 1-4)"
+      - "THE CRITICAL TEST passing"
+      - "ADR-017 and architecture docs"
+      - "IntentToTaskConverter component"
+      - "NLQueryHelper (refactored CommandExecutor)"
+      - "Updated NLCommandProcessor routing"
+      - "Unified orchestrator routing"
+      - "205+ new tests (100 infrastructure + 105 unified execution)"
+      - "Updated documentation (8 files)"
+
+    quality_gates:
+      - "All Tier 1 tests passing (<2 min)"
+      - "All Tier 2 tests passing (<10 min)"
+      - "All Tier 3 tests passing (<15 min)"
+      - "THE CRITICAL TEST passing"
+      - "All 770+ existing tests passing"
+      - "Performance benchmarks met"
+
+  v1_7_1:
+    date: "Week 5 (1 week after v1.7.0)"
+    scope: "Safety + observability (Stories 8-10)"
+
+    deliverables:
+      - "Destructive operation breakpoints"
+      - "Rich confirmation UI"
+      - "Observability enhancements"
+      - "Structured logging v2"
+      - "Metrics with alerting"
+      - "CLI commands (health/metrics/logs)"
+
+# ==================== UPDATED SUCCESS METRICS ====================
+success_metrics:
+  technical:
+    - "100% of NL commands route through orchestrator"
+    - "0 direct StateManager writes from NL pipeline"
+    - "≥90% test coverage on new components"
+    - "All 770+ existing tests passing"
+    - "THE CRITICAL TEST passing"
+    - "<3s latency (P95) for NL commands"
+    - "All Tier 1-3 integration tests passing"
+
+  quality:
+    - "Validation applied to 100% of NL commands"
+    - "Quality scoring for all NL operations"
+    - "Iterative improvement available for NL"
+    - "Safety breakpoints for destructive ops"
+    - "Comprehensive E2E test coverage"
+
+  testing:
+    - "0% → 100% health check coverage"
+    - "5% → 80% agent integration coverage"
+    - "10% → 90% orchestrator E2E coverage"
+    - "Fast feedback (<2 min tier 1)"
+    - "Comprehensive validation (<30 min full suite)"
+
+# ==================== UPDATED TIMELINE ====================
+timeline:
+  week1:
+    name: "Testing Infrastructure Foundation"
+    stories: ["story0"]
+    deliverables:
+      - "Health checks (7 tests)"
+      - "Smoke tests (10 tests)"
+      - "LLM integration tests (15 tests)"
+      - "Agent integration tests (12 tests)"
+      - "THE CRITICAL TEST"
+      - "Structured logging foundation"
+      - "Metrics collection foundation"
+    validation: "All tests passing before week 2"
+
+  week2:
+    name: "Architecture Documentation & Core Components"
+    stories: ["story1", "story2", "story3"]
+    deliverables:
+      - "ADR-017 complete"
+      - "IntentToTaskConverter"
+      - "NLQueryHelper"
+    validation: "Smoke tests still passing"
+
+  week3:
+    name: "Unified Orchestrator Routing"
+    stories: ["story4", "story5"]
+    deliverables:
+      - "Updated NLCommandProcessor"
+      - "Unified orchestrator routing"
+    validation: "THE CRITICAL TEST passes with unified architecture"
+
+  week4:
+    name: "Integration Testing & Documentation"
+    stories: ["story6", "story7"]
+    deliverables:
+      - "45 unified execution tests"
+      - "Test report"
+      - "Documentation updates"
+    validation: "All 870+ tests passing, ready for release"
+
+  week5:
+    name: "Safety & Observability (v1.7.1)"
+    stories: ["story8", "story9", "story10"]
+    deliverables:
+      - "Confirmation workflow"
+      - "Observability enhancements"
+      - "CLI commands"
+    validation: "Production-ready monitoring"
+
+# ==================== KEY DIFFERENCES FROM ORIGINAL PLAN ====================
+enhancements_summary:
+  story0_added:
+    impact: "CRITICAL - Build testing foundation FIRST"
+    benefit: "Validate refactor at each step with confidence"
+    time: "+16 hours (Week 1)"
+
+  the_critical_test:
+    impact: "CRITICAL - Core value proposition validation"
+    benefit: "Single test that validates entire system works"
+    requirement: "Must pass before any release"
+
+  test_first_workflow:
+    impact: "HIGH - Paradigm shift"
+    benefit: "Catch integration issues immediately, not in manual testing"
+    confidence: "HIGH - Each refactor step validated"
+
+  observability_enhanced:
+    impact: "MEDIUM - Production readiness"
+    benefit: "Better debugging, monitoring, alerting"
+    time: "+8 hours (Story 10)"
+
+  total_time_increase:
+    original: "60-80 hours (2-3 weeks)"
+    enhanced: "84-104 hours (4-5 weeks)"
+    increase: "+24 hours (+1 week)"
+    justification: "Testing infrastructure is prerequisite, not optional"
+
+  roi_calculation:
+    investment: "+1 week (testing infrastructure)"
+    return: "Prevent 20-30 incidents/year, save 100+ hours manual testing"
+    confidence: "95%+ issues caught automatically"
+    payback: "Immediate (first refactor step validated)"

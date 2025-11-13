@@ -195,8 +195,8 @@ class ResponseFormatter:
         message = (
             f"{Fore.YELLOW}⚠ Confirmation required:{Style.RESET_ALL}\n"
             f"  This will {operation} {entity_type}{identifier_part}.\n"
-            f"{Fore.CYAN}  Note: Interactive confirmation is not yet implemented.{Style.RESET_ALL}\n"
-            f"{Fore.CYAN}  Use CLI instead: obra {entity_type} {operation} {identifier}{Style.RESET_ALL}"
+            f"\n"
+            f"  Type 'yes' to confirm, 'no' to cancel"
         )
         return message
 
@@ -313,28 +313,162 @@ class ResponseFormatter:
         """
         error_lower = error_msg.lower()
 
-        # Epic not found
-        if 'epic' in error_lower and 'not found' in error_lower:
-            return "List epics with 'show epics' or create one first"
+        # Entity not found - provide list command
+        if 'not found' in error_lower:
+            entity_type = results.get('entity_type', 'item')
+            if entity_type in ['epic', 'story', 'task', 'project', 'milestone']:
+                return f"List {entity_type}s with 'list {entity_type}s' to see available options"
+            return "List available items to see what exists"
 
-        # Story not found
-        if 'story' in error_lower and 'not found' in error_lower:
-            return "List stories with 'show stories' or create one first"
-
-        # Missing required field
+        # Missing required field - be specific
         if 'requires' in error_lower or 'required' in error_lower:
+            if 'epic_id' in error_lower or 'epic' in error_lower:
+                return "Specify epic with 'in epic <id>' or 'for epic <name>'"
+            elif 'story_id' in error_lower or 'story' in error_lower:
+                return "Specify story with 'in story <id>' or 'for story <name>'"
+            elif 'parent_task_id' in error_lower or 'parent' in error_lower:
+                return "Specify parent task with 'under task <id>'"
+            elif 'title' in error_lower or 'name' in error_lower:
+                return "Add a title/name: 'create epic \"My Epic Name\"'"
             return "Check required fields and try again"
 
         # Circular dependency
-        if 'circular' in error_lower:
-            return "Review task dependencies to remove cycles"
+        if 'circular' in error_lower or 'cycle' in error_lower:
+            return "Remove the circular dependency: task A depends on B, B depends on A"
 
-        # Database error
-        if 'database' in error_lower or 'db' in error_lower:
-            return "Check database connection and try again"
+        # Confirmation required (should not normally happen)
+        if 'confirmation' in error_lower:
+            return "Confirmation prompt should appear - this may be a bug"
 
-        # Generic recovery
-        return "Review your command and try again"
+        # Database/connection errors
+        if 'database' in error_lower or 'connection' in error_lower:
+            return "Database connection issue. Check logs and try again"
+
+        # Permission/access errors
+        if 'permission' in error_lower or 'access' in error_lower:
+            return "Check file permissions and working directory access"
+
+        # Invalid parameter values
+        if 'invalid' in error_lower:
+            if 'priority' in error_lower:
+                return "Priority must be 1-10 or HIGH/MEDIUM/LOW"
+            if 'status' in error_lower:
+                return "Status must be PENDING/RUNNING/COMPLETED/BLOCKED/READY"
+            return "Check parameter values and try again"
+
+        # Transaction/lock errors
+        if 'transaction' in error_lower or 'lock' in error_lower:
+            return "Database lock detected. Wait a moment and try again"
+
+        # Generic recovery with help hint
+        return "Try rephrasing your command or type 'help' for examples"
+
+    def format_error_with_examples(
+        self,
+        result: ExecutionResult,
+        operation: Optional[str] = None
+    ) -> str:
+        """Format error with command examples.
+
+        Args:
+            result: Execution result with error
+            operation: Optional operation type (create, update, delete, query)
+
+        Returns:
+            Formatted error message with examples
+
+        Example:
+            >>> formatter = ResponseFormatter()
+            >>> result = ExecutionResult(success=False, errors=['Project not found'])
+            >>> response = formatter.format_error_with_examples(result, 'create')
+        """
+        # Get base error message
+        base_error = self._format_error(result)
+
+        # Add examples if we have operation and entity type
+        entity_type = result.results.get('entity_type')
+        if operation and entity_type:
+            examples = self._get_examples(entity_type, operation)
+            if examples:
+                base_error += f"\n\n{Fore.CYAN}Examples:{Style.RESET_ALL}"
+                for example in examples:
+                    base_error += f"\n  • {example}"
+
+        return base_error
+
+    def _get_examples(self, entity_type: str, operation: str) -> List[str]:
+        """Get example commands for entity type and operation.
+
+        Args:
+            entity_type: Entity type (project, epic, story, task, milestone)
+            operation: Operation type (create, update, delete, query)
+
+        Returns:
+            List of example command strings
+        """
+        examples_map = {
+            ('project', 'create'): [
+                "create project 'My New Project'",
+                "create project for mobile app",
+            ],
+            ('project', 'update'): [
+                "update project 5 status to completed",
+                "mark project 'Mobile App' as inactive",
+            ],
+            ('project', 'query'): [
+                "list projects",
+                "show all projects",
+                "show project status",
+            ],
+            ('epic', 'create'): [
+                "create epic for user authentication",
+                "add epic 'Payment System' to project 1",
+            ],
+            ('epic', 'update'): [
+                "update epic 3 status to blocked",
+                "mark epic 'Auth System' as completed",
+            ],
+            ('epic', 'query'): [
+                "list epics",
+                "show all epics",
+                "list epics for project 1",
+            ],
+            ('story', 'create'): [
+                "create story in epic 5",
+                "add story 'User Login' for epic 3",
+            ],
+            ('story', 'update'): [
+                "update story 7 priority to high",
+                "mark story 2 as completed",
+            ],
+            ('story', 'query'): [
+                "list stories",
+                "show stories for epic 5",
+            ],
+            ('task', 'create'): [
+                "create task with priority HIGH",
+                "add task 'Write tests' in story 3",
+            ],
+            ('task', 'update'): [
+                "update task 10 status to running",
+                "change task 5 priority to LOW",
+            ],
+            ('task', 'query'): [
+                "list tasks",
+                "show tasks for story 5",
+                "show my tasks",
+            ],
+            ('milestone', 'create'): [
+                "create milestone 'MVP Release'",
+                "add milestone for epic completion",
+            ],
+            ('milestone', 'query'): [
+                "list milestones",
+                "show milestone status",
+            ],
+        }
+
+        return examples_map.get((entity_type, operation), [])
 
     def format_list_response(
         self,

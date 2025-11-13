@@ -316,7 +316,10 @@ class CommandProcessor:
         return self._to_orch({'message': message})
 
     def _execute_nl_command(self, input_str: str) -> Dict[str, Any]:
-        """Execute natural language command via NL processor.
+        """Execute natural language command via unified orchestrator routing (ADR-017).
+
+        Routes NL commands through orchestrator's validation pipeline for
+        consistent quality control.
 
         NOTE: This method is deprecated in v1.5.0. Natural language input
         now routes to orchestrator by default. NL processor functionality
@@ -331,28 +334,36 @@ class CommandProcessor:
         try:
             # Get project_id from orchestrator if available
             project_id = getattr(self.orchestrator, 'current_project_id', None)
+            if project_id is None:
+                # Try to get from current_project
+                if hasattr(self.orchestrator, 'current_project') and self.orchestrator.current_project:
+                    project_id = self.orchestrator.current_project.id
+                else:
+                    # Default to 1 if no project context
+                    project_id = 1
 
-            # Process through NL pipeline
-            nl_response = self.nl_processor.process(
+            # ADR-017 Story 5: Parse intent (does not execute)
+            parsed_intent = self.nl_processor.process(
                 message=input_str,
                 context={},
                 project_id=project_id
             )
 
-            # Convert NLResponse to command result format
-            result = {
-                'message': nl_response.response,
-                'intent': nl_response.intent
+            # ADR-017 Story 5: Route through orchestrator for unified execution
+            result = self.orchestrator.execute_nl_command(
+                parsed_intent=parsed_intent,
+                project_id=project_id,
+                interactive=True
+            )
+
+            # Convert orchestrator result to command result format
+            return {
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'task_id': result.get('task_id'),
+                'answer': result.get('answer'),
+                'confidence': result.get('confidence', 0.0)
             }
-
-            if nl_response.success:
-                result['success'] = True
-                if nl_response.execution_result:
-                    result['execution_result'] = nl_response.execution_result
-            else:
-                result['error'] = nl_response.response
-
-            return result
 
         except Exception as e:
             self.logger.exception(f"NL command execution failed: {e}")

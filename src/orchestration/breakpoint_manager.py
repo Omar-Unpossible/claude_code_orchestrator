@@ -12,6 +12,7 @@ Breakpoint Types:
     - time_threshold_exceeded: Task timeout (auto-resolvable)
     - confidence_too_low: Confidence below threshold for critical task
     - consecutive_failures: Multiple consecutive failures
+    - destructive_nl_operation: Destructive NL operations (UPDATE/DELETE) requiring confirmation
 
 Example:
     >>> manager = BreakpointManager(state_manager, config)
@@ -543,6 +544,30 @@ class BreakpointManager:
         """
         self._notification_callbacks.append(callback)
 
+    def should_trigger_destructive_nl_breakpoint(self, task) -> bool:
+        """Check if task is a destructive NL operation requiring confirmation.
+
+        Args:
+            task: Task object to check
+
+        Returns:
+            True if task is destructive NL operation (UPDATE/DELETE from natural language)
+
+        Example:
+            >>> task = Task(...)
+            >>> task.task_metadata = {'source': 'natural_language', 'operation_type': 'DELETE'}
+            >>> manager.should_trigger_destructive_nl_breakpoint(task)
+            True
+        """
+        if not hasattr(task, 'task_metadata') or not task.task_metadata:
+            return False
+
+        source = task.task_metadata.get('source')
+        operation = task.task_metadata.get('operation_type')
+
+        return (source == 'natural_language' and
+                operation in ['UPDATE', 'DELETE'])
+
     # Private helper methods
 
     def _load_breakpoint_rules(self) -> Dict[str, Dict[str, Any]]:
@@ -640,6 +665,18 @@ class BreakpointManager:
                 'conditions': ["consecutive_task_failures >= count_threshold"],
                 'notification': self.NOTIFY_IMMEDIATE,
                 'description': 'Multiple consecutive failures - intervention needed'
+            },
+            'destructive_nl_operation': {
+                'enabled': True,
+                'priority': self.PRIORITY_HIGH,
+                'auto_resolve': False,
+                'conditions': [
+                    "source == 'natural_language'",
+                    "operation_type in ['UPDATE', 'DELETE']"
+                ],
+                'notification': self.NOTIFY_IMMEDIATE,
+                'description': 'Human confirmation required for destructive NL operations',
+                'action': 'request_confirmation'
             }
         }
 

@@ -2,8 +2,8 @@
 
 **Document Type**: System Architecture & Design Principles
 **Audience**: Developers, Claude Code AI, Product Managers
-**Last Updated**: November 11, 2025
-**Version**: 1.5.0
+**Last Updated**: November 13, 2025
+**Version**: 1.7.0
 
 ---
 
@@ -536,6 +536,6 @@ See `docs/design/design_future.md` for detailed roadmap.
 
 ---
 
-**Last Updated**: November 11, 2025
-**Version**: 1.5.0 (Interactive UX Improvements)
+**Last Updated**: November 13, 2025
+**Version**: 1.7.0 (Unified Execution Architecture)
 **Status**: Production-Ready

@@ -527,13 +527,9 @@ class CommandExecutor:
             self.state_manager.update_project(entity_id, updates)
 
         else:  # EPIC, STORY, TASK, SUBTASK
-            # For tasks, we need to update manually since there's no update_task() method
-            # Get task and update in a transaction
-            task = self.state_manager.get_task(entity_id)
-            if not task:
-                raise ExecutionException(f"Task {entity_id} not found")
+            # Build updates dict
+            updates = {}
 
-            # Update fields
             if 'status' in params:
                 status_map = {
                     'ACTIVE': TaskStatus.RUNNING,
@@ -547,21 +543,22 @@ class CommandExecutor:
                 }
                 status_str = params['status'].upper()
                 if status_str in status_map:
-                    self.state_manager.update_task_status(entity_id, status_map[status_str])
+                    updates['status'] = status_map[status_str]
 
             if 'title' in params:
-                task.title = params['title']
+                updates['title'] = params['title']
 
             if 'description' in params:
-                task.description = params['description']
+                updates['description'] = params['description']
 
             if 'priority' in params:
-                task.priority = self._normalize_priority(params['priority'])
+                updates['priority'] = self._normalize_priority(params['priority'])
 
             if 'dependencies' in params:
-                task.dependencies = params['dependencies']
+                updates['dependencies'] = params['dependencies']
 
-            # Changes are automatically committed by StateManager's transaction context
+            # Use StateManager's update_task method
+            self.state_manager.update_task(entity_id, updates)
 
     def _delete_entity(self, context: OperationContext, entity_id: int, project_id: int):
         """Delete entity via StateManager.
@@ -576,19 +573,15 @@ class CommandExecutor:
             self.state_manager.delete_project(entity_id, soft=True)
 
         elif context.entity_type == EntityType.MILESTONE:
-            # Milestone deletion not yet supported in StateManager
+            # Milestone deletion not yet supported
             raise ExecutionException(
                 "Milestone deletion not yet supported via NL commands",
                 recovery="Use CLI command: obra milestone delete <id>"
             )
 
         else:  # EPIC, STORY, TASK, SUBTASK
-            # Task deletion not yet supported in StateManager
-            # TODO: Add delete_task() method to StateManager
-            raise ExecutionException(
-                "Task deletion not yet supported via NL commands",
-                recovery="Use CLI command: obra task delete <id>"
-            )
+            # Use StateManager's delete_task method
+            self.state_manager.delete_task(entity_id, soft=True)
 
     def _query_simple(self, context: OperationContext, project_id: int) -> ExecutionResult:
         """Execute simple QUERY (list entities).

@@ -210,3 +210,66 @@ class InputManager:
             True if listening, False otherwise
         """
         return self.listening and self.thread is not None and self.thread.is_alive()
+
+    def get_input_with_timeout(self, prompt: str, timeout: int = 60) -> str:
+        """Get user input with timeout for confirmation prompts.
+
+        This is a synchronous method for getting direct input with a timeout,
+        separate from the background command queue. Used for confirmation prompts
+        where we need immediate user response.
+
+        Args:
+            prompt: Prompt text to display
+            timeout: Timeout in seconds (default: 60)
+
+        Returns:
+            User input string
+
+        Raises:
+            TimeoutError: If user doesn't respond within timeout
+
+        Example:
+            >>> try:
+            ...     response = manager.get_input_with_timeout("Confirm (y/n)? ", timeout=30)
+            ...     if response == 'y':
+            ...         print("Confirmed")
+            ... except TimeoutError:
+            ...     print("Timeout - aborting")
+        """
+        import threading
+        import sys
+
+        result = []
+        error = []
+
+        def input_thread():
+            """Thread to get input."""
+            try:
+                user_input = input(prompt)
+                result.append(user_input)
+            except Exception as e:
+                error.append(e)
+
+        # Start input thread
+        thread = threading.Thread(target=input_thread, daemon=True)
+        thread.start()
+
+        # Wait for thread with timeout
+        thread.join(timeout=timeout)
+
+        # Check if thread completed
+        if thread.is_alive():
+            # Timeout occurred
+            self.logger.warning(f"Input timeout after {timeout}s")
+            raise TimeoutError(f"Input timeout after {timeout} seconds")
+
+        # Check for errors
+        if error:
+            raise error[0]
+
+        # Return result
+        if result:
+            return result[0]
+        else:
+            # Thread finished but no result (shouldn't happen)
+            raise RuntimeError("Input thread finished without result")

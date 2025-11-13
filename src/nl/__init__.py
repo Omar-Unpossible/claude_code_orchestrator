@@ -9,6 +9,7 @@ Components:
     - EntityExtractor: Extracts structured entities from natural language
     - CommandValidator: Validates extracted entities against business rules
     - CommandExecutor: Executes validated commands via StateManager
+    - NLQueryHelper: Query-only helper for NL queries (ADR-017)
     - ResponseFormatter: Formats responses with color and helpful messages
     - NLCommandProcessor: Orchestrates the entire NL processing pipeline
 
@@ -37,6 +38,8 @@ __all__ = [
     # Story 3
     "CommandValidator",
     "CommandExecutor",
+    "NLQueryHelper",  # ADR-017 Story 3
+    "QueryResult",  # ADR-017 Story 3
     "ValidationResult",
     "ExecutionResult",
 
@@ -46,4 +49,5 @@ __all__ = [
     # Story 5
     "NLCommandProcessor",
     "NLResponse",
+    "ParsedIntent",  # ADR-017 Story 4
 ]

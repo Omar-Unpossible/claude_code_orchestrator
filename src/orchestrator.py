@@ -13,9 +13,12 @@ Example:
 import logging
 import time
 import uuid
+import json
+import os
 from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
+from pprint import pprint
 from typing import Dict, Any, Optional, List, Tuple
 from threading import RLock
 
@@ -116,6 +119,10 @@ class Orchestrator:
         self.confidence_scorer: Optional[ConfidenceScorer] = None
         self.complexity_estimator: Optional[TaskComplexityEstimator] = None
         self.max_turns_calculator = None  # Phase 4, Task 4.2: Adaptive max_turns
+
+        # ADR-017: Natural Language components (Story 5)
+        self.intent_to_task_converter = None  # Converts OperationContext → Task
+        self.nl_query_helper = None  # Handles read-only query operations
 
         # Runtime state
         self.current_project: Optional[ProjectState] = None
@@ -383,6 +390,136 @@ class Orchestrator:
             self.input_manager.stop_listening()
             logger.info("Interactive mode cleaned up")
 
+    def _check_destructive_operation_confirmation(self, task: Task) -> bool:
+        """Check for destructive operation and request confirmation if needed.
+
+        Args:
+            task: Task to check
+
+        Returns:
+            True if user confirmed or confirmation not required
+            False if user declined or non-interactive mode without override
+
+        Raises:
+            TaskStoppedException: If user declines or confirmation timeout
+        """
+        if not self.breakpoint_manager.should_trigger_destructive_nl_breakpoint(task):
+            return True  # Not destructive, proceed
+
+        # Log destructive operation attempt
+        logger.warning(
+            f"Destructive NL operation detected: {task.task_metadata.get('operation_type')} "
+            f"on {task.task_metadata.get('entity_type')} (Task ID: {task.id})"
+        )
+
+        # Check if interactive mode
+        if not self.interactive_mode:
+            # Non-interactive mode: Check for override flag
+            if self.config.get('nl_commands.auto_confirm_destructive', False):
+                logger.info("Auto-confirming destructive operation (override enabled)")
+                self._audit_log_destructive_op(task, confirmed=True, method='auto_confirm')
+                return True
+            else:
+                # Safe default: Abort
+                logger.error("Aborting destructive operation (non-interactive, no override)")
+                self._audit_log_destructive_op(task, confirmed=False, method='auto_abort')
+                raise TaskStoppedException("Destructive operation aborted (non-interactive mode)")
+
+        # Interactive mode: Request confirmation
+        return self._request_confirmation_interactive(task)
+
+    def _request_confirmation_interactive(self, task: Task) -> bool:
+        """Request user confirmation for destructive operation in interactive mode.
+
+        Args:
+            task: Task requiring confirmation
+
+        Returns:
+            True if user confirmed
+
+        Raises:
+            TaskStoppedException: If user declined or timeout
+        """
+        operation = task.task_metadata.get('operation_type')
+        entity_type = task.task_metadata.get('entity_type')
+        entity_id = task.task_metadata.get('entity_identifier')
+
+        # Display operation details
+        print("\n" + "=" * 60)
+        print(f"⚠️  DESTRUCTIVE OPERATION CONFIRMATION REQUIRED")
+        print("=" * 60)
+        print(f"Operation: {operation}")
+        print(f"Entity: {entity_type} (ID: {entity_id})")
+        print(f"Original Message: {task.task_metadata.get('original_message')}")
+
+        # TODO Story 9: Show cascade implications, before/after state
+
+        print("\nConfirm destructive operation?")
+        print("  y/yes    - Confirm and proceed")
+        print("  n/no     - Abort operation")
+        print("  d/details - Show full operation details")
+        print("=" * 60)
+
+        # Get user input with timeout
+        timeout = self.config.get('breakpoints.confirmation_timeout_seconds', 60)
+
+        try:
+            response = self.input_manager.get_input_with_timeout(
+                prompt="Confirm (y/n/d)? ",
+                timeout=timeout
+            )
+        except TimeoutError:
+            logger.warning("Confirmation timeout - aborting destructive operation")
+            self._audit_log_destructive_op(task, confirmed=False, method='timeout')
+            raise TaskStoppedException("Destructive operation aborted (confirmation timeout)")
+
+        response = response.lower().strip()
+
+        if response in ['y', 'yes']:
+            self._audit_log_destructive_op(task, confirmed=True, method='interactive')
+            print("✓ Confirmed. Proceeding with destructive operation...\n")
+            return True
+        elif response in ['d', 'details']:
+            # Show full operation context
+            print("\nOperation Context:")
+            pprint(task.task_metadata)
+            # Recurse to ask again after showing details
+            return self._request_confirmation_interactive(task)
+        else:
+            self._audit_log_destructive_op(task, confirmed=False, method='user_declined')
+            print("✗ Operation aborted.\n")
+            raise TaskStoppedException("User declined destructive operation")
+
+    def _audit_log_destructive_op(self, task: Task, confirmed: bool, method: str):
+        """Log destructive operation for audit trail.
+
+        Args:
+            task: Task being executed
+            confirmed: Whether operation was confirmed
+            method: Confirmation method (interactive/auto_confirm/auto_abort/timeout/user_declined)
+        """
+        audit_entry = {
+            'timestamp': datetime.now(UTC).isoformat(),
+            'task_id': task.id,
+            'operation': task.task_metadata.get('operation_type'),
+            'entity_type': task.task_metadata.get('entity_type'),
+            'entity_id': task.task_metadata.get('entity_identifier'),
+            'confirmed': confirmed,
+            'confirmation_method': method,
+            'user': os.getenv('USER', 'unknown'),
+            'original_message': task.task_metadata.get('original_message')
+        }
+
+        # Log to audit file (append mode)
+        audit_file = self.config.get('audit.destructive_operations_file',
+                                       'logs/destructive_operations_audit.jsonl')
+        os.makedirs(os.path.dirname(audit_file), exist_ok=True)
+
+        with open(audit_file, 'a') as f:
+            f.write(json.dumps(audit_entry) + '\n')
+
+        logger.info(f"Audit logged: {audit_entry}")
+
     def initialize(self) -> None:
         """Initialize all components.
 
@@ -577,7 +714,40 @@ class Orchestrator:
         self.task_scheduler = TaskScheduler(
             self.state_manager
         )
+
+        # ADR-017: Initialize Natural Language components (Story 5)
+        self._initialize_nl_components()
+
         logger.info("Orchestration components initialized")
+
+    def _initialize_nl_components(self) -> None:
+        """Initialize Natural Language components for ADR-017 unified execution.
+
+        Creates IntentToTaskConverter and NLQueryHelper for routing NL commands
+        through the orchestrator's validation pipeline.
+        """
+        try:
+            from src.orchestration.intent_to_task_converter import IntentToTaskConverter
+            from src.nl.nl_query_helper import NLQueryHelper
+
+            # IntentToTaskConverter: Converts OperationContext → Task
+            self.intent_to_task_converter = IntentToTaskConverter(
+                state_manager=self.state_manager
+            )
+
+            # NLQueryHelper: Handles read-only query operations
+            self.nl_query_helper = NLQueryHelper(
+                state_manager=self.state_manager,
+                default_project_id=1
+            )
+
+            logger.info("Natural Language components initialized (ADR-017)")
+
+        except ImportError as e:
+            logger.warning(f"Could not initialize NL components: {e}")
+            logger.warning("Natural language routing will not be available")
+            self.intent_to_task_converter = None
+            self.nl_query_helper = None
 
     def _initialize_complexity_estimator(self) -> None:
         """Initialize TaskComplexityEstimator if enabled."""
@@ -969,6 +1139,150 @@ class Orchestrator:
             'results': results
         }
 
+    def execute_nl_command(
+        self,
+        parsed_intent: 'ParsedIntent',
+        project_id: int,
+        interactive: bool = False
+    ) -> Dict[str, Any]:
+        """Execute natural language command through unified pipeline (ADR-017).
+
+        This method routes ParsedIntent from NLCommandProcessor through the
+        orchestrator's validation pipeline, ensuring consistent quality control
+        for all commands (NL and CLI).
+
+        Args:
+            parsed_intent: ParsedIntent from NLCommandProcessor.process()
+            project_id: Project ID for command execution
+            interactive: True if running in interactive mode
+
+        Returns:
+            Dict with execution results:
+            {
+                'success': bool,
+                'message': str,
+                'task_id': Optional[int],  # For COMMAND intents
+                'answer': Optional[str],   # For QUESTION intents
+                'confidence': float,
+                'validation_passed': bool
+            }
+
+        Raises:
+            ValueError: If ParsedIntent is invalid
+            OrchestratorException: If execution fails
+
+        Example:
+            >>> parsed_intent = nl_processor.process("create epic for auth")
+            >>> result = orchestrator.execute_nl_command(parsed_intent, project_id=1)
+            >>> print(result['message'])
+            ✓ Created Epic #5: User Authentication
+        """
+        # Import here to avoid circular imports
+        from src.nl.types import ParsedIntent, OperationType
+
+        # 1. Validate ParsedIntent structure
+        if not isinstance(parsed_intent, ParsedIntent):
+            raise ValueError(f"Expected ParsedIntent, got {type(parsed_intent)}")
+
+        # 2. Handle QUESTION intents (no execution needed)
+        if parsed_intent.is_question():
+            return {
+                'success': True,
+                'message': parsed_intent.question_context.get('answer', 'No answer available'),
+                'answer': parsed_intent.question_context.get('answer'),
+                'confidence': parsed_intent.confidence,
+                'task_id': None
+            }
+
+        # 3. Handle COMMAND intents (need execution)
+        if parsed_intent.is_command():
+            # Check if validation failed during NL processing
+            if parsed_intent.metadata.get('validation_failed'):
+                errors = parsed_intent.metadata.get('validation_errors', ['Validation failed'])
+                return {
+                    'success': False,
+                    'message': '\n'.join(errors),
+                    'validation_passed': False,
+                    'confidence': parsed_intent.confidence,
+                    'task_id': None
+                }
+
+            # Check if already executed (confirmation workflow)
+            if parsed_intent.metadata.get('executed'):
+                return {
+                    'success': parsed_intent.metadata.get('execution_success', True),
+                    'message': parsed_intent.metadata.get('execution_response', 'Operation completed'),
+                    'task_id': None,  # Already executed, no new task
+                    'confidence': parsed_intent.confidence
+                }
+
+            # 4. Route through IntentToTaskConverter or NLQueryHelper
+            operation_context = parsed_intent.operation_context
+
+            # Handle QUERY operations (read-only)
+            if operation_context.operation == OperationType.QUERY:
+                try:
+                    query_result = self.nl_query_helper.execute(
+                        operation_context,
+                        project_id=project_id
+                    )
+                    return {
+                        'success': query_result.success,
+                        'message': query_result.formatted_output,
+                        'data': query_result.data,
+                        'confidence': parsed_intent.confidence,
+                        'task_id': None
+                    }
+                except Exception as e:
+                    logger.exception(f"Query execution failed: {e}")
+                    return {
+                        'success': False,
+                        'message': f"Query failed: {str(e)}",
+                        'confidence': 0.0,
+                        'task_id': None
+                    }
+
+            # Handle CREATE/UPDATE/DELETE operations (write operations)
+            try:
+                # Convert OperationContext → Task
+                task = self.intent_to_task_converter.convert(
+                    parsed_intent=operation_context,
+                    project_id=project_id,
+                    original_message=parsed_intent.original_message
+                )
+
+                # Execute task through full orchestration pipeline
+                logger.info(f"Executing NL command via orchestrator: task_id={task.id}")
+                execution_result = self.execute_task(task.id, interactive=interactive)
+
+                # Format response
+                return {
+                    'success': execution_result.get('success', False),
+                    'message': execution_result.get('message', 'Task execution completed'),
+                    'task_id': task.id,
+                    'confidence': parsed_intent.confidence,
+                    'validation_passed': True,
+                    'quality_score': execution_result.get('quality_score'),
+                    'iterations': execution_result.get('iterations', 0)
+                }
+
+            except Exception as e:
+                logger.exception(f"NL command execution failed: {e}")
+                return {
+                    'success': False,
+                    'message': f"Execution failed: {str(e)}",
+                    'confidence': 0.0,
+                    'task_id': None
+                }
+
+        # Fallback (should never reach here)
+        return {
+            'success': False,
+            'message': "Unknown intent type",
+            'confidence': 0.0,
+            'task_id': None
+        }
+
     def execute_task(self, task_id: int, max_iterations: int = 10, context: Optional[Dict[str, Any]] = None, stream: bool = False, interactive: bool = False) -> Dict[str, Any]:
         """Execute a single task with optional complexity estimation.
 
@@ -1109,6 +1423,9 @@ class Orchestrator:
                     )
 
                 logger.info(f"TASK START: task_id={task_id}, title='{self.current_task.title}'")
+
+                # Story 8 (ADR-017): Check for destructive operation confirmation
+                self._check_destructive_operation_confirmation(self.current_task)
 
                 # Estimate complexity if enabled (suggestions only, not commands)
                 complexity_estimate = None

@@ -1,0 +1,1540 @@
+# Machine-Optimized Implementation Plan
+# Unified Execution Architecture (ADR-017) v1.7.0-v1.7.1
+# Optimized for LLM implementation by Claude Code
+
+version: "1.0"
+target_release: "v1.7.0-v1.7.1"
+status: "proposed"
+date: "2025-11-12"
+
+# Quick Reference
+references:
+  epic_breakdown: "docs/development/ADR017_UNIFIED_EXECUTION_EPIC_BREAKDOWN.md"
+  alignment_review: "docs/code_review/20251112 Alignment Review.md"
+  current_architecture: "docs/architecture/ARCHITECTURE.md"
+  test_guidelines: "docs/development/TEST_GUIDELINES.md"
+  obra_overview: "docs/design/OBRA_SYSTEM_OVERVIEW.md"
+
+# Critical Context
+problem: |
+  Natural Language commands bypass orchestrator's multi-stage validation pipeline.
+  Result: Inconsistent quality guarantees between NL and task execution interfaces.
+
+solution: |
+  Route ALL commands (NL and CLI) through unified orchestrator.execute_task() entry point.
+  Preserve ADR-016 NL parsing as intent parser, remove execution responsibility.
+
+# Implementation Phases
+phases:
+  phase1:
+    name: "Core Architecture Refactor"
+    target: "v1.7.0 Weeks 1-2"
+    stories: ["story1", "story2", "story3", "story4", "story5"]
+
+  phase2:
+    name: "Integration Testing"
+    target: "v1.7.0 Week 3"
+    stories: ["story6", "story7"]
+
+  phase3:
+    name: "Safety Enhancements"
+    target: "v1.7.1 Week 4"
+    stories: ["story8", "story9"]
+
+# Story Details
+stories:
+  # ==================== STORY 1: Architecture Documentation ====================
+  story1:
+    name: "Architecture Documentation (ADR-017)"
+    duration: "8 hours"
+    priority: "P0"
+    dependencies: []
+
+    files_created:
+      - path: "docs/decisions/ADR-017-unified-execution-architecture.md"
+        lines: 400
+        purpose: "Architecture Decision Record for unified execution"
+
+      - path: "docs/guides/ADR017_MIGRATION_GUIDE.md"
+        lines: 250
+        purpose: "Migration guide for API changes"
+
+    files_updated:
+      - path: "docs/architecture/ARCHITECTURE.md"
+        changes: "Add 'Unified Execution Architecture (v1.7.0)' section (~100 lines)"
+
+      - path: "CLAUDE.md"
+        changes: "Add Architecture Principle #15, update data flow diagram"
+
+    adr_structure:
+      title: "ADR-017: Unified Execution Architecture"
+      sections:
+        - context:
+            content: |
+              - Current: Two parallel execution paths (task vs NL)
+              - Problem: NL bypasses validation, quality control, confidence scoring
+              - Evidence: Alignment review identifies architectural misalignment
+
+        - decision:
+            content: |
+              - Route ALL commands through orchestrator.execute_task()
+              - NL pipeline becomes intent parser only (not executor)
+              - Preserve ADR-016 components as helper tools
+
+        - consequences:
+            positive:
+              - Consistent quality across all interfaces
+              - Single execution model (simpler architecture)
+              - NL commands get validation + retry + breakpoints
+
+            negative:
+              - ~500ms latency increase for NL commands
+              - Breaking change for NLCommandProcessor API
+              - Requires IntentToTaskConverter component
+
+        - alternatives_considered:
+            - "Keep parallel paths, synchronize validation logic"
+            - "Make orchestrator optional for simple operations"
+            - "Hybrid: NL for simple, orchestrator for complex"
+
+    acceptance_criteria:
+      - "ADR-017 written with all standard sections"
+      - "Architecture diagrams show unified execution flow"
+      - "Migration guide explains API changes with code examples"
+      - "CLAUDE.md updated with new Architecture Principle #15"
+      - "Technical review completed (self-review + Omar review)"
+
+  # ==================== STORY 2: IntentToTaskConverter ====================
+  story2:
+    name: "Create IntentToTaskConverter Component"
+    duration: "12 hours"
+    priority: "P0"
+    dependencies: []
+    parallel_with: ["story3"]
+
+    files_created:
+      - path: "src/orchestration/intent_to_task_converter.py"
+        lines: 300
+        purpose: "Convert parsed NL intent to Task objects"
+
+      - path: "tests/orchestration/test_intent_to_task_converter.py"
+        lines: 450
+        purpose: "Unit tests for IntentToTaskConverter"
+
+    implementation:
+      class: "IntentToTaskConverter"
+      location: "src/orchestration/intent_to_task_converter.py"
+
+      constructor:
+        signature: "__init__(self, state_manager: StateManager, config: Config)"
+        purpose: "Initialize with StateManager for context access"
+
+      methods:
+        - name: "convert"
+          signature: "convert(self, operation_context: OperationContext, project_id: int) -> Task"
+          returns: "Task object ready for orchestrator.execute_task()"
+          logic:
+            - "Route to operation-specific converter (_convert_create/_update/_delete/_query)"
+            - "Build Task with appropriate title, description, context"
+            - "Add source='natural_language' flag"
+            - "Include parsed entities as metadata"
+            - "Return Task object"
+
+        - name: "_convert_create"
+          signature: "_convert_create(self, op_ctx: OperationContext, project_id: int) -> Task"
+          purpose: "Convert CREATE operation to Task"
+          task_structure:
+            title: "Create {entity_type}: {identifier}"
+            description: |
+              Natural language request: '{original_message}'
+              Entity type: {entity_type}
+              Parameters: {parameters}
+            task_type: "TASK"
+            nl_context:
+              operation: "CREATE"
+              entity_type: "{entity_type}"
+              identifier: "{identifier}"
+              parameters: "{parameters}"
+              confidence: "{confidence}"
+              original_message: "{original_message}"
+
+        - name: "_convert_update"
+          signature: "_convert_update(self, op_ctx: OperationContext, project_id: int) -> Task"
+          purpose: "Convert UPDATE operation to Task"
+          task_structure:
+            title: "Update {entity_type} {identifier}"
+            description: |
+              Natural language request: '{original_message}'
+              Update: {parameter_changes}
+              Entity: {entity_type} {identifier}
+            nl_context:
+              operation: "UPDATE"
+              before_state: "{query from StateManager}"
+              after_state: "{parameters}"
+
+        - name: "_convert_delete"
+          signature: "_convert_delete(self, op_ctx: OperationContext, project_id: int) -> Task"
+          purpose: "Convert DELETE operation to Task"
+          task_structure:
+            title: "Delete {entity_type} {identifier}"
+            description: |
+              DESTRUCTIVE OPERATION
+              Natural language request: '{original_message}'
+              Target: {entity_type} {identifier}
+              Safety: Requires confirmation
+            nl_context:
+              operation: "DELETE"
+              requires_confirmation: true
+              cascade_info: "{get from StateManager}"
+
+        - name: "_convert_query"
+          signature: "_convert_query(self, op_ctx: OperationContext, project_id: int) -> Task"
+          purpose: "Convert QUERY operation to Task"
+          task_structure:
+            title: "Query {entity_type}: {query_type}"
+            description: |
+              Natural language request: '{original_message}'
+              Query type: {query_type}
+              Filters: {parameters}
+            nl_context:
+              operation: "QUERY"
+              query_type: "{query_type}"
+              use_helper: "NLQueryHelper"
+
+        - name: "_enrich_with_context"
+          signature: "_enrich_with_context(self, task: Task, op_ctx: OperationContext) -> Task"
+          purpose: "Add NL-specific metadata to task"
+          enrichment:
+            - "Add parsed_entities field"
+            - "Add confidence_scores field"
+            - "Add original_nl_message field"
+            - "Add source='natural_language' flag"
+
+    test_coverage:
+      target: "≥90%"
+      test_files:
+        - "tests/orchestration/test_intent_to_task_converter.py"
+
+      test_categories:
+        - category: "CREATE operations"
+          tests: 6
+          scenarios:
+            - "Create epic from NL"
+            - "Create story from NL"
+            - "Create task from NL with parameters"
+            - "Create with dependencies"
+            - "Create with parent references"
+            - "Create with invalid parameters (error handling)"
+
+        - category: "UPDATE operations"
+          tests: 5
+          scenarios:
+            - "Update project status"
+            - "Update task priority"
+            - "Update with multiple parameters"
+            - "Update non-existent entity (error)"
+            - "Update with before/after state capture"
+
+        - category: "DELETE operations"
+          tests: 4
+          scenarios:
+            - "Delete task"
+            - "Delete with cascade implications"
+            - "Delete with confirmation required flag"
+            - "Delete non-existent entity (error)"
+
+        - category: "QUERY operations"
+          tests: 5
+          scenarios:
+            - "Simple query (list tasks)"
+            - "Hierarchical query (workplan)"
+            - "Next steps query"
+            - "Backlog query"
+            - "Query with filters"
+
+        - category: "Context enrichment"
+          tests: 5
+          scenarios:
+            - "Original message included"
+            - "Parsed entities preserved"
+            - "Confidence scores tracked"
+            - "Source flag set correctly"
+            - "Metadata structure validated"
+
+    acceptance_criteria:
+      - "IntentToTaskConverter class implemented"
+      - "All 4 operation types supported (CREATE/UPDATE/DELETE/QUERY)"
+      - "25+ unit tests written and passing"
+      - "Code coverage ≥90%"
+      - "Docstrings with examples for all public methods"
+      - "Integration test: OperationContext → Task → verified structure"
+
+  # ==================== STORY 3: Refactor CommandExecutor ====================
+  story3:
+    name: "Refactor CommandExecutor → NLQueryHelper"
+    duration: "10 hours"
+    priority: "P0"
+    dependencies: []
+    parallel_with: ["story2"]
+
+    files_modified:
+      - path: "src/nl/command_executor.py"
+        rename_to: "src/nl/nl_query_helper.py"
+        changes: "Remove write operations, keep read-only queries"
+        lines_before: 450
+        lines_after: 280
+
+      - path: "tests/nl/test_command_executor.py"
+        rename_to: "tests/nl/test_nl_query_helper.py"
+        changes: "Update tests for new API, remove write operation tests"
+
+    refactoring_steps:
+      step1:
+        action: "Rename class and file"
+        old: "CommandExecutor"
+        new: "NLQueryHelper"
+        old_file: "src/nl/command_executor.py"
+        new_file: "src/nl/nl_query_helper.py"
+
+      step2:
+        action: "Remove write operations"
+        methods_to_remove:
+          - "_execute_create"
+          - "_execute_update"
+          - "_execute_delete"
+          - "_create_entity_from_context"
+          - "_update_entity_from_context"
+          - "_delete_entity_by_context"
+
+        methods_to_deprecate:
+          - name: "execute"
+            new_name: "build_query_context"
+            deprecation_message: "Use build_query_context() instead. execute() will be removed in v1.8.0"
+
+      step3:
+        action: "Refactor query methods"
+        method: "_execute_query"
+        new_signature: "build_query_context(self, op_ctx: OperationContext) -> Dict[str, Any]"
+        returns:
+          structure:
+            query_type: "SIMPLE | HIERARCHICAL | NEXT_STEPS | BACKLOG | ROADMAP"
+            entity_type: "project | epic | story | task | milestone"
+            filters: "Dict[str, Any]"
+            sort_order: "List[Tuple[str, str]]"
+            project_id: "int"
+
+        logic:
+          - "Determine query type from OperationContext"
+          - "Build filter criteria from parameters"
+          - "Return metadata (do NOT execute query)"
+          - "Caller (orchestrator) executes query via NLQueryHelper"
+
+      step4:
+        action: "Update imports and references"
+        files_to_update:
+          - "src/nl/nl_command_processor.py"
+          - "tests/nl/test_nl_command_processor_integration.py"
+          - "tests/nl/test_nl_e2e_integration.py"
+
+    backward_compatibility:
+      strategy: "Deprecation warnings for 1 version"
+      deprecated_methods:
+        - "execute() → Use build_query_context()"
+      removal_timeline: "v1.8.0 (6 months)"
+
+      legacy_support:
+        - "Keep execute() method in v1.7.0 with @deprecated decorator"
+        - "Log warning when called"
+        - "Forward to build_query_context() internally"
+
+    test_updates:
+      tests_to_remove: 15
+      removed_categories:
+        - "CREATE execution tests"
+        - "UPDATE execution tests"
+        - "DELETE execution tests"
+
+      tests_to_keep: 30
+      kept_categories:
+        - "Query context building"
+        - "Hierarchical query support"
+        - "Query type detection"
+        - "Filter construction"
+
+      tests_to_add: 5
+      new_categories:
+        - "Deprecation warnings"
+        - "Query metadata structure validation"
+
+    acceptance_criteria:
+      - "CommandExecutor renamed to NLQueryHelper"
+      - "All write operations removed"
+      - "Query operations return metadata (not results)"
+      - "Deprecation warnings for legacy methods"
+      - "30+ unit tests passing"
+      - "Code coverage ≥90%"
+      - "No breaking changes for query functionality"
+
+  # ==================== STORY 4: Update NLCommandProcessor ====================
+  story4:
+    name: "Update NLCommandProcessor Routing"
+    duration: "10 hours"
+    priority: "P0"
+    dependencies: ["story2"]
+
+    files_modified:
+      - path: "src/nl/nl_command_processor.py"
+        changes: "Update process() to return ParsedIntent instead of executing"
+        lines_changed: ~150
+
+      - path: "src/nl/types.py"
+        changes: "Add ParsedIntent dataclass"
+        lines_added: ~40
+
+      - path: "tests/nl/test_nl_command_processor_integration.py"
+        changes: "Update integration tests for new API"
+        lines_changed: ~100
+
+    implementation:
+      new_dataclass:
+        name: "ParsedIntent"
+        location: "src/nl/types.py"
+        fields:
+          - name: "intent_type"
+            type: "str"
+            description: "'COMMAND' or 'QUESTION'"
+
+          - name: "operation_context"
+            type: "Optional[OperationContext]"
+            description: "Parsed operation details (for COMMAND intents)"
+
+          - name: "original_message"
+            type: "str"
+            description: "User's original NL input"
+
+          - name: "confidence"
+            type: "float"
+            description: "Aggregate confidence from pipeline stages"
+
+          - name: "requires_execution"
+            type: "bool"
+            description: "True for COMMAND, False for QUESTION"
+
+          - name: "question_context"
+            type: "Optional[Dict[str, Any]]"
+            description: "Context for QUESTION intents"
+
+      method_changes:
+        method: "process"
+        old_signature: "process(self, message: str, context: Dict[str, Any]) -> NLResponse"
+        new_signature: "process(self, message: str, context: Dict[str, Any]) -> ParsedIntent"
+
+        old_behavior: "Parse intent → Execute command → Return result"
+        new_behavior: "Parse intent → Return ParsedIntent → Caller executes"
+
+        changes:
+          command_path:
+            old: "5 stages → validation → execution → formatting"
+            new: "5 stages → validation → return ParsedIntent"
+            removed: "Calls to CommandExecutor.execute()"
+            added: "Return ParsedIntent with OperationContext"
+
+          question_path:
+            old: "Question detection → format response"
+            new: "Question detection → return ParsedIntent with question_context"
+            behavior: "Unchanged (questions still handled inline)"
+
+    test_updates:
+      tests_to_update: 40
+      changes:
+        - "Update assertions: expect ParsedIntent, not NLResponse"
+        - "Remove execution result validation"
+        - "Add ParsedIntent structure validation"
+        - "Verify OperationContext preserved correctly"
+
+      new_tests: 8
+      categories:
+        - "ParsedIntent structure validation"
+        - "Confidence aggregation correctness"
+        - "Question context preservation"
+        - "Error handling (low confidence)"
+
+    acceptance_criteria:
+      - "ParsedIntent dataclass created"
+      - "NLCommandProcessor.process() returns ParsedIntent"
+      - "No execution logic in NLCommandProcessor"
+      - "All 5 ADR-016 stages still functional"
+      - "40+ unit tests updated and passing"
+      - "Integration test: NL → ParsedIntent → structure verified"
+      - "Code coverage ≥90%"
+
+  # ==================== STORY 5: Unified Orchestrator Routing ====================
+  story5:
+    name: "Implement Unified Orchestrator Routing"
+    duration: "12 hours"
+    priority: "P0"
+    dependencies: ["story2", "story3", "story4"]
+
+    files_modified:
+      - path: "src/orchestrator.py"
+        changes: "Add execute_nl_task() method, integrate IntentToTaskConverter"
+        lines_added: ~80
+
+      - path: "src/interactive.py"
+        changes: "Update cmd_to_orch() to use new routing"
+        lines_changed: ~50
+
+      - path: "src/cli.py"
+        changes: "Add --nl flag to task execute command"
+        lines_added: ~30
+
+    implementation:
+      orchestrator_changes:
+        new_method:
+          name: "execute_nl_task"
+          signature: "execute_nl_task(self, parsed_intent: ParsedIntent, project_id: int, interactive: bool = False) -> Dict[str, Any]"
+          purpose: "Execute NL-sourced task through unified pipeline"
+
+          steps:
+            - step: "Validate ParsedIntent"
+              checks:
+                - "intent_type == 'COMMAND'"
+                - "operation_context is not None"
+                - "confidence >= threshold (0.7)"
+              low_confidence_action: "Trigger clarification breakpoint"
+
+            - step: "Convert to Task"
+              code: "task = self.intent_converter.convert(parsed_intent.operation_context, project_id)"
+              enrichment: "Add original_message, confidence, source='natural_language'"
+
+            - step: "Route to appropriate handler"
+              query_operations: "Use NLQueryHelper.build_query_context()"
+              write_operations: "Use orchestrator.execute_task()"
+
+            - step: "Execute through standard pipeline"
+              code: "result = self.execute_task(task.id, interactive=interactive)"
+              benefits:
+                - "Validation applied"
+                - "Quality control enforced"
+                - "Retry logic available"
+                - "Breakpoints triggered"
+
+            - step: "Return result"
+              structure:
+                task_id: "int"
+                status: "str"
+                result: "Any"
+                nl_context: "Dict (original message, confidence, etc.)"
+
+        existing_method_update:
+          method: "execute_task"
+          changes: "Detect source='natural_language', log appropriately"
+          logging:
+            - "if task.source == 'natural_language':"
+            - "  logger.info(f'Executing NL-sourced task: {task.nl_context[\"original_message\"]}')"
+
+          prompt_enrichment:
+            - "Include NL context in agent prompt"
+            - "Example: 'User requested via natural language: create epic for auth'"
+            - "Include parsed entities for agent reference"
+
+      interactive_changes:
+        method: "cmd_to_orch"
+        old_flow: "message → nl_processor.process() → display result"
+        new_flow: |
+          message → nl_processor.process() → ParsedIntent
+            ↓
+          if COMMAND:
+            orchestrator.execute_nl_task(parsed_intent) → result
+          if QUESTION:
+            question_handler.handle() → response
+
+        code_structure: |
+          parsed_intent = self.nl_processor.process(message, context)
+
+          if parsed_intent.intent_type == 'COMMAND':
+              result = self.orchestrator.execute_nl_task(
+                  parsed_intent,
+                  project_id=self.current_project,
+                  interactive=True
+              )
+              print(f"✓ {result['status']}")
+          elif parsed_intent.intent_type == 'QUESTION':
+              response = self.question_handler.handle(parsed_intent)
+              print(response)
+
+      cli_changes:
+        command: "obra task execute"
+        new_flag: "--nl"
+        usage: "obra task execute --nl 'create epic for authentication'"
+        purpose: "Test NL routing without interactive mode"
+
+        implementation: |
+          @task_execute.option('--nl', is_flag=True, help='Execute natural language command')
+          def task_execute(task_id, nl, nl_message):
+              if nl:
+                  # NL mode
+                  parsed_intent = nl_processor.process(nl_message)
+                  result = orchestrator.execute_nl_task(parsed_intent, project_id=...)
+              else:
+                  # Regular mode
+                  result = orchestrator.execute_task(task_id)
+
+    error_handling:
+      low_confidence:
+        threshold: 0.7
+        action: "Trigger clarification breakpoint"
+        interactive: "Prompt user for clarification"
+        non_interactive: "Log warning, abort execution"
+
+      validation_failure:
+        action: "Same as regular task validation failure"
+        behavior: "Retry with refined prompt (up to max_iterations)"
+
+      agent_failure:
+        action: "Same retry logic as regular tasks"
+        benefits: "NL commands inherit retry + exponential backoff"
+
+    test_coverage:
+      unit_tests: 15
+      categories:
+        - "execute_nl_task() method"
+        - "Low confidence handling"
+        - "Query operation routing"
+        - "Write operation routing"
+        - "Error propagation"
+
+      integration_tests: 10
+      scenarios:
+        - "NL CREATE → full orchestration → entity created"
+        - "NL UPDATE → validation → agent execution"
+        - "NL DELETE → safety breakpoint → confirmation"
+        - "NL QUERY → NLQueryHelper → results returned"
+        - "Low confidence → clarification triggered"
+
+    acceptance_criteria:
+      - "All NL commands route through orchestrator.execute_task()"
+      - "execute_nl_task() method implemented"
+      - "NL context included in agent prompts"
+      - "Error handling consistent with regular tasks"
+      - "CLI --nl flag implemented"
+      - "15 unit tests + 10 integration tests passing"
+      - "Code coverage ≥90%"
+
+  # ==================== STORY 6: Integration Testing ====================
+  story6:
+    name: "Integration Testing for Unified Path"
+    duration: "16 hours"
+    priority: "P0"
+    dependencies: ["story5"]
+
+    files_created:
+      - path: "tests/integration/test_unified_execution.py"
+        lines: 800
+        purpose: "Comprehensive E2E testing of unified architecture"
+
+      - path: "docs/quality/ADR017_INTEGRATION_TEST_REPORT.md"
+        lines: 300
+        purpose: "Test results and validation summary"
+
+    test_organization:
+      file: "tests/integration/test_unified_execution.py"
+
+      test_classes:
+        - class: "TestNLCommandRouting"
+          tests: 8
+          focus: "NL commands route through orchestrator correctly"
+
+        - class: "TestQualityValidation"
+          tests: 6
+          focus: "Validation applied to NL commands"
+
+        - class: "TestBreakpointsAndConfidence"
+          tests: 6
+          focus: "Checkpoints triggered appropriately"
+
+        - class: "TestRegressionSuite"
+          tests: 10
+          focus: "Existing functionality unchanged"
+
+        - class: "TestPerformance"
+          tests: 5
+          focus: "Latency and throughput benchmarks"
+
+    test_scenarios:
+      nl_routing:
+        - name: "test_nl_create_epic_full_orchestration"
+          scenario: "Natural language 'create epic for auth' → full validation pipeline"
+          validates:
+            - "ParsedIntent generated"
+            - "Task created by IntentToTaskConverter"
+            - "orchestrator.execute_task() called"
+            - "Validation applied"
+            - "Epic created in database"
+          assertions:
+            - "Epic exists with correct title"
+            - "NL context preserved in task metadata"
+            - "Quality score calculated"
+            - "Confidence tracked"
+
+        - name: "test_nl_update_project_status"
+          scenario: "'Mark project X as INACTIVE' → UPDATE operation"
+          validates:
+            - "UPDATE operation detected"
+            - "Project identified correctly"
+            - "Status parameter extracted"
+            - "Task created with UPDATE context"
+            - "Project status updated"
+
+        - name: "test_nl_delete_with_safety"
+          scenario: "'Delete task 5' → DELETE operation → safety checkpoint"
+          validates:
+            - "DELETE operation detected"
+            - "Safety breakpoint triggered"
+            - "Confirmation required"
+            - "Task deleted only after confirmation"
+
+        - name: "test_nl_query_hierarchical"
+          scenario: "'Show workplan for project 1' → hierarchical query"
+          validates:
+            - "QUERY operation detected"
+            - "HIERARCHICAL query type identified"
+            - "NLQueryHelper builds query context"
+            - "Results formatted hierarchically"
+
+      quality_validation:
+        - name: "test_nl_low_quality_triggers_retry"
+          scenario: "Agent returns low-quality response → retry triggered"
+          setup: "Mock agent to return incomplete response first"
+          validates:
+            - "QualityController detects low quality"
+            - "DecisionEngine decides RETRY"
+            - "Prompt refined with feedback"
+            - "Second iteration executed"
+
+        - name: "test_nl_validation_failure_retry"
+          scenario: "Agent response fails validation → retry"
+          validates:
+            - "ResponseValidator detects failure"
+            - "Retry logic triggered"
+            - "Max iterations enforced"
+
+        - name: "test_nl_max_iterations_escalation"
+          scenario: "Max iterations exceeded → escalation"
+          validates:
+            - "After 3 retries, escalation triggered"
+            - "Human-in-the-loop checkpoint"
+            - "Task marked as requiring intervention"
+
+      breakpoints_and_confidence:
+        - name: "test_nl_low_confidence_clarification"
+          scenario: "Parsed intent has confidence <0.7 → clarification"
+          validates:
+            - "Low confidence detected"
+            - "Clarification breakpoint triggered"
+            - "Interactive: user prompted"
+            - "Non-interactive: abort logged"
+
+        - name: "test_nl_destructive_operation_checkpoint"
+          scenario: "DELETE operation → safety checkpoint before execution"
+          validates:
+            - "BreakpointManager.check_breakpoint() called"
+            - "Destructive operation flag set"
+            - "Confirmation required"
+
+        - name: "test_nl_context_enrichment"
+          scenario: "Original NL message included in agent prompt"
+          validates:
+            - "Task.nl_context contains original_message"
+            - "Agent prompt includes NL context"
+            - "Parsed entities available to agent"
+
+      regression:
+        - name: "test_regular_task_execution_unchanged"
+          scenario: "Non-NL task execution works as before"
+          validates:
+            - "execute_task() without NL context"
+            - "Standard validation pipeline"
+            - "Results structure unchanged"
+
+        - name: "test_slash_commands_still_work"
+          scenario: "/task execute 1 still functional"
+          validates:
+            - "CLI commands unaffected"
+            - "Interactive slash commands functional"
+
+        - name: "test_epic_execution_unchanged"
+          scenario: "Epic execution (multi-story) works as before"
+          validates:
+            - "execute_epic() functional"
+            - "Story sequencing correct"
+            - "Session management unchanged"
+
+      performance:
+        - name: "test_nl_command_latency"
+          measures: "End-to-end latency for NL commands"
+          target: "<3s for P95"
+          method: "Execute 20 NL commands, measure p50, p95, p99"
+
+        - name: "test_memory_overhead"
+          measures: "Additional memory usage for unified routing"
+          target: "<50MB"
+          method: "Compare memory before/after 100 NL commands"
+
+        - name: "test_throughput_comparison"
+          measures: "Commands per minute (v1.6 vs v1.7)"
+          acceptable: "≥40 cmd/min (down from 50)"
+          method: "Sustained load test over 5 minutes"
+
+    test_execution:
+      unit_tests_required: "All 770+ existing tests must pass"
+      new_integration_tests: "30+ tests (as detailed above)"
+      real_llm_tests: "10 tests using actual Ollama/Qwen (not mocks)"
+
+      pytest_commands:
+        all: "pytest"
+        integration_only: "pytest tests/integration/test_unified_execution.py"
+        with_coverage: "pytest --cov=src --cov-report=term"
+        real_llm: "pytest -m requires_ollama"
+
+    acceptance_criteria:
+      - "30+ integration tests created"
+      - "All tests passing (100% pass rate)"
+      - "All 770+ existing tests still passing"
+      - "Coverage ≥85% on orchestration + NL paths"
+      - "Performance benchmarks met (<3s latency)"
+      - "Test report document created"
+
+  # ==================== STORY 7: Documentation Updates ====================
+  story7:
+    name: "Documentation Updates"
+    duration: "8 hours"
+    priority: "P1"
+    dependencies: ["story6"]
+
+    files_updated:
+      - path: "CLAUDE.md"
+        sections:
+          - "Architecture Principles → Add #15: Unified Execution"
+          - "Data Flow → Update diagram (remove parallel paths)"
+          - "Common Pitfalls → Remove 'bypass orchestrator' warning (RESOLVED)"
+          - "Version → Update to v1.7.0"
+        lines_changed: ~50
+
+      - path: "docs/design/OBRA_SYSTEM_OVERVIEW.md"
+        sections:
+          - "Core Capabilities → Add unified architecture description"
+          - "Data Flow → Update diagrams"
+          - "v1.7 Features → New section documenting changes"
+        lines_changed: ~100
+
+      - path: "docs/guides/NL_COMMAND_GUIDE.md"
+        sections:
+          - "How It Works → Update with v1.7.0 unified routing"
+          - "Performance → Update latency expectations"
+          - "Quality Guarantees → Add validation/retry documentation"
+          - "Troubleshooting → Add validation failure scenarios"
+        lines_changed: ~80
+
+      - path: "CHANGELOG.md"
+        changes: "Add v1.7.0 section with breaking changes and benefits"
+        lines_added: ~60
+
+      - path: "docs/architecture/ARCHITECTURE.md"
+        sections:
+          - "Remove: 'Two Parallel Execution Paths' section"
+          - "Add: 'Unified Execution Architecture (v1.7.0)' section"
+          - "Update: Component interaction diagrams"
+          - "Add: IntentToTaskConverter component documentation"
+        lines_changed: ~120
+
+      - path: "docs/guides/ADR017_MIGRATION_GUIDE.md"
+        content: "Migration guide for API changes"
+        sections:
+          - "Overview of changes"
+          - "NLCommandProcessor API migration"
+          - "CommandExecutor → NLQueryHelper migration"
+          - "Code examples (before/after)"
+          - "Rollback procedure"
+        lines: ~250
+
+    documentation_structure:
+      claude_md:
+        new_principle: |
+          ### 15. Unified Execution Architecture (v1.7.0)
+          **Principle**: All commands (NL, CLI, API) flow through orchestrator's validation pipeline.
+
+          **Rules**:
+          - NO direct StateManager write access from NL pipeline
+          - NL commands converted to Task objects via IntentToTaskConverter
+          - All commands get validation, quality control, confidence scoring
+          - Consistent quality guarantees across all interfaces
+
+          **Why**: Eliminates parallel execution paths, applies quality validation universally,
+          simplifies architecture, enables NL commands to use retry/breakpoints/dependencies.
+
+      changelog:
+        v1_7_0_entry: |
+          ## [1.7.0] - 2025-11-XX
+
+          ### Changed - BREAKING (Internal)
+          - **Unified Execution Architecture (ADR-017)**: All commands now route through
+            orchestrator's multi-stage validation pipeline
+          - **NLCommandProcessor API**: Returns ParsedIntent instead of executing commands
+          - **CommandExecutor renamed**: Now NLQueryHelper (read-only queries only)
+
+          ### Added
+          - IntentToTaskConverter: Converts parsed NL intent to Task objects
+          - execute_nl_task() method in Orchestrator for NL command routing
+          - CLI --nl flag for testing NL commands outside interactive mode
+
+          ### Benefits
+          - Consistent quality guarantees across all interfaces (CLI, NL, API)
+          - NL commands now validated through multi-stage pipeline
+          - Simplified architecture (single execution model)
+          - NL commands inherit retry logic, breakpoints, quality scoring
+
+          ### Performance
+          - NL command latency: ~500ms increase (validation overhead)
+          - Quality improvement: 35% token efficiency, 100% parse success
+          - Acceptable trade-off: Quality > speed for autonomous development
+
+          ### Migration
+          - User-facing commands unchanged (no migration needed)
+          - Programmatic API users: See docs/guides/ADR017_MIGRATION_GUIDE.md
+          - Rollback available: Set nl_commands.use_legacy_executor=true (v1.7.0 only)
+
+    diagram_updates:
+      location: "docs/architecture/ARCHITECTURE.md"
+      diagrams:
+        - name: "Unified Execution Flow"
+          format: "ASCII art or Mermaid"
+          content: |
+            User Input (CLI, NL, API)
+                ↓
+            ┌─────────────────────────────────────┐
+            │ Is Natural Language?                │
+            ├─────────────────────────────────────┤
+            │ YES → NL Pipeline (5 stages)        │
+            │       ↓                             │
+            │       IntentToTaskConverter         │
+            │       ↓                             │
+            │       Task object                   │
+            │ NO  → Task from CLI/API             │
+            └─────────────────────────────────────┘
+                ↓
+            orchestrator.execute_task()
+                ↓
+            ┌─────────────────────────────────────┐
+            │ UNIFIED PIPELINE (8 steps)          │
+            ├─────────────────────────────────────┤
+            │ 1. Context Building                 │
+            │ 2. Prompt Generation                │
+            │ 3. Agent Execution                  │
+            │ 4. Response Validation              │
+            │ 5. Quality Control                  │
+            │ 6. Confidence Scoring               │
+            │ 7. Decision Making                  │
+            │ 8. Action Handling                  │
+            └─────────────────────────────────────┘
+                ↓
+            Result with quality guarantees
+
+    acceptance_criteria:
+      - "All 6 documentation files updated"
+      - "Version numbers updated to v1.7.0"
+      - "ADR017_MIGRATION_GUIDE.md created"
+      - "Diagrams updated with unified architecture"
+      - "CHANGELOG.md entry complete"
+      - "All links verified (no broken references)"
+      - "Technical review completed"
+
+  # ==================== STORY 8: Destructive Operation Breakpoints ====================
+  story8:
+    name: "Safety Enhancements - Destructive Operation Breakpoints"
+    duration: "10 hours"
+    priority: "P1"
+    dependencies: ["story5"]
+    release: "v1.7.1"
+
+    files_modified:
+      - path: "src/orchestration/breakpoint_manager.py"
+        changes: "Add destructive_nl_operation rule"
+        lines_added: ~40
+
+      - path: "src/orchestrator.py"
+        changes: "Check for destructive ops before execution"
+        lines_added: ~60
+
+      - path: "src/interactive.py"
+        changes: "Implement confirmation UI"
+        lines_added: ~50
+
+      - path: "config/default_config.yaml"
+        changes: "Add nl_commands.auto_confirm_destructive option"
+        lines_added: ~10
+
+    implementation:
+      breakpoint_rule:
+        name: "destructive_nl_operation"
+        location: "src/orchestration/breakpoint_manager.py"
+
+        trigger_conditions:
+          - "task.source == 'natural_language'"
+          - "task.nl_context['operation'] in ['UPDATE', 'DELETE']"
+          - "High-risk parameters (status changes, deletions)"
+
+        severity: "HIGH"
+        requires_confirmation: true
+
+        rule_definition: |
+          {
+              "name": "destructive_nl_operation",
+              "description": "Human confirmation for destructive NL operations",
+              "triggers": [
+                  "nl_update_operation",
+                  "nl_delete_operation"
+              ],
+              "severity": "high",
+              "interactive_only": true
+          }
+
+      orchestrator_check:
+        location: "src/orchestrator.py"
+        method: "execute_task"
+
+        logic: |
+          # Before agent execution (Checkpoint #1)
+          if task.source == 'natural_language':
+              operation = task.nl_context.get('operation')
+
+              if operation in ['UPDATE', 'DELETE']:
+                  # Trigger safety breakpoint
+                  breakpoint_triggered = self.breakpoint_manager.check_breakpoint(
+                      task=task,
+                      trigger='destructive_nl_operation',
+                      context={
+                          'operation': operation,
+                          'entity_type': task.nl_context['entity_type'],
+                          'identifier': task.nl_context['identifier'],
+                          'parsed_intent': task.nl_context
+                      }
+                  )
+
+                  if breakpoint_triggered:
+                      if self.interactive_mode:
+                          # Prompt user for confirmation
+                          confirmed = self._request_nl_confirmation(task)
+                          if not confirmed:
+                              raise TaskStoppedException("User declined destructive operation")
+                      else:
+                          # Non-interactive: abort by default
+                          logger.warning(f"Aborting destructive NL operation: {task.title}")
+                          raise TaskStoppedException("Destructive operation requires interactive confirmation")
+
+      confirmation_ui:
+        location: "src/interactive.py"
+        method: "_request_nl_confirmation"
+
+        prompt_structure: |
+          ⚠️  DESTRUCTIVE OPERATION DETECTED
+
+          Operation: {operation}
+          Entity: {entity_type} {identifier}
+
+          Details:
+          {show_before_after_state()}
+
+          Confirm this operation? (y/n/details)
+
+        options:
+          - key: "y"
+            action: "Return True (proceed)"
+
+          - key: "n"
+            action: "Return False (abort)"
+
+          - key: "d"
+            action: "Show full OperationContext dump, re-prompt"
+
+        implementation: |
+          def _request_nl_confirmation(self, task: Task) -> bool:
+              operation = task.nl_context['operation']
+              entity_type = task.nl_context['entity_type']
+              identifier = task.nl_context['identifier']
+
+              # Color-coded warning
+              print(colorama.Fore.YELLOW + "⚠️  DESTRUCTIVE OPERATION DETECTED" + colorama.Style.RESET_ALL)
+              print()
+              print(f"Operation: {operation}")
+              print(f"Entity: {entity_type} {identifier}")
+              print()
+
+              # Show context
+              if operation == 'UPDATE':
+                  self._show_update_context(task)
+              elif operation == 'DELETE':
+                  self._show_delete_context(task)
+
+              print()
+              response = prompt("Confirm this operation? (y/n/details): ")
+
+              if response.lower() == 'y':
+                  return True
+              elif response.lower() == 'd':
+                  print(json.dumps(task.nl_context, indent=2))
+                  return self._request_nl_confirmation(task)  # Re-prompt
+              else:
+                  return False
+
+      configuration:
+        file: "config/default_config.yaml"
+
+        new_options: |
+          nl_commands:
+            # ... existing options ...
+            auto_confirm_destructive: false  # Require manual confirmation (safe default)
+
+          breakpoints:
+            # ... existing options ...
+            confirmation_timeout_seconds: 60  # Abort after 60s without response
+
+      logging_and_audit:
+        location: "src/orchestrator.py"
+
+        log_format: |
+          logger.warning(
+              f"Destructive NL operation executed: {operation} {entity_type} {identifier}",
+              extra={
+                  'user': 'omar',  # Future: actual user ID
+                  'timestamp': datetime.now().isoformat(),
+                  'operation': operation,
+                  'entity_type': entity_type,
+                  'identifier': identifier,
+                  'confirmed_by': 'manual_prompt',
+                  'original_nl_message': task.nl_context['original_message']
+              }
+          )
+
+    test_coverage:
+      unit_tests: 15
+      categories:
+        - "Breakpoint rule triggers correctly"
+        - "Interactive confirmation prompts"
+        - "Non-interactive abort behavior"
+        - "Confirmation timeout handling"
+        - "Override mechanism (--confirm-destructive flag)"
+
+      integration_tests: 5
+      scenarios:
+        - "DELETE operation → confirmation → user confirms → executed"
+        - "DELETE operation → confirmation → user declines → aborted"
+        - "UPDATE operation → confirmation → details requested → confirmed"
+        - "Non-interactive mode → destructive op → aborted"
+        - "CLI --confirm-destructive flag → auto-approve"
+
+    acceptance_criteria:
+      - "BreakpointManager rule for destructive_nl_operation added"
+      - "Confirmation workflow implemented"
+      - "Interactive UI prompts user"
+      - "Non-interactive mode aborts by default"
+      - "Override mechanism implemented"
+      - "Audit logging for all destructive operations"
+      - "15 unit tests + 5 integration tests passing"
+      - "Code coverage ≥90%"
+
+  # ==================== STORY 9: Confirmation UI Polish ====================
+  story9:
+    name: "Confirmation Workflow UI Polish"
+    duration: "6 hours"
+    priority: "P2"
+    dependencies: ["story8"]
+    release: "v1.7.1"
+
+    files_modified:
+      - path: "src/interactive.py"
+        changes: "Enhance confirmation UI with rich context"
+        lines_changed: ~80
+
+      - path: "docs/guides/NL_COMMAND_GUIDE.md"
+        changes: "Add confirmation workflow documentation with screenshots"
+        lines_added: ~40
+
+    enhancements:
+      color_coding:
+        red_warnings: "DELETE operations"
+        yellow_warnings: "UPDATE operations"
+        green_safe: "Query operations (no confirmation)"
+
+        implementation: |
+          if operation == 'DELETE':
+              color = colorama.Fore.RED
+              icon = "🗑️"
+          elif operation == 'UPDATE':
+              color = colorama.Fore.YELLOW
+              icon = "✏️"
+
+          print(color + f"{icon}  {operation} OPERATION" + colorama.Style.RESET_ALL)
+
+      before_after_state:
+        for_updates:
+          show: "Current state → Proposed state"
+          example: |
+            Current:
+              project.status = ACTIVE
+              project.priority = 3
+
+            Proposed:
+              project.status = INACTIVE  ⚠️ (change)
+              project.priority = 3       (unchanged)
+
+        for_deletes:
+          show: "Entity details + cascade implications"
+          example: |
+            Target: Task #45 "Implement OAuth"
+
+            Cascade Impact:
+              - 3 subtasks will be deleted
+              - 2 dependent tasks will be blocked
+              - Associated files: src/auth/oauth.py (orphaned)
+
+      confirmation_options:
+        y_yes:
+          description: "Confirm and proceed with operation"
+          shortcut: "y"
+
+        n_no:
+          description: "Abort operation"
+          shortcut: "n"
+
+        d_details:
+          description: "Show full operation details (JSON dump)"
+          shortcut: "d"
+          behavior: "Print OperationContext, re-prompt"
+
+        s_simulate:
+          description: "Dry-run (show what would happen, don't execute)"
+          shortcut: "s"
+          behavior: "Execute read-only validation, show results, don't commit"
+
+      simulate_mode:
+        purpose: "Preview operation without executing"
+
+        implementation: |
+          def _simulate_operation(self, task: Task) -> None:
+              print("🔍 SIMULATION MODE (dry-run)")
+              print()
+
+              # Build simulation context
+              operation = task.nl_context['operation']
+              entity_type = task.nl_context['entity_type']
+              identifier = task.nl_context['identifier']
+
+              # For UPDATE: show what fields would change
+              if operation == 'UPDATE':
+                  current = self._fetch_current_state(entity_type, identifier)
+                  proposed = task.nl_context['parameters']
+
+                  print("Changes that would be applied:")
+                  for key, new_value in proposed.items():
+                      old_value = getattr(current, key)
+                      if old_value != new_value:
+                          print(f"  {key}: {old_value} → {new_value}")
+
+              # For DELETE: show what would be deleted
+              elif operation == 'DELETE':
+                  cascade_info = self._get_cascade_info(entity_type, identifier)
+
+                  print("Would delete:")
+                  print(f"  - {entity_type} {identifier}")
+                  if cascade_info['cascades']:
+                      print(f"  - {len(cascade_info['cascades'])} dependent entities")
+
+              print()
+              print("Simulation complete. No changes applied.")
+
+      help_text:
+        command: "/help-confirm"
+        available_during_confirmation: true
+
+        content: |
+          CONFIRMATION OPTIONS:
+
+          y / yes     - Confirm and execute operation
+          n / no      - Abort operation
+          d / details - Show full operation details (JSON)
+          s / simulate- Dry-run (preview without executing)
+          /help       - Show this help message
+
+          SAFETY TIPS:
+          - RED warnings (🗑️ DELETE) are irreversible
+          - YELLOW warnings (✏️ UPDATE) can affect dependent entities
+          - Use 's' (simulate) to preview changes before confirming
+          - Check cascade impact for DELETE operations
+
+          TIMEOUT: You have 60 seconds to respond. After timeout, operation aborts.
+
+      timeout_handling:
+        default_timeout: 60
+        config_path: "breakpoints.confirmation_timeout_seconds"
+
+        implementation: |
+          import signal
+
+          def _request_nl_confirmation_with_timeout(self, task: Task) -> bool:
+              def timeout_handler(signum, frame):
+                  raise TimeoutError("Confirmation timeout")
+
+              # Set up timeout
+              signal.signal(signal.SIGALRM, timeout_handler)
+              signal.alarm(self.config.get('breakpoints.confirmation_timeout_seconds', 60))
+
+              try:
+                  result = self._request_nl_confirmation(task)
+                  signal.alarm(0)  # Cancel timeout
+                  return result
+              except TimeoutError:
+                  print()
+                  print("⏱️  Confirmation timeout (60s). Operation aborted.")
+                  logger.warning(f"Confirmation timeout for task {task.id}")
+                  return False
+
+    user_testing:
+      participants: 3
+      tasks:
+        - "Test DELETE confirmation with cascade impact"
+        - "Test UPDATE confirmation with before/after state"
+        - "Test simulate mode for both operations"
+        - "Test timeout behavior"
+        - "Test all 4 confirmation options"
+
+      feedback_collection:
+        - "Clarity of warnings (1-5)"
+        - "Usefulness of simulate mode (1-5)"
+        - "Overall confirmation UX (1-5)"
+        - "Suggestions for improvement"
+
+      target_satisfaction: "≥4.0/5.0 average"
+
+    acceptance_criteria:
+      - "Color-coded warnings implemented"
+      - "Before/after state shown for UPDATE"
+      - "Cascade impact shown for DELETE"
+      - "4 confirmation options (y/n/d/s) functional"
+      - "Simulate mode (dry-run) implemented"
+      - "Timeout handling with safe default"
+      - "Help text available (/help-confirm)"
+      - "User testing completed (3 users)"
+      - "User satisfaction ≥4.0/5.0"
+      - "Documentation updated with screenshots"
+
+# ==================== TESTING STRATEGY ====================
+testing:
+  unit_tests:
+    total_new: 120
+    breakdown:
+      story2_intent_converter: 25
+      story3_query_helper: 30
+      story4_nl_processor: 20
+      story5_orchestrator: 15
+      story8_breakpoints: 15
+      story9_confirmation_ui: 15
+
+    coverage_target: "≥90% on all new components"
+
+    execution:
+      command: "pytest tests/ --cov=src --cov-report=term"
+      fast_suite: "pytest -m 'not integration and not requires_ollama'"
+
+  integration_tests:
+    total_new: 40
+    breakdown:
+      story6_unified_routing: 15
+      story6_quality_validation: 10
+      story6_breakpoints: 8
+      story6_regression: 7
+
+    coverage_target: "≥85% on execution paths"
+
+    execution:
+      command: "pytest tests/integration/ --cov=src"
+      with_real_llm: "pytest -m requires_ollama"
+
+  regression_tests:
+    requirement: "All 770+ existing tests must pass"
+    command: "pytest"
+    acceptance: "100% pass rate (no regressions)"
+
+  performance_tests:
+    latency:
+      metric: "NL command end-to-end latency"
+      target: "<3s (P95)"
+      method: "Execute 20 NL commands, measure percentiles"
+
+    memory:
+      metric: "Additional memory overhead"
+      target: "<50MB"
+      method: "Memory profiling before/after 100 NL commands"
+
+    throughput:
+      metric: "Commands per minute"
+      target: "≥40 cmd/min (acceptable vs v1.6: 50)"
+      method: "Sustained load test over 5 minutes"
+
+# ==================== RELEASE PLAN ====================
+releases:
+  v1_7_0:
+    date: "Week 3 (3 weeks from epic start)"
+    scope: "Core architectural refactor (Stories 1-7)"
+
+    deliverables:
+      - "ADR-017 and architecture docs"
+      - "IntentToTaskConverter component"
+      - "NLQueryHelper (refactored CommandExecutor)"
+      - "Updated NLCommandProcessor routing"
+      - "Unified orchestrator routing"
+      - "160+ new tests (120 unit + 40 integration)"
+      - "Updated documentation (6 files)"
+
+    breaking_changes:
+      - "NLCommandProcessor API (internal)"
+      - "CommandExecutor → NLQueryHelper (internal)"
+
+    user_impact: "None (user-facing commands unchanged)"
+
+    rollback_plan:
+      emergency_patch: "Fix critical bugs within 24 hours → v1.7.0.1"
+      full_revert: "Git revert to v1.6.0 if necessary"
+      legacy_mode: "nl_commands.use_legacy_executor=true (escape hatch)"
+
+  v1_7_1:
+    date: "Week 4 (1 week after v1.7.0)"
+    scope: "Safety enhancements (Stories 8-9)"
+
+    deliverables:
+      - "Destructive operation breakpoints"
+      - "Rich confirmation UI"
+      - "Simulate (dry-run) mode"
+      - "Audit logging"
+
+    new_features:
+      - "Human-in-the-loop confirmation for NL UPDATE/DELETE"
+      - "Before/after state preview"
+      - "Cascade impact display"
+      - "Timeout handling"
+
+# ==================== RISKS AND MITIGATIONS ====================
+risks:
+  latency_increase:
+    impact: "Users notice slower NL commands (~500ms increase)"
+    probability: "HIGH (inevitable)"
+    mitigation:
+      - "Set expectations in docs"
+      - "Optimize hot paths (caching)"
+      - "Provide fast path for queries"
+
+  api_breaking_changes:
+    impact: "External code calling NLCommandProcessor breaks"
+    probability: "LOW (minimal external users)"
+    mitigation:
+      - "Deprecation warnings (v1.7.0)"
+      - "Remove in v1.8.0 (6 months notice)"
+      - "Migration guide with examples"
+
+  test_coverage_gaps:
+    impact: "Bugs in production"
+    probability: "MEDIUM (complex integration)"
+    mitigation:
+      - "Dedicated Story 6 (16 hours)"
+      - "Real LLM integration tests"
+      - "Regression testing (770+ tests)"
+
+  user_confusion:
+    impact: "Users expect fast NL commands"
+    probability: "LOW"
+    mitigation:
+      - "Clear CHANGELOG communication"
+      - "Emphasize benefits (quality > speed)"
+      - "Progress indicators during execution"
+
+# ==================== SUCCESS METRICS ====================
+success_metrics:
+  technical:
+    - "100% of NL commands route through orchestrator"
+    - "0 direct StateManager writes from NL pipeline (except read-only)"
+    - "≥90% test coverage on new components"
+    - "All 770+ existing tests passing"
+    - "<3s latency (P95) for NL commands"
+
+  quality:
+    - "Validation applied to 100% of NL commands"
+    - "Confidence scoring tracked for all NL operations"
+    - "Iterative improvement available for NL commands"
+    - "Safety breakpoints triggered for destructive ops"
+
+  user_experience:
+    - "0 user-visible breaking changes"
+    - "Confirmation UX rated ≥4/5 by test users"
+    - "Documentation clarity rated ≥4/5"
+
+  architectural:
+    - "1 execution path (down from 2)"
+    - "~40% reduction in integration test surface"
+    - "Simplified NL pipeline (300 lines smaller)"
+
+# ==================== DEFINITION OF DONE ====================
+definition_of_done:
+  epic_level:
+    - "All 9 stories completed and accepted"
+    - "160+ new tests passing (100% pass rate)"
+    - "All 770+ existing tests passing"
+    - "Code coverage ≥90% (new), ≥88% (overall)"
+    - "Documentation updated (10 files)"
+    - "ADR-017 reviewed and approved"
+    - "User testing completed"
+    - "Performance benchmarks met"
+    - "v1.7.0 and v1.7.1 released"
+
+  story_level:
+    - "All tasks completed"
+    - "Unit tests written and passing"
+    - "Integration tests written and passing"
+    - "Code reviewed"
+    - "Documentation updated"
+    - "Acceptance criteria met"
+
+# ==================== DEPENDENCIES AND SEQUENCING ====================
+critical_path:
+  - "Story 1 (Docs)"
+  - "Story 2 (IntentToTaskConverter)"
+  - "Story 4 (NLCommandProcessor)"
+  - "Story 5 (Orchestrator routing)"
+  - "Story 6 (Integration tests)"
+  - "Story 7 (Documentation)"
+  - "Story 8 (Breakpoints)"
+  - "Story 9 (UI polish)"
+
+parallel_work:
+  - "Story 2 || Story 3 (IntentToTaskConverter || NLQueryHelper)"
+  - "Story 7 can start after Story 6 (partial)"
+  - "Story 8 can start after Story 5"
+
+# ==================== NOTES ====================
+notes:
+  assumptions:
+    - "No external users (Obra currently single-user)"
+    - "Database schema stable (no migrations)"
+    - "LLM available (Ollama/Qwen or OpenAI Codex)"
+    - "Development environment: WSL2 Ubuntu"
+
+  open_questions:
+    - "Add telemetry for NL success rates? (Deferred to v1.8)"
+    - "A/B testing framework? (Deferred, single user)"
+    - "Async execution for long NL commands? (Deferred to v1.8)"
+
+  future_enhancements:
+    - "Async NL command execution"
+    - "Multi-action NL commands"
+    - "Voice input integration"
+    - "NL command history and replay"
+    - "Undo/redo for NL commands"

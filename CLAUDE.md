@@ -10,14 +10,15 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 **Terminology**: The **Orchestrator** (validation, quality scoring, prompt optimization) and **Implementer** (code generation) are the two LLM agents. Shorthand: **Orc** and **Imp** (for efficient communication in this file only - use formal terms in code/docs).
 
-**Current Version**: **v1.5.0** (November 11, 2025)
+**Current Version**: **v1.7.0** (November 13, 2025)
 
-**Status**: Production-ready - 770+ tests (88% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6)
+**Status**: Production-ready - 794+ tests (88% coverage), 16 critical bugs fixed through real orchestration, validated performance (PHASE_6)
 
 **Key Features Implemented**:
 - ✅ Hybrid local-remote architecture (M0-M9)
 - ✅ Multi-stage validation pipeline with quality-based iteration
-- ✅ Natural Language Command Interface (v1.3.0 - ADR-014)
+- ✅ Unified Execution Architecture - All NL commands through orchestrator (v1.7.0 - ADR-017)
+- ✅ Natural Language Command Interface (v1.3.0 - ADR-014, enhanced v1.6.0 - ADR-016)
 - ✅ Agile/Scrum work hierarchy - Epics, Stories, Tasks, Subtasks, Milestones (v1.3.0 - ADR-013)
 - ✅ Project Infrastructure Maintenance System (v1.4.0 - ADR-015)
 - ✅ Interactive UX improvements - Natural language defaults to orchestrator (v1.5.0)
@@ -336,6 +337,30 @@ When starting a new session, read these documents in priority order:
 
 **See**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` for complete user guide
 **See**: `docs/decisions/ADR-015-project-infrastructure-maintenance-system.md` for architecture
+
+### 15. Unified Execution Architecture (v1.7.0 - ADR-017)
+**All NL commands route through orchestrator for consistent validation:**
+
+- **Architecture**: Single entry point `execute_nl_command()` routes all NL commands through orchestrator
+- **Components**:
+  - `IntentToTaskConverter`: Converts OperationContext → Task objects
+  - `NLQueryHelper`: Handles query-only operations (no task creation)
+- **Pipeline**: NLCommandProcessor → ParsedIntent → Orchestrator → Validation Pipeline
+
+- **Benefits**:
+  - Consistent quality control for all NL commands
+  - Unified validation and scoring
+  - Single entry point for monitoring
+  - Simplified testing (24 new tests, 100% passing)
+
+- **Performance** (validated in Story 6):
+  - P50 latency: < 2s
+  - P95 latency: < 3s
+  - Throughput: > 40 cmd/min
+  - Overhead: < 500ms vs direct access
+
+**See**: `docs/guides/ADR017_MIGRATION_GUIDE.md` for internal API changes
+**See**: `docs/decisions/ADR-017-unified-execution-architecture.md` for architecture
 
 ## Code Standards
 

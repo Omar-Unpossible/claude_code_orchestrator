@@ -1,7 +1,7 @@
 # Natural Language Command Interface - User Guide
 
-**Version:** 1.6.0 (ADR-016)
-**Feature:** Natural Language Command Processing
+**Version:** 1.7.0 (ADR-017)
+**Feature:** Unified Execution Architecture with Natural Language
 **Status:** Production Ready
 **Accuracy:** 95%+ across all command types
 
@@ -14,28 +14,55 @@ The Natural Language Command Interface allows you to interact with Obra using co
 ### What Can You Do?
 
 - **Create work items**: "Create an epic for user authentication"
-- **Update items**: "Mark the manual tetris test as INACTIVE"  *(New in v1.6.0)*
-- **Query hierarchically**: "List the workplans for the projects"  *(New in v1.6.0)*
-- **Ask questions**: "What's next for the tetris game development?"  *(New in v1.6.0)*
+- **Update items**: "Mark the manual tetris test as INACTIVE"
+- **Query hierarchically**: "List the workplans for the projects"
+- **Ask questions**: "What's next for the tetris game development?"
 - **Delete items**: "Delete task 5"
 - **Natural commands**: "Show me all pending tasks"
 
-### How It Works (v1.6.0 - ADR-016)
+### How It Works (v1.7.0 - ADR-017)
 
-Obra uses a **7-stage pipeline** to understand and execute your commands with **95%+ accuracy**:
+**New in v1.7.0**: ALL natural language commands now route through Obra's **unified execution pipeline**, providing the same quality guarantees as direct task execution.
 
-1. **Intent Classification**: Determines if you're issuing a COMMAND or asking a QUESTION
-2. **Operation Classification**: Identifies operation type (CREATE, UPDATE, DELETE, QUERY) *(New)*
-3. **Entity Type Classification**: Determines entity type (project, epic, story, task, milestone) *(Enhanced)*
-4. **Entity Identifier Extraction**: Extracts entity names or IDs *(Enhanced)*
-5. **Parameter Extraction**: Extracts operation-specific parameters (status, priority, etc.) *(New)*
-6. **Validation**: Checks that references exist and business rules are met
-7. **Execution**: Creates/updates work items via StateManager
-8. **Response**: Provides clear, color-coded feedback
+**Architecture**:
+```
+User Input: "Create an epic for user authentication"
+    ↓
+NL Parsing Pipeline (5-stage ADR-016):
+  1. Intent Classification (COMMAND vs QUESTION)
+  2. Operation Classification (CREATE/UPDATE/DELETE/QUERY)
+  3. Entity Type Classification (epic/story/task/milestone)
+  4. Entity Identifier Extraction (names or IDs)
+  5. Parameter Extraction (status, priority, dependencies)
+    ↓
+ParsedIntent Object
+    ↓
+Orchestrator.execute_nl_command() ← UNIFIED ENTRY POINT
+    ↓
+├─ QUERY → NLQueryHelper → Quick response
+└─ COMMAND → IntentToTaskConverter → Task Object
+                ↓
+       Unified Orchestration Pipeline (8 steps):
+         1. Context Building
+         2. Prompt Generation
+         3. Agent Execution
+         4. Response Validation
+         5. Quality Control
+         6. Confidence Scoring
+         7. Decision Making
+         8. Action Handling (proceed/retry/escalate)
+                ↓
+       Result with full quality guarantees
+```
 
-**Architecture**: Each stage focuses on a single responsibility, enabling higher accuracy through progressive refinement.
+**Benefits of Unified Architecture**:
+- ✅ **Consistent Quality**: Same multi-stage validation for NL and CLI commands
+- ✅ **Retry Logic**: NL commands automatically retry on transient failures
+- ✅ **Confidence Tracking**: All NL operations tracked with confidence scores
+- ✅ **Breakpoints**: Human-in-the-loop checkpoints for critical operations
+- ✅ **Iterative Improvement**: Low-quality responses trigger refinement cycles
 
-**See**: `docs/decisions/ADR-016-decompose-nl-entity-extraction.md` for technical details
+**See**: `docs/decisions/ADR-017-unified-execution-architecture.md` for architectural details
 
 ---
 
@@ -657,12 +684,13 @@ orchestrator> Create a milestone for dashboard completion requiring epic 10
 - **Spec**: [docs/development/NL_COMMAND_INTERFACE_SPEC.json](../development/NL_COMMAND_INTERFACE_SPEC.json)
 - **Issues**: Report bugs at [GitHub Issues](https://github.com/Omar-Unpossible/claude_code_orchestrator/issues)
 - **ADR-014**: [docs/decisions/ADR-014-natural-language-command-interface.md](../decisions/ADR-014-natural-language-command-interface.md)
-- **ADR-016**: [docs/decisions/ADR-016-decompose-nl-entity-extraction.md](../decisions/ADR-016-decompose-nl-entity-extraction.md) *(New - v1.6.0 architecture)*
-- **Migration Guide**: [docs/guides/ADR016_MIGRATION_GUIDE.md](ADR016_MIGRATION_GUIDE.md) *(For developers migrating from v1.3.0)*
+- **ADR-016**: [docs/decisions/ADR-016-decompose-nl-entity-extraction.md](../decisions/ADR-016-decompose-nl-entity-extraction.md) *(v1.6.0 - Five-stage pipeline)*
+- **ADR-017**: [docs/decisions/ADR-017-unified-execution-architecture.md](../decisions/ADR-017-unified-execution-architecture.md) *(New - v1.7.0 unified routing)*
+- **Migration Guide**: [docs/guides/ADR017_MIGRATION_GUIDE.md](ADR017_MIGRATION_GUIDE.md) *(For developers - internal API changes)*
 
 ---
 
-**Last Updated**: November 11, 2025
-**Version**: v1.6.0 (ADR-016)
-**Feature**: Natural Language Command Interface - Five-Stage Pipeline Refactor
+**Last Updated**: November 13, 2025
+**Version**: v1.7.0 (ADR-017)
+**Feature**: Unified Execution Architecture - All NL commands through orchestrator
 **Accuracy**: 95%+ across all command types

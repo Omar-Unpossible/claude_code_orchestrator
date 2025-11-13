@@ -6,6 +6,7 @@ This package provides the core orchestration logic:
 - BreakpointManager: Breakpoint triggering and resolution tracking
 - QualityController: Multi-stage quality validation
 - TaskComplexityEstimator: Complexity estimation and task decomposition
+- IntentToTaskConverter: NL intent to Task conversion (ADR-017)
 
 Architecture:
     The orchestration engine coordinates between agents, LLMs, and file monitoring
@@ -40,6 +41,7 @@ from src.orchestration.complexity_estimate import ComplexityEstimate
 from src.orchestration.subtask import SubTask
 from src.orchestration.complexity_estimator import TaskComplexityEstimator
 from src.orchestration.max_turns_calculator import MaxTurnsCalculator
+from src.orchestration.intent_to_task_converter import IntentToTaskConverter, IntentConversionException
 
 __all__ = [
     'TaskScheduler',
@@ -52,5 +54,7 @@ __all__ = [
     'ComplexityEstimate',
     'SubTask',
     'TaskComplexityEstimator',
-    'MaxTurnsCalculator'
+    'MaxTurnsCalculator',
+    'IntentToTaskConverter',
+    'IntentConversionException'
 ]

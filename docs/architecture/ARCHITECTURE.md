@@ -4,8 +4,8 @@
 
 The Claude Code Orchestrator is a supervision system where a local LLM (Qwen 2.5 on RTX 5090) provides intelligent oversight for Claude Code CLI executing tasks in an isolated environment. This enables semi-autonomous software development with continuous validation and quality control.
 
-**Version**: 1.3.0 (Natural Language Interface Complete)
-**Last Updated**: 2025-11-11
+**Version**: 1.7.0 (Unified Execution Architecture)
+**Last Updated**: 2025-11-13
 
 ## High-Level Architecture
 
@@ -240,6 +240,131 @@ SQLite/PostgreSQL Database
 ```
 
 **Critical Rule**: NO component directly accesses database. ALL go through StateManager.
+
+## Unified Execution Architecture (v1.7.0)
+
+**Status**: ✅ IMPLEMENTED (ADR-017)
+**Released**: November 13, 2025
+**Stories Completed**: 0-7 (all complete)
+
+### Problem: Parallel Execution Paths (v1.6.0)
+
+Prior to v1.7.0, Obra had **two separate execution paths** with different quality guarantees:
+
+**Path 1: Task Execution** → Full 8-step orchestration pipeline
+**Path 2: Natural Language Commands** → Direct CRUD execution (bypassed orchestration)
+
+**Impact**: Inconsistent quality, architectural debt, lost capabilities (retry, quality scoring, breakpoints) for NL commands.
+
+### Solution: Unified Entry Point (v1.7.0)
+
+All commands now route through `orchestrator.execute_task()` for consistent quality validation:
+
+```
+User Input (any interface: CLI, NL, Interactive)
+    ↓
+┌─────────────────────────────────────────────┐
+│ Is Natural Language?                        │
+├─────────────────────────────────────────────┤
+│ YES → NL Parsing Pipeline (intent → task)   │
+│       • IntentClassifier (COMMAND/QUESTION) │
+│       • EntityExtractor (5-stage ADR-016)   │
+│       • IntentToTaskConverter (NEW)         │
+│       • Task object with NL context         │
+│                                             │
+│ NO  → Task from CLI/API                     │
+│       • Direct Task object creation         │
+└─────────────────────────────────────────────┘
+    ↓
+orchestrator.execute_task() ← UNIFIED ENTRY POINT
+    ↓
+┌─────────────────────────────────────────────┐
+│ UNIFIED EXECUTION PIPELINE (8 steps)        │
+├─────────────────────────────────────────────┤
+│ 1. Context Building (ContextManager)        │
+│ 2. Prompt Generation (StructuredPromptBuilder)│
+│ 3. Agent Execution (Claude Code)            │
+│ 4. Response Validation (ResponseValidator)  │
+│ 5. Quality Control (QualityController)      │
+│ 6. Confidence Scoring (ConfidenceScorer)    │
+│ 7. Decision Making (DecisionEngine)         │
+│ 8. Action Handling (proceed/retry/escalate) │
+└─────────────────────────────────────────────┘
+    ↓
+Result with full quality guarantees (ALL interfaces)
+```
+
+### New Components (v1.7.0)
+
+#### IntentToTaskConverter
+
+**Purpose**: Convert parsed NL intent → Task object for orchestrator
+
+**Location**: `src/orchestration/intent_to_task_converter.py`
+
+**Methods**:
+- `convert(parsed_intent: OperationContext, project_id: int) -> Task`
+- `_enrich_with_nl_context(task: Task, original_message: str) -> Task`
+- `_map_parameters(op_context: OperationContext) -> Dict[str, Any]`
+
+**Operation Mapping**:
+- CREATE → Task with title/description from parsed params
+- UPDATE → Task with "Update X" title + update instructions
+- DELETE → Task with "Delete X" title + safety context
+- QUERY → Task with "Show X" title + query parameters (or NLQueryHelper)
+
+#### NLQueryHelper (Refactored)
+
+**Purpose**: Read-only query helper for orchestrator
+
+**Before**: `CommandExecutor` (did everything - parse, validate, execute CRUD)
+**After**: `NLQueryHelper` (provides query context for orchestrator)
+
+**Location**: `src/nl/nl_query_helper.py` (renamed from `command_executor.py`)
+
+**Methods**:
+- `build_query_context(op_context: OperationContext) -> Dict` (renamed from `execute()`)
+- Supports: SIMPLE, HIERARCHICAL, NEXT_STEPS, BACKLOG, ROADMAP queries
+- Returns: Query metadata (filters, sort order, entity type)
+
+**Removed**: All write operations (_execute_create, _execute_update, _execute_delete)
+
+### Benefits
+
+1. **Consistent Quality**: All commands validated through multi-stage pipeline
+2. **Simplified Architecture**: Single execution model (was 2)
+3. **Enhanced Capabilities**: NL commands get retry logic, quality scoring, breakpoints
+4. **Preserved Investment**: ADR-016 components (5-stage pipeline) still valuable
+5. **Future-Proof**: Multi-action NL, voice input, complex workflows now possible
+
+### Trade-offs
+
+**Positive**:
+- ✅ Consistent quality across all interfaces
+- ✅ ~40% reduction in integration test surface area
+- ✅ Retry logic, breakpoints, quality validation for NL
+
+**Negative**:
+- ⚠️ ~500ms additional latency for NL commands (quality > speed)
+- ⚠️ Breaking changes to internal APIs (migration guide provided)
+
+### Migration Path
+
+**Internal API Changes** (v1.7.0):
+- `NLCommandProcessor.process()` → Returns `ParsedIntent` (was `NLResponse`)
+- `CommandExecutor` → Renamed to `NLQueryHelper` (write operations removed)
+
+**User-Facing Changes**: **None** (commands work identically)
+
+**Rollback**: Legacy mode available via config (emergency only):
+```yaml
+nl_commands:
+  use_legacy_executor: false  # Set true for emergency rollback
+```
+
+**See**: `docs/guides/ADR017_MIGRATION_GUIDE.md` for complete migration guide
+
+**Reference**: `docs/decisions/ADR-017-unified-execution-architecture.md`
 
 ## Thread Safety
 

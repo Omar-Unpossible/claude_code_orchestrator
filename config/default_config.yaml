@@ -103,6 +103,9 @@ breakpoints:
   enabled: true  # Enable breakpoint system
   auto_resolve_timeout: 300  # Auto-resolve timeout (seconds, 0 = wait forever)
 
+  # Story 8 (ADR-017): Timeout for confirmation prompts (seconds)
+  confirmation_timeout_seconds: 60
+
   # When to trigger breakpoints
   triggers:
     low_confidence:
@@ -223,6 +226,12 @@ nl_commands:
   fallback_to_info: true  # Fallback to informational response for QUESTION intent
   experimental_features: false  # Enable experimental NL features
 
+  # Story 8 (ADR-017): Destructive operation safety
+  # Auto-confirm destructive operations (UPDATE/DELETE) in non-interactive mode
+  # WARNING: Setting this to true bypasses safety confirmations
+  # Recommended: false (prompt user), true only for trusted automation
+  auto_confirm_destructive: false
+
 # ADR-015: Project Infrastructure Maintenance System (v1.4.0)
 # Automatic documentation maintenance at key project events
 documentation:
@@ -292,3 +301,8 @@ debug:
   enabled: false  # Enable debug mode
   save_interactions: true  # Save all interactions for debugging
   verbose_logging: false  # Extra verbose logging
+
+# Story 8 (ADR-017): Audit logging for destructive operations
+audit:
+  # Audit log file for destructive operations (JSONL format)
+  destructive_operations_file: logs/destructive_operations_audit.jsonl

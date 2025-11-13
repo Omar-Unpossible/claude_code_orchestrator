@@ -505,6 +505,111 @@ class StateManager:
                     details=str(e)
                 ) from e
 
+    def update_task(
+        self,
+        task_id: int,
+        updates: Dict[str, Any]
+    ) -> Task:
+        """Update task fields.
+
+        Args:
+            task_id: Task ID
+            updates: Dictionary of fields to update:
+                - title: New title
+                - description: New description
+                - priority: New priority (1-10)
+                - status: New status (TaskStatus enum)
+                - dependencies: New dependencies list
+                - assigned_to: New assignee
+                - context: New context dict
+
+        Returns:
+            Updated Task object
+
+        Raises:
+            DatabaseException: If update fails
+
+        Example:
+            >>> state.update_task(5, {
+            ...     'title': 'New Title',
+            ...     'priority': 3,
+            ...     'status': TaskStatus.RUNNING
+            ... })
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    task = self.get_task(task_id)
+                    if not task:
+                        raise DatabaseException(
+                            operation='update_task',
+                            details=f'Task {task_id} not found'
+                        )
+
+                    # Update allowed fields
+                    allowed_fields = {
+                        'title', 'description', 'priority', 'status',
+                        'dependencies', 'assigned_to', 'context',
+                        'epic_id', 'story_id', 'parent_task_id'
+                    }
+
+                    for key, value in updates.items():
+                        if key in allowed_fields and hasattr(task, key):
+                            setattr(task, key, value)
+
+                    logger.info(f"Updated task {task_id}: {list(updates.keys())}")
+                    return task
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='update_task',
+                    details=str(e)
+                ) from e
+
+    def delete_task(
+        self,
+        task_id: int,
+        soft: bool = True
+    ) -> None:
+        """Delete task (soft or hard delete).
+
+        Args:
+            task_id: Task ID to delete
+            soft: If True, mark as deleted (default). If False, hard delete.
+
+        Raises:
+            DatabaseException: If deletion fails
+
+        Example:
+            >>> state.delete_task(5, soft=True)  # Soft delete
+            >>> state.delete_task(5, soft=False)  # Hard delete
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    task = self.get_task(task_id)
+                    if not task:
+                        raise DatabaseException(
+                            operation='delete_task',
+                            details=f'Task {task_id} not found'
+                        )
+
+                    if soft:
+                        # Soft delete: mark as deleted
+                        task.is_deleted = True
+                        logger.info(f"Soft deleted task {task_id}")
+                    else:
+                        # Hard delete: remove from database
+                        session = self._get_session()
+                        session.delete(task)
+                        logger.info(f"Hard deleted task {task_id}")
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_task',
+                    details=str(e)
+                ) from e
+
     def get_tasks_by_status(
         self,
         project_id: int,
