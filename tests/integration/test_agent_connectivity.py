@@ -408,6 +408,7 @@ class TestOrchestratorWorkflows:
     def test_git_integration_e2e_m9(self, orchestrator, temp_workspace):
         """Test Git integration end-to-end (M9 feature)."""
         import subprocess
+        from unittest.mock import patch
 
         # Use orchestrator's state_manager
         state_manager = orchestrator.state_manager
@@ -459,8 +460,12 @@ class TestOrchestratorWorkflows:
         git_manager = GitManager(git_config, orchestrator.llm_interface, state_manager)
         git_manager.initialize(temp_workspace)
 
-        # Commit changes using commit_task
-        git_manager.commit_task(task, files=['git_test.txt'])
+        # Mock LLM to avoid timeout on commit message generation
+        with patch.object(orchestrator.llm_interface, 'generate') as mock_llm:
+            mock_llm.return_value = "feat: Create test file\n\nAdded git_test.txt for Git integration test"
+
+            # Commit changes using commit_task
+            git_manager.commit_task(task, files=['git_test.txt'])
 
         # Verify commit created
         result = subprocess.run(
