@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.1] - 2025-11-13
 
 ### Added
+- **Observability & Monitoring Enhancements (Story 10 - ADR-017 FINAL)**:
+  - Log querying with filters (event, level, correlation_id, time window)
+  - Trend detection for metrics (LLM latency, success rates)
+  - Enhanced health checks with alerts and actionable recommendations
+  - `obra metrics` CLI command for detailed metrics viewing
+  - `obra logs` CLI command for structured log querying
+  - File-based logging for log persistence (logs/obra.log)
+  - Alerting thresholds (LLM success <95% warning, <90% critical)
+  - HealthStatus enum (HEALTHY, DEGRADED, UNHEALTHY)
+
 - **Enhanced Confirmation Workflow UI (Story 9 - ADR-017)**:
   - Color-coded confirmation prompts (red for DELETE, yellow for UPDATE, cyan for other)
   - Cascade implications discovery showing all affected child entities
@@ -22,6 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Graceful fallback if colorama not installed
 
 ### Changed
+- **Health check command enhanced** (Story 10):
+  - Now displays alerts from threshold monitoring
+  - Shows actionable recommendations based on system state
+  - Handles both enhanced and basic health status formats
+
+- **Metrics collection enhanced** (Story 10):
+  - `get_health_status()` returns rich format with alerts/recommendations
+  - Adds `detect_trends()` method for trend analysis
+  - Threshold-based alerting logic with severity classification
+
+- **Logging configuration enhanced** (Story 10):
+  - Adds file handler for persistent logging to logs/obra.log
+  - Enables log querying and correlation tracking
+  - `configure_logging()` accepts optional log_file parameter
+
 - **Confirmation workflow enhanced with 5 interactive options** (y/n/s/c/h):
   - [y] Confirm and proceed (unchanged)
   - [n] Abort operation (unchanged)

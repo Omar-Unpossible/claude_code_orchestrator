@@ -31,7 +31,43 @@ import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from enum import Enum
 import threading
+
+
+# Alerting thresholds
+ALERTING_THRESHOLDS = {
+    'llm_success_rate': {
+        'warning': 0.95,
+        'critical': 0.90
+    },
+    'llm_latency_p95': {
+        'warning': 3000,  # ms
+        'critical': 5000  # ms
+    },
+    'agent_success_rate': {
+        'warning': 0.90,
+        'critical': 0.80
+    }
+}
+
+
+class HealthStatus(Enum):
+    """System health status."""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+
+
+@dataclass
+class Trend:
+    """Metric trend information."""
+    metric: str
+    direction: str  # 'increasing' | 'decreasing' | 'stable'
+    magnitude: float  # % change
+    severity: str  # 'info' | 'warning' | 'critical'
+    message: str
 
 
 class MetricsCollector:
@@ -301,18 +337,81 @@ class MetricsCollector:
                 'by_operation': operation_metrics
             }
 
+    def detect_trends(self, metric: str = 'llm_latency_p95', window: str = '15m') -> List[Trend]:
+        """Detect trends in metrics over time.
+
+        Args:
+            metric: Metric to analyze ('llm_latency_p95', 'llm_success_rate', etc.)
+            window: Time window for trend detection (default: 15m)
+
+        Returns:
+            List of detected trends
+        """
+        trends = []
+
+        # For simplicity, we'll compare current window vs previous window
+        # In production, you'd use more sophisticated trend detection
+
+        try:
+            if metric == 'llm_latency_p95':
+                current = self.get_llm_metrics()['latency_p95']
+
+                # Get historical data (simplified - in production use time-series DB)
+                # For now, compare with warning threshold
+                if current > ALERTING_THRESHOLDS['llm_latency_p95']['critical']:
+                    trends.append(Trend(
+                        metric='llm_latency_p95',
+                        direction='increasing',
+                        magnitude=(current / ALERTING_THRESHOLDS['llm_latency_p95']['warning']) - 1.0,
+                        severity='critical',
+                        message=f"LLM latency critically high: {current:.0f}ms"
+                    ))
+                elif current > ALERTING_THRESHOLDS['llm_latency_p95']['warning']:
+                    trends.append(Trend(
+                        metric='llm_latency_p95',
+                        direction='increasing',
+                        magnitude=(current / ALERTING_THRESHOLDS['llm_latency_p95']['warning']) - 1.0,
+                        severity='warning',
+                        message=f"LLM latency elevated: {current:.0f}ms"
+                    ))
+
+            elif metric == 'llm_success_rate':
+                current = self.get_llm_metrics()['success_rate']
+
+                if current < ALERTING_THRESHOLDS['llm_success_rate']['critical']:
+                    trends.append(Trend(
+                        metric='llm_success_rate',
+                        direction='decreasing',
+                        magnitude=1.0 - (current / ALERTING_THRESHOLDS['llm_success_rate']['warning']),
+                        severity='critical',
+                        message=f"LLM success rate critically low: {current:.1%}"
+                    ))
+                elif current < ALERTING_THRESHOLDS['llm_success_rate']['warning']:
+                    trends.append(Trend(
+                        metric='llm_success_rate',
+                        direction='decreasing',
+                        magnitude=1.0 - (current / ALERTING_THRESHOLDS['llm_success_rate']['warning']),
+                        severity='warning',
+                        message=f"LLM success rate below threshold: {current:.1%}"
+                    ))
+
+        except Exception:
+            # Return empty list on error
+            pass
+
+        return trends
+
     def get_health_status(self) -> Dict[str, Any]:
-        """Get overall system health status.
+        """Get overall system health status with detailed information.
 
         Returns:
             Dictionary with health status:
             - status: 'healthy' | 'degraded' | 'unhealthy'
-            - llm_available: bool
-            - llm_success_rate: float (0-1)
-            - llm_latency_p95: float (ms)
-            - agent_available: bool
-            - agent_success_rate: float (0-1)
-            - database_available: bool
+            - alerts: List of active alerts
+            - llm: Detailed LLM health
+            - agent: Detailed agent health
+            - database: Detailed database health
+            - recommendations: List of recommended actions
             - timestamp: ISO timestamp
         """
         llm_metrics = self.get_llm_metrics()
@@ -330,35 +429,63 @@ class MetricsCollector:
         # Determine database health (assume healthy if no errors)
         database_available = True  # TODO: Add database health check
 
-        # Overall status
-        status = 'healthy'
+        # Collect alerts and determine overall status
+        alerts = []
+        status = HealthStatus.HEALTHY
+        recommendations = []
 
-        # Degrade if success rates drop
-        if llm_available and llm_success_rate < 0.95:
-            status = 'degraded'
+        # Check LLM metrics against thresholds
+        if llm_available:
+            if llm_success_rate < ALERTING_THRESHOLDS['llm_success_rate']['critical']:
+                status = HealthStatus.UNHEALTHY
+                alerts.append(f"LLM success rate critical: {llm_success_rate:.1%} < {ALERTING_THRESHOLDS['llm_success_rate']['critical']:.1%}")
+                recommendations.append("Check LLM service status and logs")
+                recommendations.append("Run: obra logs --level=ERROR --since='10m'")
+            elif llm_success_rate < ALERTING_THRESHOLDS['llm_success_rate']['warning']:
+                if status == HealthStatus.HEALTHY:
+                    status = HealthStatus.DEGRADED
+                alerts.append(f"LLM success rate low: {llm_success_rate:.1%} < {ALERTING_THRESHOLDS['llm_success_rate']['warning']:.1%}")
+                recommendations.append("Monitor LLM service for issues")
 
-        if agent_available and agent_success_rate < 0.90:
-            status = 'degraded'
+            if llm_latency_p95 > ALERTING_THRESHOLDS['llm_latency_p95']['critical']:
+                status = HealthStatus.UNHEALTHY
+                alerts.append(f"LLM latency critical: {llm_latency_p95:.0f}ms > {ALERTING_THRESHOLDS['llm_latency_p95']['critical']}ms")
+                recommendations.append("LLM service overloaded - consider scaling or caching")
+            elif llm_latency_p95 > ALERTING_THRESHOLDS['llm_latency_p95']['warning']:
+                if status == HealthStatus.HEALTHY:
+                    status = HealthStatus.DEGRADED
+                alerts.append(f"LLM latency elevated: {llm_latency_p95:.0f}ms > {ALERTING_THRESHOLDS['llm_latency_p95']['warning']}ms")
+                recommendations.append("Monitor LLM service load")
 
-        # Degrade if latency too high
-        if llm_latency_p95 > 5000:  # 5 seconds
-            status = 'degraded'
-
-        # Unhealthy if critical components down
-        if llm_available and llm_success_rate < 0.80:
-            status = 'unhealthy'
-
-        if agent_available and agent_success_rate < 0.70:
-            status = 'unhealthy'
+        # Check agent metrics
+        if agent_available:
+            if agent_success_rate < ALERTING_THRESHOLDS['agent_success_rate']['critical']:
+                status = HealthStatus.UNHEALTHY
+                alerts.append(f"Agent success rate critical: {agent_success_rate:.1%} < {ALERTING_THRESHOLDS['agent_success_rate']['critical']:.1%}")
+                recommendations.append("Check agent communication logs")
+            elif agent_success_rate < ALERTING_THRESHOLDS['agent_success_rate']['warning']:
+                if status == HealthStatus.HEALTHY:
+                    status = HealthStatus.DEGRADED
+                alerts.append(f"Agent success rate low: {agent_success_rate:.1%} < {ALERTING_THRESHOLDS['agent_success_rate']['warning']:.1%}")
 
         return {
-            'status': status,
-            'llm_available': llm_available,
-            'llm_success_rate': llm_success_rate,
-            'llm_latency_p95': llm_latency_p95,
-            'agent_available': agent_available,
-            'agent_success_rate': agent_success_rate,
-            'database_available': database_available,
+            'status': status.value,
+            'alerts': alerts,
+            'llm': {
+                'available': llm_available,
+                'success_rate': llm_success_rate,
+                'latency_p95': llm_latency_p95,
+                'request_count': llm_metrics['count']
+            },
+            'agent': {
+                'available': agent_available,
+                'success_rate': agent_success_rate,
+                'execution_count': agent_metrics['count']
+            },
+            'database': {
+                'available': database_available
+            },
+            'recommendations': recommendations,
             'timestamp': datetime.utcnow().isoformat()
         }
 

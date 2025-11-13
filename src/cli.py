@@ -1648,15 +1648,27 @@ def health(ctx):
 
         click.echo()
 
-        # Recommendations
-        if status != 'healthy':
+        # Alerts (from enhanced health status)
+        if 'alerts' in health_status and health_status['alerts']:
+            click.echo("Alerts:")
+            for alert in health_status['alerts']:
+                click.secho(f"  ⚠ {alert}", fg='yellow')
+            click.echo()
+
+        # Recommendations (from enhanced health status)
+        if 'recommendations' in health_status and health_status['recommendations']:
             click.echo("Recommendations:")
-            if health_status['llm_success_rate'] < 0.95:
+            for rec in health_status['recommendations']:
+                click.echo(f"  • {rec}")
+            click.echo()
+        elif status != 'healthy':
+            click.echo("Recommendations:")
+            if health_status.get('llm', {}).get('success_rate', 1.0) < 0.95:
                 click.echo("  ⚠ LLM success rate low - check LLM connectivity")
                 click.echo("     Run: obra llm status")
-            if health_status['agent_success_rate'] < 0.90:
+            if health_status.get('agent', {}).get('success_rate', 1.0) < 0.90:
                 click.echo("  ⚠ Agent success rate low - check agent configuration")
-            if health_status['llm_latency_p95'] > 5000:
+            if health_status.get('llm', {}).get('latency_p95', 0) > 5000:
                 click.echo("  ⚠ High LLM latency - consider scaling or caching")
             click.echo()
 
@@ -1665,6 +1677,185 @@ def health(ctx):
 
     except Exception as e:
         click.echo(f"✗ Health check failed: {e}", err=True)
+        import traceback
+        if ctx.obj.get('verbose'):
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--window', default='1h', help='Time window (e.g., 1h, 30m, 5m)')
+@click.pass_context
+def metrics(ctx, window: str):
+    """Display detailed system metrics.
+
+    Shows:
+    - LLM request metrics (count, success rate, latency percentiles)
+    - Agent execution metrics (count, success rate, avg duration)
+    - NL command metrics (count, success rate, by operation type)
+
+    Examples:
+        $ obra metrics
+        $ obra metrics --window=30m
+        $ obra metrics --window=2h
+    """
+    try:
+        from src.core.metrics import get_metrics_collector
+
+        click.echo()
+        click.secho(f"OBRA SYSTEM METRICS (last {window})", bold=True)
+        click.echo("="*70 + "\n")
+
+        metrics_collector = get_metrics_collector()
+
+        # LLM Metrics
+        llm_data = metrics_collector.get_llm_metrics()
+        click.secho("LLM Metrics:", bold=True)
+        click.echo("━"*50)
+        click.echo(f"  Requests: {llm_data['count']}")
+        if llm_data['count'] > 0:
+            click.echo(f"  Success Rate: {llm_data['success_rate']:.1%}")
+            click.echo()
+            click.echo("  Latency:")
+            click.echo(f"    P50: {llm_data['latency_p50']:.0f}ms")
+            click.echo(f"    P95: {llm_data['latency_p95']:.0f}ms")
+            click.echo(f"    P99: {llm_data['latency_p99']:.0f}ms")
+            click.echo(f"    Avg: {llm_data['avg_latency']:.0f}ms")
+
+            if llm_data['by_provider']:
+                click.echo()
+                click.echo("  By Provider:")
+                for provider, data in llm_data['by_provider'].items():
+                    click.echo(f"    {provider}: {data['count']} requests ({data['success_rate']:.1%} success)")
+        else:
+            click.echo("  No requests in time window")
+
+        click.echo()
+
+        # Agent Metrics
+        agent_data = metrics_collector.get_agent_metrics()
+        click.secho("Agent Metrics:", bold=True)
+        click.echo("━"*50)
+        click.echo(f"  Executions: {agent_data['count']}")
+        if agent_data['count'] > 0:
+            click.echo(f"  Success Rate: {agent_data['success_rate']:.1%}")
+            click.echo(f"  Avg Duration: {agent_data['avg_duration']:.1f}s")
+            click.echo(f"  Files Modified: {agent_data['total_files_modified']}")
+        else:
+            click.echo("  No executions in time window")
+
+        click.echo()
+
+        # NL Command Metrics
+        nl_data = metrics_collector.get_nl_command_metrics()
+        click.secho("NL Command Metrics:", bold=True)
+        click.echo("━"*50)
+        click.echo(f"  Commands: {nl_data['count']}")
+        if nl_data['count'] > 0:
+            click.echo(f"  Success Rate: {nl_data['success_rate']:.1%}")
+            click.echo(f"  Avg Latency: {nl_data['avg_latency']:.0f}ms")
+
+            if nl_data['by_operation']:
+                click.echo()
+                click.echo("  By Operation:")
+                for operation, data in nl_data['by_operation'].items():
+                    click.echo(f"    {operation}: {data['count']} commands ({data['success_rate']:.1%} success)")
+        else:
+            click.echo("  No commands in time window")
+
+        click.echo()
+        click.echo("="*70)
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Metrics display failed: {e}", err=True)
+        import traceback
+        if ctx.obj.get('verbose'):
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--event', help='Filter by event type (e.g., llm_request, nl_command)')
+@click.option('--level', help='Filter by log level (DEBUG, INFO, WARNING, ERROR)')
+@click.option('--correlation-id', help='Filter by correlation ID')
+@click.option('--since', default='1h', help='Time window (e.g., 5m, 1h, 2d)')
+@click.option('--limit', default=100, help='Maximum entries to display')
+@click.pass_context
+def logs(ctx, event: Optional[str], level: Optional[str], correlation_id: Optional[str], since: str, limit: int):
+    """Query structured logs with filters.
+
+    Filters logs by event type, level, correlation ID, or time window.
+
+    Examples:
+        $ obra logs
+        $ obra logs --event=nl_command --since=5m
+        $ obra logs --level=ERROR --since=1h
+        $ obra logs --correlation-id=abc123
+    """
+    try:
+        from src.core.logging_config import query_logs
+
+        # Query logs
+        results = query_logs(
+            event=event,
+            level=level,
+            correlation_id=correlation_id,
+            since=since,
+            limit=limit
+        )
+
+        if not results:
+            click.echo("No matching log entries found.")
+            click.echo()
+            click.echo("Tips:")
+            click.echo("  • Check if logs directory exists: ls logs/")
+            click.echo("  • Verify log file: ls logs/obra.log")
+            click.echo("  • Try wider time window: --since=24h")
+            return
+
+        click.echo()
+        click.secho(f"Found {len(results)} log entries (showing up to {limit})", bold=True)
+        click.echo("="*70 + "\n")
+
+        for i, entry in enumerate(results):
+            timestamp = entry.get('timestamp', 'N/A')
+            event_name = entry.get('event', 'unknown')
+            corr_id = entry.get('correlation_id', 'none')
+
+            # Color code by level if present
+            log_level = entry.get('level', 'INFO')
+            if log_level == 'ERROR':
+                color = 'red'
+            elif log_level == 'WARNING':
+                color = 'yellow'
+            else:
+                color = None
+
+            click.secho(f"{timestamp} [{event_name}] correlation_id={corr_id}", fg=color)
+
+            # Display relevant fields (skip timestamp, event, correlation_id)
+            for key, value in entry.items():
+                if key not in ['timestamp', 'event', 'correlation_id', 'logger', 'level']:
+                    if isinstance(value, (int, float)):
+                        click.echo(f"  {key}: {value}")
+                    else:
+                        # Truncate long values
+                        value_str = str(value)
+                        if len(value_str) > 100:
+                            value_str = value_str[:100] + "..."
+                        click.echo(f"  {key}: {value_str}")
+
+            # Add separator between entries
+            if i < len(results) - 1:
+                click.echo()
+
+        click.echo()
+        click.echo("="*70)
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Log query failed: {e}", err=True)
         import traceback
         if ctx.obj.get('verbose'):
             traceback.print_exc()

@@ -341,12 +341,13 @@ def get_structured_logger(name: str) -> StructuredLogger:
     return _logger_cache[name]
 
 
-def configure_logging(level: str = 'INFO', format_json: bool = True):
+def configure_logging(level: str = 'INFO', format_json: bool = True, log_file: Optional[str] = None):
     """Configure global logging settings.
 
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR)
         format_json: Whether to use JSON formatting (default: True)
+        log_file: Optional file path for logging (default: logs/obra.log)
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -357,8 +358,8 @@ def configure_logging(level: str = 'INFO', format_json: bool = True):
     # Remove existing handlers
     root_logger.handlers = []
 
-    # Add new handler
-    handler = logging.StreamHandler()
+    # Console handler
+    console_handler = logging.StreamHandler()
 
     if format_json:
         # JSON formatter (structured logging)
@@ -369,5 +370,128 @@ def configure_logging(level: str = 'INFO', format_json: bool = True):
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
 
-    handler.setFormatter(formatter)
-    root_logger.addHandler(handler)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # File handler (for log querying)
+    if log_file is None:
+        import os
+        log_file = 'logs/obra.log'
+        os.makedirs('logs', exist_ok=True)
+
+    if log_file:
+        import os
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter('%(message)s'))  # Always JSON for file
+        root_logger.addHandler(file_handler)
+
+
+def query_logs(
+    event: Optional[str] = None,
+    level: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: int = 100,
+    log_file: str = 'logs/obra.log'
+) -> List[Dict[str, Any]]:
+    """Query structured logs with filters.
+
+    Args:
+        event: Filter by event type (e.g., 'llm_request', 'nl_command')
+        level: Filter by log level (DEBUG, INFO, WARNING, ERROR)
+        correlation_id: Filter by correlation ID
+        since: Filter by time (e.g., '5m', '1h', '1d', ISO timestamp)
+        limit: Maximum number of entries to return
+        log_file: Path to log file (default: logs/obra.log)
+
+    Returns:
+        List of matching log entries (most recent first)
+    """
+    import os
+
+    if not os.path.exists(log_file):
+        return []
+
+    # Parse since time
+    cutoff_time = None
+    if since:
+        cutoff_time = _parse_since_time(since)
+
+    # Read log file and filter
+    matching_entries = []
+
+    try:
+        with open(log_file, 'r') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+
+                    # Apply filters
+                    if event and entry.get('event') != event:
+                        continue
+
+                    if level and entry.get('level', 'INFO') != level:
+                        continue
+
+                    if correlation_id and entry.get('correlation_id') != correlation_id:
+                        continue
+
+                    if cutoff_time:
+                        entry_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
+                        if entry_time < cutoff_time:
+                            continue
+
+                    matching_entries.append(entry)
+
+                except (json.JSONDecodeError, KeyError):
+                    # Skip malformed entries
+                    continue
+
+        # Return most recent first
+        matching_entries.reverse()
+
+        return matching_entries[:limit]
+
+    except Exception as e:
+        # Return empty list on error
+        return []
+
+
+def _parse_since_time(since: str) -> datetime:
+    """Parse 'since' time string into datetime.
+
+    Args:
+        since: Time string (e.g., '5m', '1h', '2d', ISO timestamp)
+
+    Returns:
+        Datetime object
+    """
+    from datetime import timedelta
+
+    # Try parsing as ISO timestamp first
+    try:
+        return datetime.fromisoformat(since.replace('Z', '+00:00'))
+    except ValueError:
+        pass
+
+    # Parse relative time (e.g., '5m', '1h', '2d')
+    import re
+    match = re.match(r'^(\d+)([mhd])$', since.lower())
+    if match:
+        value = int(match.group(1))
+        unit = match.group(2)
+
+        if unit == 'm':
+            delta = timedelta(minutes=value)
+        elif unit == 'h':
+            delta = timedelta(hours=value)
+        elif unit == 'd':
+            delta = timedelta(days=value)
+        else:
+            delta = timedelta(hours=1)  # Default to 1 hour
+
+        return datetime.utcnow() - delta
+
+    # Default to 1 hour ago
+    return datetime.utcnow() - timedelta(hours=1)
