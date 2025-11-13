@@ -1,0 +1,551 @@
+# Machine-Optimized Implementation Plan
+# Test Profile System for Multi-LLM Testing
+# Optimized for LLM implementation by Claude Code
+
+version: "1.0"
+created: "2025-11-13"
+status: "proposed"
+estimated_hours: 6
+priority: "P2"
+
+# Quick Context
+context:
+  problem: "Testing with multiple LLMs (OpenAI, Anthropic, etc.) requires manual env var setup"
+  solution: "Profile-based config system with one command: pytest --profile=openai"
+  benefit: "Easy LLM switching, self-documenting, CI/CD friendly"
+
+current_state:
+  works: "Tests can use different LLMs via environment variables"
+  pain: "Manual, error-prone, not scalable to multiple LLMs"
+
+desired_state:
+  command: "pytest --profile=openai"
+  result: "All LLM config loaded automatically from profile"
+
+# Implementation Tasks
+tasks:
+  # ========== TASK 1: Profile Loader Utility ==========
+  task1:
+    name: "Create Profile Loader Utility"
+    file: "src/testing/profile_loader.py"
+    lines: 200
+    duration: "45 minutes"
+    dependencies: []
+
+    functions:
+      - name: "load_profile"
+        signature: "def load_profile(profile_name: str, base_config: Config) -> Config"
+        purpose: "Load profile YAML and merge with base config"
+        returns: "Merged Config object"
+        raises: ["ProfileNotFoundError", "ProfileValidationError"]
+
+      - name: "validate_profile"
+        signature: "def validate_profile(profile_data: dict) -> None"
+        purpose: "Validate profile structure and required fields"
+        checks:
+          - "Required fields present: profile_name, llm.type, llm.model"
+          - "LLM type is supported (ollama, openai-codex)"
+          - "Required env vars are set"
+        raises: ["ProfileValidationError"]
+
+      - name: "merge_with_config"
+        signature: "def merge_with_config(profile_data: dict, base_config: Config) -> Config"
+        purpose: "Deep merge profile into config object"
+        logic: "Profile values override base config values"
+
+      - name: "check_required_env_vars"
+        signature: "def check_required_env_vars(required: List[str]) -> List[str]"
+        purpose: "Check which required env vars are missing"
+        returns: "List of missing env var names"
+
+      - name: "get_profile_path"
+        signature: "def get_profile_path(profile_name: str) -> Path"
+        purpose: "Get path to profile file"
+        logic: "config/profiles/test-{profile_name}.yaml"
+
+    exceptions:
+      - name: "ProfileNotFoundError"
+        base: "Exception"
+        message: "Profile '{name}' not found in config/profiles/"
+
+      - name: "ProfileValidationError"
+        base: "Exception"
+        message: "Profile validation failed: {reason}"
+
+    example_usage: |
+      from src.testing.profile_loader import load_profile
+      from src.core.config import Config
+
+      base_config = Config.load()
+      profile_config = load_profile("openai", base_config)
+      # profile_config now has OpenAI settings
+
+    tests:
+      location: "tests/unit/test_profile_loader.py"
+      count: 10
+      scenarios:
+        - "Load valid profile successfully"
+        - "Raise ProfileNotFoundError for missing profile"
+        - "Validate profile structure"
+        - "Check required env vars"
+        - "Merge profile with base config"
+        - "Handle invalid YAML"
+        - "Handle missing required fields"
+        - "Override config values correctly"
+        - "Preserve base config when profile incomplete"
+        - "Error message shows helpful info"
+
+  # ========== TASK 2: Pytest Plugin Integration ==========
+  task2:
+    name: "Enhance Pytest Fixtures with Profile Support"
+    file: "tests/conftest.py"
+    lines_added: 80
+    duration: "45 minutes"
+    dependencies: ["task1"]
+
+    changes:
+      - location: "pytest_configure hook"
+        action: "Add --profile CLI option"
+        code_pattern: |
+          def pytest_addoption(parser):
+              parser.addoption(
+                  "--profile",
+                  action="store",
+                  default="ollama",
+                  help="Test profile to use (ollama, openai, anthropic, etc.)"
+              )
+
+      - location: "test_config fixture"
+        action: "Modify to use profile if specified"
+        code_pattern: |
+          @pytest.fixture
+          def test_config(request):
+              profile_name = request.config.getoption("--profile")
+              base_config = Config.load()
+
+              if profile_name:
+                  from src.testing.profile_loader import load_profile
+                  return load_profile(profile_name, base_config)
+
+              return base_config
+
+      - location: "New fixture"
+        action: "Add profile_name fixture"
+        code_pattern: |
+          @pytest.fixture
+          def profile_name(request):
+              """Get active profile name."""
+              return request.config.getoption("--profile")
+
+    validation:
+      - "pytest --help shows --profile option"
+      - "pytest --profile=openai loads OpenAI profile"
+      - "pytest (no flag) defaults to Ollama profile"
+      - "Invalid profile name shows helpful error"
+
+    tests:
+      location: "tests/unit/test_pytest_profile_integration.py"
+      count: 6
+      scenarios:
+        - "Default profile (ollama) used when no --profile flag"
+        - "--profile=openai loads OpenAI profile"
+        - "Invalid profile name raises clear error"
+        - "test_config fixture uses profile"
+        - "profile_name fixture returns correct name"
+        - "Profile config overrides base config"
+
+  # ========== TASK 3: Profile Files ==========
+  task3:
+    name: "Create Profile Files"
+    directory: "config/profiles/"
+    count: 2
+    duration: "30 minutes"
+    dependencies: []
+
+    profiles:
+      - name: "test-ollama.yaml"
+        description: "Default profile for local Ollama/Qwen testing"
+        content:
+          profile_name: "ollama"
+          description: "Local Ollama with Qwen 2.5 Coder 32B (default)"
+
+          llm:
+            type: "ollama"
+            model: "qwen2.5-coder:32b"
+            base_url: "http://localhost:11434"
+            timeout: 120
+            temperature: 0.1
+
+          env_vars:
+            required: []  # No API keys needed for local
+            optional:
+              - "OLLAMA_HOST"  # Override default host
+
+          test_config:
+            skip_slow_tests: false
+            max_test_duration: 300
+
+          notes: |
+            Default profile for local development and CI/CD.
+            Requires Ollama service running locally or accessible at base_url.
+
+      - name: "test-openai.yaml"
+        description: "OpenAI Codex profile for testing with GPT-5"
+        content:
+          profile_name: "openai-codex"
+          description: "OpenAI Codex (GPT-5) for testing"
+
+          llm:
+            type: "openai-codex"
+            model: "gpt-5-codex"
+            timeout: 120
+            temperature: 0.1
+            max_tokens: 8000
+            retry_attempts: 3
+
+          env_vars:
+            required:
+              - "OPENAI_API_KEY"
+            optional:
+              - "OPENAI_ORG_ID"
+              - "OPENAI_BASE_URL"  # Override default API endpoint
+
+          test_config:
+            skip_slow_tests: false
+            max_test_duration: 300
+
+          notes: |
+            Requires OPENAI_API_KEY environment variable.
+            Get API key from: https://platform.openai.com/api-keys
+
+            Usage:
+              export OPENAI_API_KEY=sk-...
+              pytest --profile=openai tests/integration/
+
+    validation:
+      - "Profile files are valid YAML"
+      - "All required fields present"
+      - "Comments explain usage clearly"
+      - "No secrets in files (only env var names)"
+
+    gitignore:
+      add: |
+        # Test profiles with secrets (never commit)
+        config/profiles/*secret*.yaml
+        config/profiles/*private*.yaml
+
+  # ========== TASK 4: Documentation ==========
+  task4:
+    name: "Create Documentation"
+    duration: "30 minutes"
+    dependencies: ["task1", "task2", "task3"]
+
+    documents:
+      - file: "docs/guides/TEST_PROFILES_GUIDE.md"
+        content:
+          - "Overview of profile system"
+          - "How to use profiles (pytest --profile=name)"
+          - "Available profiles and their purposes"
+          - "How to create a new profile"
+          - "Environment variable setup"
+          - "Troubleshooting common issues"
+        examples:
+          - "Test with default (Ollama): pytest tests/integration/"
+          - "Test with OpenAI: pytest --profile=openai tests/integration/"
+          - "Create custom profile for Anthropic Claude"
+          - "CI/CD matrix testing across multiple profiles"
+
+      - file: "docs/development/TEST_GUIDELINES.md"
+        section: "Using Test Profiles"
+        additions:
+          - "Profile system overview"
+          - "Quick start: pytest --profile=openai"
+          - "Link to TEST_PROFILES_GUIDE.md"
+          - "When to use which profile"
+
+      - file: "README.md"
+        section: "Testing"
+        additions:
+          - "Mention profile system"
+          - "Quick example: pytest --profile=openai"
+          - "Link to docs/guides/TEST_PROFILES_GUIDE.md"
+
+  # ========== TASK 5: Unit Tests ==========
+  task5:
+    name: "Write Unit Tests for Profile System"
+    duration: "30 minutes"
+    dependencies: ["task1", "task2"]
+
+    test_files:
+      - file: "tests/unit/test_profile_loader.py"
+        count: 10
+        coverage_target: 95
+        tests:
+          - "test_load_valid_profile_ollama"
+          - "test_load_valid_profile_openai"
+          - "test_load_profile_not_found"
+          - "test_validate_profile_success"
+          - "test_validate_profile_missing_field"
+          - "test_check_required_env_vars_all_set"
+          - "test_check_required_env_vars_missing"
+          - "test_merge_with_config_overrides"
+          - "test_get_profile_path"
+          - "test_profile_validation_error_message"
+
+      - file: "tests/unit/test_pytest_profile_integration.py"
+        count: 6
+        coverage_target: 90
+        tests:
+          - "test_default_profile_ollama"
+          - "test_profile_flag_openai"
+          - "test_invalid_profile_error"
+          - "test_test_config_fixture_uses_profile"
+          - "test_profile_name_fixture"
+          - "test_profile_overrides_base_config"
+
+    fixtures:
+      location: "tests/fixtures/profiles/"
+      files:
+        - "test-fixture-valid.yaml"
+        - "test-fixture-invalid.yaml"
+        - "test-fixture-missing-field.yaml"
+
+  # ========== TASK 6: Integration Tests ==========
+  task6:
+    name: "Write Integration Tests"
+    duration: "30 minutes"
+    dependencies: ["task1", "task2", "task3"]
+
+    test_file: "tests/integration/test_profile_system_e2e.py"
+    count: 5
+    tests:
+      - name: "test_profile_ollama_loads_and_connects"
+        description: "Verify Ollama profile loads and LLM connects"
+        steps:
+          - "Load Ollama profile"
+          - "Initialize LLM plugin"
+          - "Send test prompt"
+          - "Verify response"
+
+      - name: "test_profile_openai_requires_api_key"
+        description: "Verify OpenAI profile requires OPENAI_API_KEY"
+        steps:
+          - "Unset OPENAI_API_KEY"
+          - "Try to load OpenAI profile"
+          - "Expect ProfileValidationError with clear message"
+
+      - name: "test_profile_openai_loads_with_api_key"
+        description: "Verify OpenAI profile works with API key"
+        steps:
+          - "Set OPENAI_API_KEY (skip if not available)"
+          - "Load OpenAI profile"
+          - "Initialize LLM plugin"
+          - "Send test prompt"
+          - "Verify response"
+        markers: ["integration", "requires_api_key"]
+
+      - name: "test_profile_switching_between_tests"
+        description: "Verify can switch profiles between tests"
+        steps:
+          - "Load Ollama profile, test works"
+          - "Load OpenAI profile, test works"
+          - "Verify no state pollution"
+
+      - name: "test_profile_config_overrides_base"
+        description: "Verify profile values override base config"
+        steps:
+          - "Load base config (Ollama)"
+          - "Load OpenAI profile"
+          - "Assert llm.type == 'openai-codex'"
+          - "Assert llm.model == 'gpt-5-codex'"
+
+  # ========== TASK 7: CI/CD Integration (Optional) ==========
+  task7:
+    name: "CI/CD Integration with Profiles"
+    duration: "30 minutes (optional)"
+    dependencies: ["task1", "task2", "task3"]
+    optional: true
+
+    github_actions:
+      file: ".github/workflows/test-profiles.yml"
+      matrix:
+        profiles: ["ollama"]  # Add "openai" when API key available
+
+      jobs:
+        test:
+          strategy:
+            matrix:
+              profile: ["ollama"]
+          steps:
+            - name: "Run tests with profile"
+              run: "pytest --profile=${{ matrix.profile }} tests/integration/"
+
+            - name: "Report results"
+              if: "always()"
+              uses: "actions/upload-artifact@v3"
+              with:
+                name: "test-results-${{ matrix.profile }}"
+                path: "test-results/"
+
+      secrets:
+        OPENAI_API_KEY: "Store in GitHub Secrets"
+        # Only inject if profile needs it
+
+  # ========== TASK 8: Validation & Polish ==========
+  task8:
+    name: "Validation and Polish"
+    duration: "30 minutes"
+    dependencies: ["task1", "task2", "task3", "task4", "task5", "task6"]
+
+    validations:
+      - check: "pytest --profile=ollama works"
+        command: "pytest --profile=ollama tests/integration/ -v"
+
+      - check: "pytest --profile=openai works (with API key)"
+        command: "export OPENAI_API_KEY=... && pytest --profile=openai tests/integration/ -v"
+
+      - check: "pytest --profile=invalid shows clear error"
+        command: "pytest --profile=invalid tests/integration/"
+        expected: "ProfileNotFoundError: Profile 'invalid' not found"
+
+      - check: "All unit tests pass"
+        command: "pytest tests/unit/test_profile_*.py -v"
+
+      - check: "Documentation is clear"
+        manual: true
+        checklist:
+          - "TEST_PROFILES_GUIDE.md explains usage"
+          - "Examples are copy-pasteable"
+          - "Troubleshooting section covers common issues"
+
+    polish:
+      - "Helpful error messages with actionable suggestions"
+      - "Profile files have clear comments"
+      - "Documentation uses consistent terminology"
+      - "Code follows existing style conventions"
+
+# File Structure (What Gets Created)
+file_structure:
+  new_files:
+    - "src/testing/__init__.py"
+    - "src/testing/profile_loader.py"
+    - "config/profiles/test-ollama.yaml"
+    - "config/profiles/test-openai.yaml"
+    - "docs/guides/TEST_PROFILES_GUIDE.md"
+    - "tests/unit/test_profile_loader.py"
+    - "tests/unit/test_pytest_profile_integration.py"
+    - "tests/integration/test_profile_system_e2e.py"
+    - "tests/fixtures/profiles/test-fixture-valid.yaml"
+    - "tests/fixtures/profiles/test-fixture-invalid.yaml"
+
+  modified_files:
+    - "tests/conftest.py"  # Add --profile option, modify test_config fixture
+    - "docs/development/TEST_GUIDELINES.md"  # Add profile section
+    - "README.md"  # Mention profile system
+    - ".gitignore"  # Add profile secret patterns
+
+# Acceptance Criteria
+acceptance_criteria:
+  functional:
+    - "pytest --profile=ollama runs tests with Ollama config"
+    - "pytest --profile=openai runs tests with OpenAI config (if API key set)"
+    - "pytest (no flag) defaults to Ollama profile"
+    - "Invalid profile name shows helpful error"
+    - "Missing API key shows clear error with setup instructions"
+    - "Profile values override base config correctly"
+
+  quality:
+    - "≥90% test coverage on profile loader"
+    - "All unit tests pass"
+    - "All integration tests pass (with available LLMs)"
+    - "Documentation is clear and complete"
+    - "Code follows project style guidelines"
+
+  usability:
+    - "One command switches LLM: pytest --profile=openai"
+    - "Profile files are self-documenting"
+    - "Error messages are actionable"
+    - "New profiles can be created in <10 minutes"
+
+# Testing Strategy
+testing:
+  unit_tests:
+    count: 16
+    coverage: 95
+    location: "tests/unit/"
+
+  integration_tests:
+    count: 5
+    duration: "5-10 minutes"
+    location: "tests/integration/"
+    requires:
+      - "Ollama running locally"
+      - "OpenAI API key (optional, test skips if missing)"
+
+  manual_validation:
+    - "Test with Ollama profile"
+    - "Test with OpenAI profile (if API key available)"
+    - "Test invalid profile name"
+    - "Test missing API key error message"
+    - "Verify documentation clarity"
+
+# Rollout Plan
+rollout:
+  phase1:
+    name: "Internal Testing"
+    duration: "1 day"
+    tasks:
+      - "Implement core functionality"
+      - "Test with Ollama locally"
+      - "Test with OpenAI (if key available)"
+      - "Fix any bugs"
+
+  phase2:
+    name: "Documentation & Polish"
+    duration: "1 day"
+    tasks:
+      - "Complete documentation"
+      - "Add examples"
+      - "Ensure error messages helpful"
+
+  phase3:
+    name: "Team Rollout"
+    duration: "1 week"
+    tasks:
+      - "Share TEST_PROFILES_GUIDE.md with team"
+      - "Demo in team meeting"
+      - "Collect feedback"
+      - "Iterate on UX"
+
+# Success Metrics
+metrics:
+  technical:
+    - "Profile loading time <100ms"
+    - "≥95% test coverage on new code"
+    - "0 secrets committed to repo"
+    - "All tests pass with both profiles"
+
+  usability:
+    - "Developer can switch LLM in <1 command"
+    - "New profile created in <10 minutes"
+    - "Error messages lead to resolution"
+    - "Team adopts profile system (>80% usage)"
+
+  quality:
+    - "0 P0/P1 bugs after 1 week"
+    - "Documentation rated clear (team survey)"
+    - "Profile system simplifies testing (team feedback)"
+
+# Future Enhancements (Post-MVP)
+future:
+  v1_1:
+    - "Profile inheritance (base + overrides)"
+    - "JSON Schema validation for profiles"
+    - "Interactive profile creator: obra test profile create"
+    - "Profile performance comparison report"
+
+  v1_2:
+    - "Remote profile repository"
+    - "Profile versioning"
+    - "Automatic profile selection by test type"
+    - "Cost tracking per profile"

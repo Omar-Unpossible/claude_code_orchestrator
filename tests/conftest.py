@@ -11,12 +11,73 @@ from src.plugins.registry import AgentRegistry, LLMRegistry
 from src.core.config import Config
 
 
-@pytest.fixture
-def test_config():
-    """Create test configuration with mock data.
+def pytest_addoption(parser):
+    """Add custom command-line options to pytest.
 
-    Returns a Mock object that mimics Config interface for testing.
+    Adds --profile option to enable testing with different LLM providers.
     """
+    parser.addoption(
+        "--profile",
+        action="store",
+        default=None,
+        help="Test profile to use (ollama, openai, etc.). "
+             "Profiles are loaded from config/profiles/test-{profile}.yaml. "
+             "If not specified, uses mock config for unit tests."
+    )
+
+
+@pytest.fixture
+def test_config(request):
+    """Create test configuration with optional profile support.
+
+    If --profile option is provided, loads configuration from the specified
+    test profile (config/profiles/test-{profile}.yaml). Otherwise, returns
+    a Mock object with test data for unit tests.
+
+    Args:
+        request: pytest request fixture (provides access to CLI options)
+
+    Returns:
+        Config object (from profile) or Mock object (for unit tests)
+
+    Example:
+        # Unit tests (no profile, uses mock)
+        pytest tests/unit/test_profile_loader.py
+
+        # Integration tests with Ollama
+        pytest --profile=ollama tests/integration/
+
+        # Integration tests with OpenAI
+        pytest --profile=openai tests/integration/
+    """
+    profile_name = request.config.getoption("--profile")
+
+    # If profile specified, load it
+    if profile_name:
+        from src.testing.profile_loader import (
+            load_profile,
+            ProfileNotFoundError,
+            ProfileValidationError
+        )
+
+        try:
+            base_config = Config.load()
+            return load_profile(profile_name, base_config)
+        except ProfileNotFoundError as e:
+            pytest.exit(
+                f"\nProfile Error: {e}\n\n"
+                f"Available profiles can be found in: config/profiles/\n"
+                f"Usage: pytest --profile=ollama tests/integration/",
+                returncode=1
+            )
+        except ProfileValidationError as e:
+            pytest.exit(
+                f"\nProfile Validation Error: {e}\n\n"
+                f"Check the profile file for missing fields or environment variables.",
+                returncode=1
+            )
+
+    # No profile specified, use mock config for unit tests
     mock_config = MagicMock(spec=Config)
     test_data = {
         'database': {'url': 'sqlite:///:memory:'},
@@ -60,6 +121,26 @@ def test_config():
     mock_config.get = get_nested
 
     return mock_config
+
+
+@pytest.fixture
+def profile_name(request):
+    """Get active test profile name.
+
+    Returns the profile name specified via --profile option,
+    or None if no profile was specified.
+
+    Returns:
+        Profile name (str) or None
+
+    Example:
+        def test_uses_correct_llm(profile_name, test_config):
+            if profile_name == "openai":
+                assert test_config.get('llm.type') == 'openai-codex'
+            elif profile_name == "ollama":
+                assert test_config.get('llm.type') == 'ollama'
+    """
+    return request.config.getoption("--profile")
 
 
 @pytest.fixture(autouse=True)

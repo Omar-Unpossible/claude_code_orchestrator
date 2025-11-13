@@ -1,0 +1,46 @@
+# Ollama Local LLM Profile (Default)
+# Qwen 2.5 Coder 32B on local Ollama instance
+#
+# This is the default profile for local development and CI/CD testing.
+# It uses Ollama to run Qwen 2.5 Coder locally, requiring no API keys.
+
+profile_name: ollama
+description: Local Ollama with Qwen 2.5 Coder 32B (default for development)
+
+llm:
+  type: ollama
+  model: qwen2.5-coder:32b
+  api_url: http://localhost:11434
+  timeout: 120
+  temperature: 0.1
+
+env_vars:
+  required: []  # No API keys needed for local Ollama
+  optional:
+    - OLLAMA_HOST  # Override default host if needed
+
+test_config:
+  skip_slow_tests: false
+  max_test_duration: 300  # seconds
+
+notes: |
+  Default profile for local development and CI/CD.
+  Requires Ollama service running locally or at api_url.
+
+  Installation:
+    # Install Ollama
+    curl https://ollama.ai/install.sh | sh
+
+    # Pull Qwen 2.5 Coder model
+    ollama pull qwen2.5-coder:32b
+
+  Verify:
+    # Check Ollama is running
+    curl http://localhost:11434/api/tags
+
+  Usage:
+    # Run tests with Ollama (default)
+    pytest tests/integration/
+
+    # Or explicitly
+    pytest --profile=ollama tests/integration/

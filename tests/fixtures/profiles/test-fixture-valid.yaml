@@ -1,0 +1,17 @@
+# Valid test profile for unit tests
+profile_name: test-valid
+description: Valid test profile for unit testing
+
+llm:
+  type: ollama
+  model: test-model:latest
+  timeout: 60
+  temperature: 0.5
+
+env_vars:
+  required: []
+  optional: []
+
+test_config:
+  skip_slow_tests: true
+  max_test_duration: 30

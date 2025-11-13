@@ -42,3 +42,7 @@ Thumbs.db
 run_m2_*.sh
 test
 *.deb
+
+# Test profiles with secrets (never commit)
+config/profiles/*secret*.yaml
+config/profiles/*private*.yaml

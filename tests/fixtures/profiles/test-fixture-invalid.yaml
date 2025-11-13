@@ -1,0 +1,8 @@
+# Invalid test profile (missing required fields)
+profile_name: test-invalid
+description: Invalid profile missing llm.type
+
+llm:
+  # Missing 'type' field (required)
+  model: test-model:latest
+  timeout: 60

@@ -585,6 +585,75 @@ curl http://172.29.144.1:11434/api/tags
 
 ---
 
+## Test Profiles (Multi-LLM Testing)
+
+**New in v1.7.3**: Test profiles enable easy testing with multiple LLM providers without manual environment variable setup.
+
+### Quick Start
+
+```bash
+# Unit tests (mock LLM, no profile needed)
+pytest tests/unit/ -v
+
+# Integration tests with Ollama (default)
+pytest --profile=ollama tests/integration/ -v
+
+# Integration tests with OpenAI Codex
+export OPENAI_API_KEY=sk-...
+pytest --profile=openai tests/integration/ -v
+```
+
+### Available Profiles
+
+- **ollama**: Local Ollama with Qwen 2.5 Coder (default, no cost)
+- **openai**: OpenAI Codex (requires API key, ~$0.10 per run)
+
+### When to Use Profiles
+
+✅ **Use profiles for**:
+- Integration tests that need real LLM
+- Pre-release validation with production LLMs
+- Testing LLM-specific features
+- CI/CD matrix testing
+
+❌ **Don't use profiles for**:
+- Unit tests (always use mock LLM)
+- Frequent local development (use Ollama)
+- Cost-sensitive testing (use mock)
+
+### Creating Custom Profiles
+
+Create `config/profiles/test-{name}.yaml`:
+
+```yaml
+profile_name: your-llm
+description: Description of LLM
+
+llm:
+  type: llm-type
+  model: model-name
+  timeout: 120
+
+env_vars:
+  required:
+    - API_KEY_NAME  # Must be set as environment variable
+
+test_config:
+  skip_slow_tests: false
+  max_test_duration: 300
+```
+
+### Complete Documentation
+
+See [Test Profiles Guide](../guides/TEST_PROFILES_GUIDE.md) for:
+- Detailed usage examples
+- Creating custom profiles
+- Troubleshooting
+- CI/CD integration
+- Best practices
+
+---
+
 ## References
 
 - **Root Cause Analysis:** See WSL2 crash investigation (2025-11-01)
@@ -592,6 +661,7 @@ curl http://172.29.144.1:11434/api/tags
 - **Fixtures:** `tests/conftest.py`
 - **Configuration:** `pytest.ini`
 - **NL Testing:** `docs/testing/NL_TESTING_STRATEGY.md` ⭐ NEW!
+- **Test Profiles:** `docs/guides/TEST_PROFILES_GUIDE.md` ⭐ NEW (v1.7.3)!
 
 ---
 

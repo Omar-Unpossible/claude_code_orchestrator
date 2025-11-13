@@ -1,0 +1,58 @@
+# OpenAI Codex Profile
+# GPT-5 Codex for testing with OpenAI API
+#
+# This profile enables testing with OpenAI's Codex models.
+# Requires OPENAI_API_KEY environment variable.
+
+profile_name: openai-codex
+description: OpenAI Codex (GPT-5) for testing with OpenAI API
+
+llm:
+  type: openai-codex
+  model: gpt-5-codex
+  timeout: 120
+  temperature: 0.1
+  max_tokens: 8000
+  retry_attempts: 3
+
+env_vars:
+  required:
+    - OPENAI_API_KEY  # Get from https://platform.openai.com/api-keys
+  optional:
+    - OPENAI_ORG_ID      # Organization ID (if applicable)
+    - OPENAI_BASE_URL    # Override default API endpoint
+
+test_config:
+  skip_slow_tests: false
+  max_test_duration: 300  # seconds
+
+notes: |
+  Requires OPENAI_API_KEY environment variable.
+
+  Setup:
+    1. Get API key from: https://platform.openai.com/api-keys
+    2. Set environment variable:
+       export OPENAI_API_KEY=sk-...
+    3. Run tests:
+       pytest --profile=openai tests/integration/
+
+  Cost Considerations:
+    - GPT-5 Codex: ~$0.10 per test run (approximate)
+    - Monitor usage at: https://platform.openai.com/usage
+    - Consider using cheaper models for frequent testing
+
+  Alternative Models:
+    - gpt-5-codex: Latest Codex model (recommended)
+    - codex-mini-latest: Cheaper, faster, less capable
+    - o3: Advanced reasoning model
+    - o4-mini: Smaller reasoning model
+
+  Usage:
+    # Set API key first
+    export OPENAI_API_KEY=sk-...
+
+    # Run tests with OpenAI Codex
+    pytest --profile=openai tests/integration/
+
+    # Run specific test
+    pytest --profile=openai tests/integration/test_llm_connectivity.py -v

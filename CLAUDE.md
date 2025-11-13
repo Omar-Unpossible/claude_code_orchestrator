@@ -36,7 +36,7 @@ When starting a new session, read these documents in priority order:
 2. **[docs/design/OBRA_SYSTEM_OVERVIEW.md](docs/design/OBRA_SYSTEM_OVERVIEW.md)** - ⭐ Complete system overview
 3. **[CHANGELOG.md](CHANGELOG.md)** - Recent changes and version history
 4. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** - Technical architecture
-5. **[docs/development/TEST_GUIDELINES.md](docs/development/TEST_GUIDELINES.md)** - ⚠️ CRITICAL: Prevents WSL2 crashes
+5. **[docs/testing/TEST_GUIDELINES.md](docs/testing/TEST_GUIDELINES.md)** - ⚠️ CRITICAL: Prevents WSL2 crashes
 
 ### Key References
 - **Documentation Index**: `docs/README.md` - Browse all docs
@@ -410,7 +410,7 @@ agent.initialize(config.get('agent.config'))
 
 ### ⚠️ CRITICAL: Read TEST_GUIDELINES.md First
 
-**Before writing ANY tests, read [`docs/development/TEST_GUIDELINES.md`](docs/development/TEST_GUIDELINES.md)** to prevent WSL2 crashes.
+**Before writing ANY tests, read [`docs/testing/TEST_GUIDELINES.md`](docs/testing/TEST_GUIDELINES.md)** to prevent WSL2 crashes.
 
 **Key rules:**
 - ⚠️ Max sleep per test: 0.5s (use `fast_time` fixture for longer)
@@ -713,7 +713,7 @@ See `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md` for detailed setup instructions.
 2. Read `docs/design/OBRA_SYSTEM_OVERVIEW.md` for complete system understanding
 3. Review `CHANGELOG.md` for recent changes
 4. Read `docs/architecture/ARCHITECTURE.md` for technical architecture
-5. Read `docs/development/TEST_GUIDELINES.md` if writing tests
+5. Read `docs/testing/TEST_GUIDELINES.md` if writing tests
 
 ### Making Changes
 

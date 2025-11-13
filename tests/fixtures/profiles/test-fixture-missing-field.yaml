@@ -1,0 +1,8 @@
+# Invalid test profile (missing llm section)
+profile_name: test-missing-llm
+description: Invalid profile missing entire llm section
+
+# llm section completely missing
+
+test_config:
+  skip_slow_tests: true

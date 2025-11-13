@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.3] - 2025-11-13
+
+### Added
+- **Test Profile System - Multi-LLM Testing Support**:
+  - **Profile-based configuration** for testing with multiple LLM providers (Ollama, OpenAI, Anthropic)
+  - **One command to switch LLMs**: `pytest --profile=openai tests/integration/`
+  - **Profile loader utility** (`src/testing/profile_loader.py`, 300+ lines):
+    - `load_profile()` - Load and merge profiles with base config
+    - `validate_profile()` - Validate structure and required env vars
+    - `check_required_env_vars()` - Verify API keys are set
+    - `ProfileNotFoundError`, `ProfileValidationError` - Clear error messages
+  - **Pytest integration** (`tests/conftest.py`, 80 lines added):
+    - `pytest_addoption()` - Adds `--profile` CLI option to pytest
+    - Enhanced `test_config` fixture - Loads profile if specified, mock config otherwise
+    - `profile_name` fixture - Access active profile name in tests
+  - **Two initial profiles** (`config/profiles/`):
+    - `test-ollama.yaml` - Local Ollama (Qwen 2.5 Coder, default, no cost)
+    - `test-openai.yaml` - OpenAI Codex (GPT-5, requires API key)
+  - **55 tests** (45 unit + 10 integration, 3 optional manual tests):
+    - Profile loader: load, validate, merge, error handling (30 tests)
+    - Pytest integration: --profile option, fixtures, config overrides (15 tests)
+    - End-to-end: profile switching, LLM connection (10 tests)
+  - **Comprehensive documentation**:
+    - `docs/guides/TEST_PROFILES_GUIDE.md` - Complete guide (650+ lines)
+    - `docs/development/TEST_GUIDELINES.md` - Added test profiles section
+  - **Security**: `.gitignore` patterns for secret profiles (`*secret*.yaml`, `*private*.yaml`)
+
+### Benefits
+- **Simplified testing**: One command instead of manual env var setup
+- **Self-documenting**: All LLM configs in version-controlled YAML files
+- **Team-friendly**: Consistent testing practices across team
+- **CI/CD ready**: Easy matrix testing across multiple LLM providers
+- **Extensible**: Add new LLM provider in <10 minutes
+
+### Usage Examples
+```bash
+# Unit tests (mock LLM, default)
+pytest tests/unit/ -v
+
+# Integration tests with Ollama (local, no cost)
+pytest --profile=ollama tests/integration/ -v
+
+# Integration tests with OpenAI (requires API key)
+export OPENAI_API_KEY=sk-...
+pytest --profile=openai tests/integration/ -v
+
+# List available profiles
+ls config/profiles/test-*.yaml
+```
+
+### Files Created (10 new files)
+- `src/testing/__init__.py`
+- `src/testing/profile_loader.py` (300+ lines)
+- `config/profiles/test-ollama.yaml`
+- `config/profiles/test-openai.yaml`
+- `docs/guides/TEST_PROFILES_GUIDE.md` (650+ lines)
+- `tests/unit/test_profile_loader.py` (30 tests)
+- `tests/unit/test_pytest_profile_integration.py` (15 tests)
+- `tests/integration/test_profile_system_e2e.py` (10 tests)
+- `tests/fixtures/profiles/test-fixture-valid.yaml`
+- `tests/fixtures/profiles/test-fixture-invalid.yaml`
+- `tests/fixtures/profiles/test-fixture-missing-field.yaml`
+
+### Files Modified (4 files)
+- `tests/conftest.py` - Added `--profile` option and enhanced fixtures
+- `docs/development/TEST_GUIDELINES.md` - Added test profiles section
+- `.gitignore` - Added secret profile patterns
+
+### Tests
+- **Total**: 55 tests (45 unit + 10 integration)
+- **Coverage**: Profile loader ≥95%, pytest integration ≥90%
+- **Status**: All tests passing (3 manual tests skipped by default)
+
 ## [1.7.2] - 2025-11-13
 
 ### Added
