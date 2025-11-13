@@ -392,7 +392,7 @@ class CommandValidator:
                     entity = self.state_manager.get_project(context.identifier)
                 else:
                     # Search by name
-                    projects = self.state_manager.get_all_projects()
+                    projects = self.state_manager.list_projects()
                     for proj in projects:
                         if proj.project_name.lower() == context.identifier.lower():
                             entity = proj

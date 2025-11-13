@@ -235,8 +235,8 @@ class TestValidateEntityExists:
         mock_project2.id = 2
         mock_project2.project_name = "Test Project"
 
-        # Add get_all_projects to mock
-        mock_state_manager.get_all_projects = Mock(return_value=[mock_project1, mock_project2])
+        # Add list_projects to mock
+        mock_state_manager.list_projects = Mock(return_value=[mock_project1, mock_project2])
 
         context = OperationContext(
             operation=OperationType.UPDATE,

@@ -63,13 +63,16 @@ def integration_state(tmp_path):
         description="Test story for integration tests"
     )
 
-    # Create test task (returns integer ID)
-    task_id = state.create_task(
+    # Create test task (returns Task object)
+    task = state.create_task(
         project_id=project.id,
-        title="Test Task",
-        description="Test task for integration tests",
-        story_id=story_id
+        task_data={
+            'title': "Test Task",
+            'description': "Test task for integration tests",
+            'story_id': story_id
+        }
     )
+    task_id = task.id
 
     yield state
     state.close()
@@ -82,7 +85,7 @@ def mock_llm():
 
     # Default responses for each classifier
     llm.generate = MagicMock(return_value=json.dumps({
-        "operation": "CREATE",
+        "operation_type": "CREATE",
         "confidence": 0.95,
         "reasoning": "Clear creation command"
     }))
@@ -128,7 +131,7 @@ class TestFullPipelineCREATE:
 
         # Stage 2: Operation Classification
         mock_llm.generate.return_value = json.dumps({
-            "operation": "CREATE",
+            "operation_type": "CREATE",
             "confidence": 0.95,
             "reasoning": "User wants to create something"
         })
@@ -192,7 +195,7 @@ class TestFullPipelineCREATE:
 
         # Stage 7: Execution
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
         assert execution_result.success is True
         assert len(execution_result.created_ids) == 1
@@ -209,7 +212,7 @@ class TestFullPipelineCREATE:
         # Mock LLM responses for full pipeline
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.95}),
-            json.dumps({"operation": "CREATE", "confidence": 0.94}),
+            json.dumps({"operation_type": "CREATE", "confidence": 0.94}),
             json.dumps({"entity_type": "task", "confidence": 0.93}),
             json.dumps({"identifier": None, "confidence": 1.0}),
             json.dumps({
@@ -247,7 +250,7 @@ class TestFullPipelineCREATE:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
         assert execution_result.success is True
 
@@ -266,7 +269,7 @@ class TestFullPipelineUPDATE:
         # Mock LLM responses
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.96}),
-            json.dumps({"operation": "UPDATE", "confidence": 0.97}),  # Correctly classifies UPDATE
+            json.dumps({"operation_type": "UPDATE", "confidence": 0.97}),  # Correctly classifies UPDATE
             json.dumps({"entity_type": "project", "confidence": 0.95}),  # Correctly classifies PROJECT
             json.dumps({"identifier": "Integration Test Project", "confidence": 0.94}),
             json.dumps({"parameters": {"status": "INACTIVE"}, "confidence": 0.93})
@@ -309,13 +312,15 @@ class TestFullPipelineUPDATE:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1, confirmed=True
         )
         assert execution_result.success is True
 
         # Verify status was updated
         project = pipeline_components['state'].get_project(1)
-        assert project.status == "INACTIVE"
+        # INACTIVE maps to PAUSED in ProjectStatus
+        from core.models import ProjectStatus
+        assert project.status == ProjectStatus.PAUSED
 
     def test_update_task_by_id(self, pipeline_components, mock_llm):
         """Test: 'Update task 4 priority to HIGH'."""
@@ -323,7 +328,7 @@ class TestFullPipelineUPDATE:
 
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.94}),
-            json.dumps({"operation": "UPDATE", "confidence": 0.96}),
+            json.dumps({"operation_type": "UPDATE", "confidence": 0.96}),
             json.dumps({"entity_type": "task", "confidence": 0.95}),
             json.dumps({"identifier": 4, "confidence": 0.98}),
             json.dumps({"parameters": {"priority": "HIGH"}, "confidence": 0.92})
@@ -354,7 +359,7 @@ class TestFullPipelineUPDATE:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1, confirmed=True
         )
         assert execution_result.success is True
 
@@ -368,7 +373,7 @@ class TestFullPipelineQUERY:
 
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.95}),
-            json.dumps({"operation": "QUERY", "confidence": 0.96}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.96}),
             json.dumps({"entity_type": "project", "confidence": 0.92}),
             json.dumps({"identifier": None, "confidence": 0.98}),
             json.dumps({
@@ -408,7 +413,7 @@ class TestFullPipelineQUERY:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
         assert execution_result.success is True
 
@@ -418,7 +423,7 @@ class TestFullPipelineQUERY:
 
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.97}),
-            json.dumps({"operation": "QUERY", "confidence": 0.98}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.98}),
             json.dumps({"entity_type": "task", "confidence": 0.96}),
             json.dumps({"identifier": None, "confidence": 1.0}),
             json.dumps({"parameters": {}, "confidence": 0.95})
@@ -439,7 +444,7 @@ class TestFullPipelineQUERY:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
         assert execution_result.success is True
 
@@ -453,7 +458,7 @@ class TestFullPipelineDELETE:
 
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.98}),
-            json.dumps({"operation": "DELETE", "confidence": 0.97}),
+            json.dumps({"operation_type": "DELETE", "confidence": 0.97}),
             json.dumps({"entity_type": "task", "confidence": 0.96}),
             json.dumps({"identifier": 4, "confidence": 0.99}),
             json.dumps({"parameters": {}, "confidence": 1.0})
@@ -484,7 +489,7 @@ class TestFullPipelineDELETE:
         assert validation_result.valid is True
 
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1, confirmed=True
         )
         assert execution_result.success is True
 
@@ -547,7 +552,7 @@ class TestErrorPropagation:
         user_input = "Maybe create something?"
 
         mock_llm.generate.return_value = json.dumps({
-            "operation": "CREATE",
+            "operation_type": "CREATE",
             "confidence": 0.45,  # Below threshold (0.7)
             "reasoning": "Very uncertain"
         })
@@ -561,7 +566,7 @@ class TestErrorPropagation:
 
         # Valid operation
         mock_llm.generate.return_value = json.dumps({
-            "operation": "CREATE",
+            "operation_type": "CREATE",
             "confidence": 0.95
         })
         operation_result = pipeline_components['operation_classifier'].classify(user_input)
@@ -582,7 +587,7 @@ class TestErrorPropagation:
         user_input = "Update project status"
 
         mock_llm.generate.side_effect = [
-            json.dumps({"operation": "UPDATE", "confidence": 0.95}),
+            json.dumps({"operation_type": "UPDATE", "confidence": 0.95}),
             json.dumps({"entity_type": "project", "confidence": 0.94}),
             json.dumps({"identifier": None, "confidence": 0.60})  # Missing identifier!
         ]
@@ -609,7 +614,7 @@ class TestErrorPropagation:
         user_input = "Mark project 1 as INVALID_STATUS"
 
         mock_llm.generate.side_effect = [
-            json.dumps({"operation": "UPDATE", "confidence": 0.96}),
+            json.dumps({"operation_type": "UPDATE", "confidence": 0.96}),
             json.dumps({"entity_type": "project", "confidence": 0.95}),
             json.dumps({"identifier": 1, "confidence": 0.98}),
             json.dumps({
@@ -741,7 +746,7 @@ class TestCrossComponentInteraction:
         user_input = "Create epic for auth"
 
         mock_llm.generate.side_effect = [
-            json.dumps({"operation": "CREATE", "confidence": 0.95}),
+            json.dumps({"operation_type": "CREATE", "confidence": 0.95}),
             json.dumps({"entity_type": "epic", "confidence": 0.92}),
             json.dumps({"identifier": None, "confidence": 1.0}),
             json.dumps({"parameters": {"title": "auth"}, "confidence": 0.88})
@@ -773,7 +778,7 @@ class TestCrossComponentInteraction:
         user_input = "Update project 1 status"
 
         mock_llm.generate.side_effect = [
-            json.dumps({"operation": "UPDATE", "confidence": 0.96}),
+            json.dumps({"operation_type": "UPDATE", "confidence": 0.96}),
             json.dumps({"entity_type": "project", "confidence": 0.94}),
             json.dumps({"identifier": 1, "confidence": 0.98}),
             json.dumps({"parameters": {"status": "INACTIVE"}, "confidence": 0.92})
@@ -809,7 +814,7 @@ class TestCrossComponentInteraction:
         user_input = "Create story for epic 2"
 
         mock_llm.generate.side_effect = [
-            json.dumps({"operation": "CREATE", "confidence": 0.94}),
+            json.dumps({"operation_type": "CREATE", "confidence": 0.94}),
             json.dumps({"entity_type": "story", "confidence": 0.93}),
             json.dumps({"identifier": None, "confidence": 1.0}),
             json.dumps({
@@ -869,7 +874,7 @@ class TestCrossComponentInteraction:
 
         # Execute
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
         assert execution_result.success is True
 
@@ -902,7 +907,7 @@ class TestCrossComponentInteraction:
 
         # Operation classifier fails
         mock_llm.generate.return_value = json.dumps({
-            "operation": "INVALID",
+            "operation_type": "INVALID",
             "confidence": 0.30
         })
 
@@ -918,7 +923,7 @@ class TestCrossComponentInteraction:
 
         mock_llm.generate.side_effect = [
             json.dumps({"intent": "COMMAND", "confidence": 0.95}),
-            json.dumps({"operation": "CREATE", "confidence": 0.94}),
+            json.dumps({"operation_type": "CREATE", "confidence": 0.94}),
             json.dumps({"entity_type": "task", "confidence": 0.93}),
             json.dumps({"identifier": None, "confidence": 1.0}),
             json.dumps({"parameters": {"title": "testing"}, "confidence": 0.92})
@@ -950,7 +955,7 @@ class TestCrossComponentInteraction:
 
         validation_result = pipeline_components['command_validator'].validate(context)
         execution_result = pipeline_components['command_executor'].execute(
-            validation_result.validated_command, project_id=1
+            context, project_id=1
         )
 
         end_time = time.time()

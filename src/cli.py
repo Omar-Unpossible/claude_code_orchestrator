@@ -1259,5 +1259,256 @@ def config_validate(ctx):
         sys.exit(1)
 
 
+# ============================================================================
+# LLM Management Commands
+# ============================================================================
+
+@cli.group()
+def llm():
+    """Manage LLM (Language Model) connections."""
+    pass
+
+
+@llm.command('status')
+@click.pass_context
+def llm_status(ctx):
+    """Check LLM connection status."""
+    try:
+        config = ctx.obj['config']
+
+        # Get current LLM configuration
+        llm_type = config.get('llm.type', 'not configured')
+        llm_model = config.get('llm.model', 'not configured')
+        llm_endpoint = config.get('llm.api_url') or config.get('llm.endpoint', 'not configured')
+
+        click.echo("\n🔌 LLM Connection Status")
+        click.echo("=" * 80)
+        click.echo(f"  Type:     {llm_type}")
+        click.echo(f"  Model:    {llm_model}")
+        click.echo(f"  Endpoint: {llm_endpoint}")
+        click.echo()
+
+        # Try to check if LLM is available
+        try:
+            from src.plugins.registry import LLMRegistry
+
+            llm_class = LLMRegistry.get(llm_type)
+            llm_instance = llm_class()
+
+            llm_config = config.get('llm', {})
+            if 'api_url' in llm_config and 'endpoint' not in llm_config:
+                llm_config['endpoint'] = llm_config['api_url']
+
+            llm_instance.initialize(llm_config)
+
+            if llm_instance.is_available():
+                click.echo("✓ Status:   CONNECTED")
+                click.echo("✓ LLM is responding and ready to use")
+            else:
+                click.echo("✗ Status:   UNREACHABLE")
+                click.echo("✗ LLM service is not responding")
+                click.echo("\nTroubleshooting:")
+                click.echo("  - Check that the LLM service is running")
+                click.echo(f"  - Verify endpoint is correct: {llm_endpoint}")
+                click.echo("  - Check network connectivity")
+
+        except Exception as e:
+            click.echo("✗ Status:   ERROR")
+            click.echo(f"✗ {e}")
+            click.echo("\nTo fix:")
+            click.echo("  1. Check configuration: obra config show")
+            click.echo("  2. List available LLMs: obra llm list")
+            click.echo("  3. Reconnect: obra llm reconnect")
+
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to check status: {e}", err=True)
+        sys.exit(1)
+
+
+@llm.command('list')
+@click.pass_context
+def llm_list(ctx):
+    """List available LLM providers."""
+    try:
+        from src.plugins.registry import LLMRegistry
+
+        available_llms = LLMRegistry.list()
+
+        click.echo("\n📋 Available LLM Providers")
+        click.echo("=" * 80)
+
+        if not available_llms:
+            click.echo("  No LLM providers registered")
+            click.echo()
+            return
+
+        config = ctx.obj['config']
+        current_llm = config.get('llm.type', None)
+
+        for llm_name in available_llms:
+            is_current = "✓ ACTIVE" if llm_name == current_llm else ""
+            click.echo(f"  • {llm_name:20s} {is_current}")
+
+        click.echo()
+        click.echo("Configuration examples:")
+        click.echo()
+        click.echo("  Ollama (local):")
+        click.echo("    llm.type: ollama")
+        click.echo("    llm.model: qwen2.5-coder:32b")
+        click.echo("    llm.api_url: http://localhost:11434")
+        click.echo()
+        click.echo("  OpenAI Codex (remote):")
+        click.echo("    llm.type: openai-codex")
+        click.echo("    llm.model: gpt-5-codex")
+        click.echo("    llm.timeout: 120")
+        click.echo()
+
+    except Exception as e:
+        click.echo(f"✗ Failed to list LLMs: {e}", err=True)
+        sys.exit(1)
+
+
+@llm.command('reconnect')
+@click.option('--type', '-t', help='LLM type (e.g., ollama, openai-codex)')
+@click.option('--model', '-m', help='Model name')
+@click.option('--endpoint', '-e', help='API endpoint URL (for ollama)')
+@click.option('--timeout', type=int, help='Timeout in seconds')
+@click.pass_context
+def llm_reconnect(ctx, type: Optional[str], model: Optional[str],
+                  endpoint: Optional[str], timeout: Optional[int]):
+    """Reconnect to LLM or switch to different provider.
+
+    Examples:
+
+        # Reconnect to current LLM (after it comes online)
+        $ obra llm reconnect
+
+        # Switch to OpenAI Codex
+        $ obra llm reconnect --type openai-codex --model gpt-5-codex
+
+        # Switch to Ollama
+        $ obra llm reconnect --type ollama --endpoint http://localhost:11434
+    """
+    try:
+        config = ctx.obj['config']
+
+        # Build LLM config from options
+        llm_config = {}
+
+        if model:
+            llm_config['model'] = model
+        if endpoint:
+            llm_config['endpoint'] = endpoint
+            llm_config['api_url'] = endpoint  # Backward compatibility
+        if timeout:
+            llm_config['timeout'] = timeout
+
+        # Display what we're doing
+        if type:
+            click.echo(f"\n🔄 Switching to LLM: {type}")
+        else:
+            current_type = config.get('llm.type', 'unknown')
+            click.echo(f"\n🔄 Reconnecting to LLM: {current_type}")
+
+        if llm_config:
+            click.echo(f"   Configuration: {llm_config}")
+
+        click.echo()
+
+        # Initialize orchestrator and reconnect
+        orchestrator = Orchestrator(config=config)
+        orchestrator.initialize()
+
+        # Reconnect with new settings
+        success = orchestrator.reconnect_llm(
+            llm_type=type,
+            llm_config=llm_config if llm_config else None
+        )
+
+        if success:
+            llm_name = type or config.get('llm.type', 'unknown')
+            click.echo(f"✓ Successfully connected to LLM: {llm_name}")
+            click.echo()
+            click.echo("You can now execute tasks:")
+            click.echo("  $ obra task execute <task_id>")
+            click.echo("  $ obra run")
+            click.echo()
+        else:
+            click.echo("✗ Failed to connect to LLM", err=True)
+            click.echo()
+            click.echo("Troubleshooting:")
+            click.echo("  1. Check LLM service is running: obra llm status")
+            click.echo("  2. List available providers: obra llm list")
+            click.echo("  3. Check configuration: obra config show")
+            click.echo()
+            sys.exit(1)
+
+    except Exception as e:
+        click.echo(f"✗ Reconnection failed: {e}", err=True)
+        import traceback
+        if ctx.obj.get('verbose'):
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@llm.command('switch')
+@click.argument('llm_type', type=click.Choice(['ollama', 'openai-codex'], case_sensitive=False))
+@click.option('--model', '-m', help='Model name')
+@click.pass_context
+def llm_switch(ctx, llm_type: str, model: Optional[str]):
+    """Quick switch between LLM providers (shortcut for reconnect).
+
+    Examples:
+
+        # Switch to Ollama
+        $ obra llm switch ollama
+
+        # Switch to OpenAI Codex with specific model
+        $ obra llm switch openai-codex --model gpt-5-codex
+    """
+    try:
+        config = ctx.obj['config']
+
+        click.echo(f"\n🔄 Switching to {llm_type}")
+        if model:
+            click.echo(f"   Model: {model}")
+        else:
+            click.echo(f"   Using plugin's default model")
+        click.echo()
+
+        # Build config - only add model if explicitly specified
+        # Otherwise, let the plugin use its own DEFAULT_CONFIG
+        llm_config = {}
+        if model:
+            llm_config['model'] = model
+
+        # Add default endpoints
+        if llm_type == 'ollama':
+            llm_config['endpoint'] = config.get('llm.api_url', 'http://localhost:11434')
+            llm_config['api_url'] = llm_config['endpoint']
+
+        # Initialize orchestrator and reconnect
+        orchestrator = Orchestrator(config=config)
+        orchestrator.initialize()
+
+        success = orchestrator.reconnect_llm(
+            llm_type=llm_type,
+            llm_config=llm_config
+        )
+
+        if success:
+            click.echo(f"✓ Successfully switched to {llm_type}")
+            click.echo()
+        else:
+            click.echo(f"✗ Failed to switch to {llm_type}", err=True)
+            sys.exit(1)
+
+    except Exception as e:
+        click.echo(f"✗ Switch failed: {e}", err=True)
+        sys.exit(1)
+
+
 if __name__ == '__main__':
     cli()

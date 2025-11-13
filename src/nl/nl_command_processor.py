@@ -418,7 +418,8 @@ class NLCommandProcessor:
             # Step 8: Format response
             response = self.response_formatter.format(
                 execution_result,
-                intent='COMMAND'
+                intent='COMMAND',
+                operation=operation_context.operation.value
             )
 
             # Update conversation context

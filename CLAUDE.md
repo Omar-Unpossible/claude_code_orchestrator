@@ -86,7 +86,7 @@ When starting a new session, read these documents in priority order:
 - **Local LLM (Validation)**: Always on host machine via HTTP API
   - Handles validation, quality scoring, confidence calculation
   - Requires GPU (Qwen 2.5 Coder on RTX 5090)
-  - Accessed at http://172.29.144.1:11434
+  - Accessed at http://10.0.75.1:11434 (Host on vEthernet DevSwitch)
 
 **Key Points**:
 - Agent type controls WHERE Claude Code runs (local subprocess vs remote SSH)
@@ -492,6 +492,74 @@ python -m src.cli task execute 1
 python -m src.cli interactive
 ```
 
+### LLM Management
+
+**Graceful Fallback**: Obra loads even if LLM service is unavailable, allowing you to configure and connect later.
+
+```bash
+# Check LLM connection status
+python -m src.cli llm status
+
+# List available LLM providers
+python -m src.cli llm list
+
+# Reconnect to current LLM (after service comes online)
+python -m src.cli llm reconnect
+
+# Switch to different LLM provider
+python -m src.cli llm reconnect --type openai-codex --model gpt-5-codex
+python -m src.cli llm reconnect --type ollama --endpoint http://localhost:11434
+
+# Quick switch between providers
+python -m src.cli llm switch ollama
+python -m src.cli llm switch openai-codex --model gpt-5-codex
+```
+
+**Configuration Options**:
+```yaml
+# Option 1: Local LLM (Ollama/Qwen)
+llm:
+  type: ollama
+  model: qwen2.5-coder:32b
+  api_url: http://localhost:11434
+  temperature: 0.7
+
+# Option 2: Remote LLM (OpenAI Codex)
+llm:
+  type: openai-codex
+  model: gpt-5-codex  # or codex-mini-latest, o3, o4-mini
+  timeout: 120
+```
+
+**Environment Variables** (alternative to config file):
+```bash
+# Switch to OpenAI Codex via environment
+export ORCHESTRATOR_LLM_TYPE=openai-codex
+export ORCHESTRATOR_LLM_MODEL=gpt-5-codex
+
+# Switch to Ollama via environment
+export ORCHESTRATOR_LLM_TYPE=ollama
+export ORCHESTRATOR_LLM_API_URL=http://localhost:11434
+```
+
+**Programmatic Reconnection**:
+```python
+# In Python/interactive mode
+orchestrator.reconnect_llm()  # Reconnect to current config
+
+# Switch LLM provider
+orchestrator.reconnect_llm(
+    llm_type='openai-codex',
+    llm_config={'model': 'gpt-5-codex', 'timeout': 120}
+)
+
+# Check if LLM is available
+if orchestrator.check_llm_available():
+    orchestrator.execute_task(task_id=1)
+else:
+    print("LLM not available, reconnect first")
+```
+
 **Git Operations**: This repository uses SSH authentication (`git@github.com:Omar-Unpossible/claude_code_orchestrator.git`)
 
 ## Changelog Maintenance
@@ -566,6 +634,13 @@ See `docs/architecture/data_flow.md` for detailed flow diagrams.
 - ❌ **Don't use wrong model attributes**: Use `project_name` not `name`, `working_directory` not `working_dir`
 - ❌ **Don't run setup.sh without OBRA_RUNTIME_DIR**: Set environment variable first
 - ❌ **Don't assume profile exists** (M9): Always validate profile name before loading
+
+### LLM Management
+- ✅ **Obra loads without LLM**: Graceful fallback allows initialization even if LLM unavailable
+- ✅ **Use `orchestrator.reconnect_llm()`**: Connect to LLM after Obra starts
+- ✅ **Check LLM before tasks**: Use `orchestrator.check_llm_available()` before executing tasks
+- ✅ **CLI commands available**: `obra llm status`, `obra llm reconnect`, `obra llm switch`
+- ❌ **Don't panic if LLM down**: Obra will load and prompt you to reconnect
 
 ### M9 Features
 - ❌ **Don't retry non-retryable errors**: Check error type before applying retry logic

@@ -6,7 +6,7 @@
 llm:
   type: ollama  # LLM provider type (matches LLMRegistry)
   model: qwen2.5-coder:32b  # Model to use
-  api_url: http://172.29.144.1:11434  # Ollama API endpoint
+  api_url: http://10.0.75.1:11434  # Ollama API endpoint (Host machine on vEthernet DevSwitch)
   temperature: 0.7  # Generation temperature (0.0-2.0)
   timeout: 30  # Timeout for generation (seconds)
   max_tokens: 4096  # Maximum tokens to generate

@@ -181,7 +181,7 @@ class TestExecuteUpdate:
         mock_project2.project_name = "Manual Tetris Test"
         mock_project2.status = TaskStatus.RUNNING
 
-        mock_state_manager.get_all_projects.return_value = [mock_project1, mock_project2]
+        mock_state_manager.list_projects.return_value = [mock_project1, mock_project2]
         mock_state_manager.get_project.return_value = mock_project2
 
         context = OperationContext(
@@ -295,7 +295,7 @@ class TestExecuteQuery:
         mock_project2.project_name = "Project B"
         mock_project2.description = "Description B"
 
-        mock_state_manager.get_all_projects.return_value = [mock_project1, mock_project2]
+        mock_state_manager.list_projects.return_value = [mock_project1, mock_project2]
 
         context = OperationContext(
             operation=OperationType.QUERY,
@@ -502,7 +502,7 @@ class TestHelperMethods:
         mock_project.id = 5
         mock_project.project_name = "Test Project"
 
-        mock_state_manager.get_all_projects.return_value = [mock_project]
+        mock_state_manager.list_projects.return_value = [mock_project]
 
         context = OperationContext(
             operation=OperationType.UPDATE,

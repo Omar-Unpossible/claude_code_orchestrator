@@ -55,7 +55,8 @@ class ResponseFormatter:
         self,
         execution_result: ExecutionResult,
         intent: str,
-        entity_details: Optional[Dict[str, Any]] = None
+        entity_details: Optional[Dict[str, Any]] = None,
+        operation: Optional[str] = None
     ) -> str:
         """Format execution result as human-friendly response.
 
@@ -63,6 +64,7 @@ class ResponseFormatter:
             execution_result: Result from CommandExecutor
             intent: Intent type (COMMAND, QUESTION, CLARIFICATION_NEEDED)
             entity_details: Optional additional entity details
+            operation: Optional operation type (create, update, delete, query)
 
         Returns:
             Formatted response string with color codes
@@ -70,7 +72,7 @@ class ResponseFormatter:
         Example:
             >>> formatter = ResponseFormatter()
             >>> result = ExecutionResult(success=True, created_ids=[5])
-            >>> response = formatter.format(result, 'COMMAND')
+            >>> response = formatter.format(result, 'COMMAND', operation='create')
         """
         if execution_result.confirmation_required:
             return self._format_confirmation(execution_result)
@@ -79,23 +81,39 @@ class ResponseFormatter:
             return self._format_error(execution_result)
 
         # Success case
-        return self._format_success(execution_result, entity_details)
+        return self._format_success(execution_result, entity_details, operation)
 
     def _format_success(
         self,
         result: ExecutionResult,
-        entity_details: Optional[Dict[str, Any]] = None
+        entity_details: Optional[Dict[str, Any]] = None,
+        operation: Optional[str] = None
     ) -> str:
         """Format success response.
 
         Args:
             result: Successful execution result
             entity_details: Optional entity details
+            operation: Optional operation type (create, update, delete, query)
 
         Returns:
             Green-colored success message with next actions
         """
         entity_type = result.results.get('entity_type', 'item')
+
+        # Check if this is a QUERY operation
+        if operation == 'query' or result.results.get('operation') == 'query' or result.results.get('query_type'):
+            # Format as a list response
+            entities = result.results.get('entities', [])
+            count = result.results.get('count', len(entities))
+
+            if count == 0:
+                return f"{Fore.YELLOW}No {entity_type}s found{Style.RESET_ALL}"
+
+            # Format the list
+            return self.format_list_response(entities, entity_type)
+
+        # CREATE/UPDATE/DELETE operations
         created_count = len(result.created_ids)
 
         # Build main success message
@@ -104,13 +122,16 @@ class ResponseFormatter:
             title = self._get_entity_title(result.results, entity_details)
             title_part = f": {title}" if title else ""
 
+            action = "Created" if operation == 'create' else "Updated" if operation == 'update' else "Deleted" if operation == 'delete' else "Created"
+
             message = (
-                f"{Fore.GREEN}✓ Created {entity_type.title()} "
+                f"{Fore.GREEN}✓ {action} {entity_type.title()} "
                 f"#{entity_id}{title_part}{Style.RESET_ALL}"
             )
         else:
+            action = "Created" if operation == 'create' else "Updated" if operation == 'update' else "Deleted" if operation == 'delete' else "Created"
             message = (
-                f"{Fore.GREEN}✓ Created {created_count} {entity_type}s: "
+                f"{Fore.GREEN}✓ {action} {created_count} {entity_type}s: "
                 f"{', '.join(f'#{id}' for id in result.created_ids)}"
                 f"{Style.RESET_ALL}"
             )
@@ -160,11 +181,22 @@ class ResponseFormatter:
             Yellow-colored confirmation prompt
         """
         entity_type = result.results.get('entity_type', 'item')
-        action = result.results.get('action', 'operation')
+        operation = result.results.get('operation', 'modify')
+        identifier = result.results.get('identifier')
+
+        # Build identifier part
+        identifier_part = ""
+        if identifier is not None:
+            if isinstance(identifier, int):
+                identifier_part = f" #{identifier}"
+            else:
+                identifier_part = f" '{identifier}'"
 
         message = (
-            f"{Fore.YELLOW}⚠ This will {action} {entity_type}. "
-            f"Confirm? (y/n){Style.RESET_ALL}"
+            f"{Fore.YELLOW}⚠ Confirmation required:{Style.RESET_ALL}\n"
+            f"  This will {operation} {entity_type}{identifier_part}.\n"
+            f"{Fore.CYAN}  Note: Interactive confirmation is not yet implemented.{Style.RESET_ALL}\n"
+            f"{Fore.CYAN}  Use CLI instead: obra {entity_type} {operation} {identifier}{Style.RESET_ALL}"
         )
         return message
 

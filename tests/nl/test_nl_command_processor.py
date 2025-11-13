@@ -133,7 +133,7 @@ class TestUpdatePipeline:
         mock_project = Mock()
         mock_project.id = 1
         mock_project.project_name = "Manual Tetris Test"
-        mock_state_manager.get_all_projects.return_value = [mock_project]
+        mock_state_manager.list_projects.return_value = [mock_project]
         mock_state_manager.get_project.return_value = mock_project
 
         response = processor.process(
@@ -282,7 +282,7 @@ class TestQuestionIntent:
         mock_task.status = Mock(value='RUNNING')
 
         mock_state_manager.list_tasks.return_value = [mock_task]
-        mock_state_manager.get_all_projects.return_value = []
+        mock_state_manager.list_projects.return_value = []
 
         response = processor.process("What's next for the tetris game development", project_id=1)
 
@@ -305,7 +305,7 @@ class TestQuestionIntent:
         mock_epic.status = Mock(value='RUNNING')
 
         mock_state_manager.get_task.return_value = mock_epic
-        mock_state_manager.get_all_projects.return_value = []
+        mock_state_manager.list_projects.return_value = []
 
         response = processor.process("What's the status of epic 5", project_id=1)
 

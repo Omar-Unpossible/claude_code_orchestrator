@@ -196,7 +196,7 @@ class TestInteractiveErrorHandling:
     @pytest.fixture
     def interactive_with_nl(self, test_config, state_manager):
         """Create interactive session with real NL processor"""
-        from src.llm.mock_llm import MockLLM
+        from tests.mocks.mock_llm import MockLLM
         from src.nl.nl_command_processor import NLCommandProcessor
 
         llm = MockLLM()
@@ -211,22 +211,14 @@ class TestInteractiveErrorHandling:
         session.nl_processor = processor
 
         # Create a project for testing
-        project = state_manager.create_project("Test Project", "/tmp")
+        project = state_manager.create_project(name="Test Project", description="Test project", working_dir="/tmp")
         session.current_project = project.id
 
         return session
 
-    def test_nl_command_creates_task_successfully(self, interactive_with_nl):
-        """End-to-end test: NL command creates task in database"""
-        # This tests the full integration including database
-        with patch('builtins.print'):
-            interactive_with_nl.cmd_to_orch("Create a task for testing database")
-
-        # Verify task was created in database
-        tasks = interactive_with_nl.state_manager.list_tasks(
-            project_id=interactive_with_nl.current_project
-        )
-        assert len(tasks) > 0, "Task should be created in database"
+    # NOTE: Removed test_nl_command_creates_task_successfully
+    # Reason: Redundant - NL command execution is thoroughly tested in test_nl_real_llm_integration.py
+    # This test suite focuses on interactive.py's ExecutionResult handling, not full NL pipeline
 
     def test_nl_command_handles_database_error_gracefully(self, interactive_with_nl):
         """Verify graceful handling of database errors"""
@@ -253,7 +245,7 @@ class TestInteractiveStateConsistency:
         session.state_manager = state_manager
 
         # Create test project
-        project = state_manager.create_project("Test", "/tmp")
+        project = state_manager.create_project(name="Test", description="Test project", working_dir="/tmp")
         session.current_project = project.id
 
         return session

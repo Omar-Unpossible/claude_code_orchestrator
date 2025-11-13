@@ -163,6 +163,19 @@ class InteractiveMode:
                 llm_type = self.config.get('llm.type', 'ollama')
                 llm_plugin = LLMRegistry.get(llm_type)()
 
+            # Check if LLM is available before initializing NL processor
+            if llm_plugin is None:
+                logger.warning("LLM not available - NL command processing disabled")
+                logger.info("Use /project, /task slash commands instead")
+                self.nl_processor = None
+                return
+
+            # Verify LLM is responsive
+            if hasattr(llm_plugin, 'is_available') and not llm_plugin.is_available():
+                logger.warning("LLM not responding - NL command processing disabled")
+                self.nl_processor = None
+                return
+
             # Initialize NL processor
             self.nl_processor = NLCommandProcessor(
                 llm_plugin=llm_plugin,
@@ -715,29 +728,20 @@ class InteractiveMode:
                         self.current_project = nl_response.execution_result.results['project_id']
 
             else:
-                # Fallback: LLM-only response (no execution)
-                print("[Orchestrator thinking... (NL processor unavailable)]")
-
-                if not self.orchestrator or not hasattr(self.orchestrator, 'llm_interface'):
-                    print("✗ Orchestrator LLM not available")
-                    return
-
-                # Create a conversational prompt
-                prompt = f"""You are Obra, the Claude Code Orchestrator assistant. The user is in the interactive REPL and has asked you:
-
-"{message}"
-
-Provide a helpful, concise response. You can:
-- Answer questions about Obra features and workflows
-- Help plan work breakdown (epics, stories, tasks)
-- Suggest task dependencies and execution order
-- Explain best practices for orchestration
-- Analyze project structure and suggest improvements
-
-Keep responses clear and actionable. If recommending commands, show the exact syntax."""
-
-                response = self.orchestrator.llm_interface.send_prompt(prompt)
-                print(f"\n[Orchestrator]: {response}\n")
+                # Fallback: Natural language processing disabled (LLM unavailable)
+                print("\n⚠ Natural language commands disabled - LLM not available")
+                print()
+                print("Please use slash commands instead:")
+                print("  /project list       - List all projects")
+                print("  /task list          - List tasks")
+                print("  /epic list          - List epics")
+                print("  /help              - Show all commands")
+                print()
+                print("Or reconnect to LLM:")
+                print("  /llm status        - Check LLM connection")
+                print("  /llm reconnect     - Reconnect to LLM")
+                print()
+                return
 
         except Exception as e:
             print(f"\n✗ Failed to process request: {e}\n")
@@ -795,18 +799,27 @@ Keep responses clear and actionable. If recommending commands, show the exact sy
             args: Subcommand and arguments
         """
         if not args:
-            print("Usage: llm <show|list|switch> [provider] [model]")
+            print("Usage: llm <status|show|list|switch|reconnect> [provider] [model]")
+            print("\nSubcommands:")
+            print("  status                          - Check LLM connection status")
+            print("  show                            - Show current LLM configuration")
+            print("  list                            - List available LLM providers")
+            print("  switch <provider> [model]       - Switch to different LLM")
+            print("  reconnect [provider] [model]    - Reconnect to LLM (or switch)")
             print("\nExamples:")
+            print("  llm status                      - Check if LLM is connected")
             print("  llm show                        - Show current LLM info")
-            print("  llm list                        - List available LLM providers")
-            print("  llm switch ollama               - Switch to Ollama (keeps current model)")
-            print("  llm switch ollama qwen2.5-coder:7b  - Switch to Ollama with specific model")
-            print("  llm switch openai-codex gpt-4   - Switch to OpenAI Codex with GPT-4")
+            print("  llm list                        - List available providers")
+            print("  llm reconnect                   - Reconnect to current LLM")
+            print("  llm switch ollama               - Switch to Ollama")
+            print("  llm switch openai-codex gpt-5-codex  - Switch to OpenAI Codex")
             return
 
         subcommand = args[0].lower()
 
-        if subcommand == 'show':
+        if subcommand == 'status':
+            self._llm_status()
+        elif subcommand == 'show':
             self._llm_show()
         elif subcommand == 'list':
             self._llm_list()
@@ -817,9 +830,13 @@ Keep responses clear and actionable. If recommending commands, show the exact sy
             provider = args[1]
             model = args[2] if len(args) > 2 else None
             self._llm_switch(provider, model)
+        elif subcommand == 'reconnect':
+            provider = args[1] if len(args) > 1 else None
+            model = args[2] if len(args) > 2 else None
+            self._llm_reconnect(provider, model)
         else:
             print(f"✗ Unknown llm subcommand: {subcommand}")
-            print("Valid subcommands: show, list, switch")
+            print("Valid subcommands: status, show, list, switch, reconnect")
 
     def _llm_show(self) -> None:
         """Show current LLM provider and model."""
@@ -900,34 +917,177 @@ Keep responses clear and actionable. If recommending commands, show the exact sy
                 print(f"Available: {LLMRegistry.list()}")
                 return
 
-            # Update config
-            self.config._config['llm']['type'] = provider
-            if model:
-                self.config._config['llm']['model'] = model
+            # Build LLM config
+            llm_config = {}
 
-            # Reinitialize LLM
+            # Only add model to config if user explicitly specified one
+            # Otherwise, let the plugin use its own DEFAULT_CONFIG
+            if model:
+                llm_config['model'] = model
+            else:
+                print(f"  Using plugin's default model for {provider}")
+
+            # Reinitialize LLM using orchestrator's reconnect_llm method
             print(f"\n[Switching to {provider}" + (f" with model {model}" if model else "") + "...]")
 
-            llm_config = self.config.get('llm', {})
-            llm_class = LLMRegistry.get(provider)
+            # Use the new reconnect_llm method which handles all component initialization
+            success = self.orchestrator.reconnect_llm(
+                llm_type=provider,
+                llm_config=llm_config if llm_config else None
+            )
 
-            # Create new instance
-            new_llm = llm_class()
-            new_llm.initialize(llm_config)
+            if success:
+                print(f"✓ Switched to {provider}" + (f" ({model})" if model else ""))
+                print()
+                print("Natural language commands are now enabled:")
+                print("  Just type naturally to communicate with orchestrator")
+                print("  Example: list the projects")
+                print()
 
-            # Replace in orchestrator
-            self.orchestrator.llm_interface = new_llm
-            self.orchestrator.context_manager.llm_interface = new_llm
-            self.orchestrator.confidence_scorer.llm_interface = new_llm
+                # Reinitialize NL processor now that LLM is available
+                self._initialize_nl_processor()
 
-            # Update prompt generator
-            if hasattr(self.orchestrator, 'prompt_generator'):
-                self.orchestrator.prompt_generator.llm_interface = new_llm
+                if self.nl_processor:
+                    print("✓ Natural language processing initialized")
+                else:
+                    print("⚠ Natural language processing could not initialize")
+                    print("  You can still use slash commands")
 
-            print(f"✓ Switched to {provider}" + (f" ({model})" if model else ""))
-            print(f"  /to-orch will now use this LLM")
-            print()
+                print()
+            else:
+                print(f"✗ Failed to switch to {provider}")
+                print(f"  LLM service may not be available")
+                print(f"  Use /llm status to check connection")
+                print()
 
         except Exception as e:
             print(f"\n✗ Failed to switch LLM: {e}\n")
             logger.exception("Error in llm switch")
+
+    def _llm_status(self) -> None:
+        """Check LLM connection status."""
+        try:
+            print("\n🔌 LLM Connection Status")
+            print("=" * 60)
+
+            # Get current configuration
+            llm_type = self.config.get('llm.type', 'not configured')
+            llm_model = self.config.get('llm.model', 'not configured')
+
+            print(f"  Type:     {llm_type}")
+            print(f"  Model:    {llm_model}")
+
+            # Check if orchestrator has LLM
+            if not self.orchestrator:
+                print(f"  Status:   ERROR - Orchestrator not initialized")
+                print()
+                return
+
+            if not hasattr(self.orchestrator, 'llm_interface'):
+                print(f"  Status:   ERROR - LLM interface not found")
+                print()
+                return
+
+            if self.orchestrator.llm_interface is None:
+                print(f"  Status:   DISCONNECTED")
+                print()
+                print("✗ LLM not connected")
+                print()
+                print("To reconnect:")
+                print("  /llm reconnect              - Reconnect to current LLM")
+                print("  /llm switch ollama          - Switch to Ollama")
+                print("  /llm switch openai-codex    - Switch to OpenAI Codex")
+                print()
+                return
+
+            # Check if LLM is available
+            if self.orchestrator.check_llm_available():
+                print(f"  Status:   CONNECTED")
+                print()
+                print("✓ LLM is responding and ready to use")
+                print()
+                print("Natural language commands enabled:")
+                print("  Just type naturally (no slash) to talk to orchestrator")
+                print("  Example: list the projects")
+                print("  Example: create an epic for user authentication")
+                print()
+            else:
+                print(f"  Status:   UNREACHABLE")
+                print()
+                print("✗ LLM service is not responding")
+                print()
+                print("Troubleshooting:")
+                print("  - Check that the LLM service is running")
+                if llm_type == 'ollama':
+                    endpoint = self.config.get('llm.api_url', 'http://localhost:11434')
+                    print(f"  - Verify endpoint is correct: {endpoint}")
+                    print("  - Run: curl " + endpoint + "/api/tags")
+                print("  - Try reconnecting: /llm reconnect")
+                print()
+
+        except Exception as e:
+            print(f"✗ Failed to check LLM status: {e}")
+            logger.exception("Error in llm status")
+
+    def _llm_reconnect(self, provider: Optional[str], model: Optional[str]) -> None:
+        """Reconnect to LLM or switch to different provider.
+
+        Args:
+            provider: Optional LLM provider name (uses current if None)
+            model: Optional model name
+        """
+        try:
+            # Build LLM config
+            llm_config = {}
+
+            # Only add model to config if user explicitly specified one
+            # Otherwise, let the plugin use its own DEFAULT_CONFIG
+            if model:
+                llm_config['model'] = model
+            elif provider:
+                print(f"  Using plugin's default model for {provider}")
+
+            # Display what we're doing
+            if provider:
+                print(f"\n[Switching to {provider}" + (f" with model {model}" if model else "") + "...]")
+            else:
+                current_type = self.config.get('llm.type', 'unknown')
+                print(f"\n[Reconnecting to {current_type}...]")
+
+            # Use orchestrator's reconnect_llm method
+            success = self.orchestrator.reconnect_llm(
+                llm_type=provider,
+                llm_config=llm_config if llm_config else None
+            )
+
+            if success:
+                llm_name = provider or self.config.get('llm.type', 'unknown')
+                print(f"✓ Successfully connected to LLM: {llm_name}")
+                print()
+                print("Natural language commands are now enabled:")
+                print("  Just type naturally to communicate with orchestrator")
+                print("  Example: list the projects")
+                print()
+
+                # Reinitialize NL processor now that LLM is available
+                self._initialize_nl_processor()
+
+                if self.nl_processor:
+                    print("✓ Natural language processing initialized")
+                else:
+                    print("⚠ Natural language processing could not initialize")
+                    print("  You can still use slash commands")
+
+                print()
+            else:
+                print("✗ Failed to connect to LLM")
+                print()
+                print("Troubleshooting:")
+                print("  1. Check LLM service is running: /llm status")
+                print("  2. List available providers: /llm list")
+                print("  3. Try different provider: /llm switch <provider>")
+                print()
+
+        except Exception as e:
+            print(f"\n✗ Reconnection failed: {e}\n")
+            logger.exception("Error in llm reconnect")

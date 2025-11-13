@@ -441,7 +441,11 @@ class Orchestrator:
         logger.info("Utilities initialized")
 
     def _initialize_llm(self) -> None:
-        """Initialize LLM interface from registry."""
+        """Initialize LLM interface from registry.
+
+        Gracefully handles connection failures - Obra will still load
+        but prompt user to configure LLM before executing tasks.
+        """
         llm_type = self.config.get('llm.type', 'ollama')  # Default to ollama
         llm_config = self.config.get('llm', {})
 
@@ -449,33 +453,89 @@ class Orchestrator:
         if 'api_url' in llm_config and 'endpoint' not in llm_config:
             llm_config['endpoint'] = llm_config['api_url']
 
-        # Get LLM class from registry (like agent does)
         try:
-            llm_class = LLMRegistry.get(llm_type)
-        except PluginNotFoundError as e:
-            logger.error(f"LLM type '{llm_type}' not found in registry")
-            raise OrchestratorException(
-                f"Invalid LLM type: {llm_type}. Available: {LLMRegistry.list()}"
-            ) from e
+            # Get LLM class from registry
+            try:
+                llm_class = LLMRegistry.get(llm_type)
+            except PluginNotFoundError as e:
+                available_llms = LLMRegistry.list()
+                logger.warning(
+                    f"LLM type '{llm_type}' not found in registry. "
+                    f"Available: {available_llms}"
+                )
+                self._print_obra(
+                    f"⚠ LLM type '{llm_type}' not registered. Available: {available_llms}",
+                    prefix="[OBRA WARNING]"
+                )
+                self.llm_interface = None
+                return
 
-        # Create instance and initialize
-        self.llm_interface = llm_class()
-        self.llm_interface.initialize(llm_config)
+            # Create instance and initialize
+            self.llm_interface = llm_class()
+            self.llm_interface.initialize(llm_config)
 
-        # Set LLM for components that need it
-        self.context_manager.llm_interface = self.llm_interface
-        self.confidence_scorer.llm_interface = self.llm_interface
+            # Set LLM for components that need it
+            self.context_manager.llm_interface = self.llm_interface
+            self.confidence_scorer.llm_interface = self.llm_interface
 
-        # Initialize prompt generator and validator
-        template_dir = self.config.get('prompt.template_dir', 'config')
-        self.prompt_generator = PromptGenerator(
-            template_dir=template_dir,
-            llm_interface=self.llm_interface,
-            state_manager=self.state_manager
-        )
-        self.response_validator = ResponseValidator()
+            # Initialize prompt generator and validator
+            template_dir = self.config.get('prompt.template_dir', 'config')
+            self.prompt_generator = PromptGenerator(
+                template_dir=template_dir,
+                llm_interface=self.llm_interface,
+                state_manager=self.state_manager
+            )
+            self.response_validator = ResponseValidator()
 
-        logger.info("LLM components initialized")
+            logger.info(f"LLM components initialized: {llm_type}")
+
+        except Exception as e:
+            # Gracefully handle LLM initialization failures (connection errors, etc.)
+            logger.warning(f"LLM initialization failed: {e}")
+            self._print_obra(
+                f"⚠ Could not connect to LLM service ({llm_type}). "
+                f"Obra loaded but you need a working LLM to execute tasks.",
+                prefix="[OBRA WARNING]"
+            )
+            self._print_obra(
+                f"To fix: Configure a valid LLM in config/config.yaml or use environment variables:",
+                prefix="[OBRA WARNING]"
+            )
+            self._print_obra(
+                f"  Option 1 (Local): llm.type=ollama, llm.api_url=http://localhost:11434",
+                prefix="[OBRA WARNING]"
+            )
+            self._print_obra(
+                f"  Option 2 (Remote): llm.type=openai-codex, llm.model=gpt-5-codex",
+                prefix="[OBRA WARNING]"
+            )
+            self._print_obra(
+                f"Then reconnect: orchestrator.reconnect_llm()",
+                prefix="[OBRA WARNING]"
+            )
+
+            # Set LLM interface to None - tasks will check before execution
+            self.llm_interface = None
+
+            # Initialize prompt generator and validator with None LLM (will be set on reconnect)
+            if not hasattr(self, 'prompt_generator') or self.prompt_generator is None:
+                template_dir = self.config.get('prompt.template_dir', 'config')
+                try:
+                    self.prompt_generator = PromptGenerator(
+                        template_dir=template_dir,
+                        llm_interface=None,  # Will be set when LLM reconnects
+                        state_manager=self.state_manager
+                    )
+                except Exception as pg_error:
+                    logger.warning(f"Could not initialize prompt generator: {pg_error}")
+                    self.prompt_generator = None
+
+            if not hasattr(self, 'response_validator') or self.response_validator is None:
+                try:
+                    self.response_validator = ResponseValidator()
+                except Exception as rv_error:
+                    logger.warning(f"Could not initialize response validator: {rv_error}")
+                    self.response_validator = None
 
     def _initialize_agent(self) -> None:
         """Initialize agent from registry."""
@@ -557,6 +617,101 @@ class Orchestrator:
             )
             self.file_watcher.start_watching()
             logger.info("File monitoring started")
+
+    # =========================================================================
+    # LLM RECONNECTION & CONFIGURATION
+    # =========================================================================
+
+    def reconnect_llm(
+        self,
+        llm_type: Optional[str] = None,
+        llm_config: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Reconnect or reconfigure LLM after initialization.
+
+        Allows switching LLM providers or reconnecting after connection
+        failure without restarting Obra.
+
+        Args:
+            llm_type: Optional new LLM type (e.g., 'ollama', 'openai-codex').
+                     If None, uses current config.
+            llm_config: Optional new LLM configuration dict.
+                       If None, uses current config.
+
+        Returns:
+            True if connection successful, False otherwise
+
+        Example:
+            >>> # Reconnect to Ollama after it comes online
+            >>> orchestrator.reconnect_llm()
+            >>>
+            >>> # Switch to OpenAI Codex
+            >>> orchestrator.reconnect_llm(
+            ...     llm_type='openai-codex',
+            ...     llm_config={'model': 'gpt-5-codex', 'timeout': 120}
+            ... )
+        """
+        # Update config if new values provided
+        if llm_type:
+            self.config.set('llm.type', llm_type)
+
+        if llm_config:
+            # Merge new config with existing
+            current_llm_config = self.config.get('llm', {})
+            merged_config = {**current_llm_config, **llm_config}
+            for key, value in merged_config.items():
+                self.config.set(f'llm.{key}', value)
+
+        # Attempt initialization
+        try:
+            self._initialize_llm()
+
+            if self.llm_interface is None:
+                self._print_obra(
+                    "Failed to connect to LLM. Check configuration and try again.",
+                    prefix="[OBRA ERROR]"
+                )
+                return False
+
+            # Check if LLM is actually available
+            if not self.llm_interface.is_available():
+                self._print_obra(
+                    f"LLM service not responding. Check that the service is running.",
+                    prefix="[OBRA ERROR]"
+                )
+                self.llm_interface = None
+                return False
+
+            llm_name = llm_type or self.config.get('llm.type', 'unknown')
+            self._print_obra(
+                f"✓ Successfully connected to LLM: {llm_name}",
+                prefix="[OBRA SUCCESS]"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"LLM reconnection failed: {e}", exc_info=True)
+            self._print_obra(
+                f"Failed to reconnect LLM: {e}",
+                prefix="[OBRA ERROR]"
+            )
+            self.llm_interface = None
+            return False
+
+    def check_llm_available(self) -> bool:
+        """Check if LLM is connected and available.
+
+        Returns:
+            True if LLM is ready for use, False otherwise
+        """
+        if self.llm_interface is None:
+            return False
+
+        try:
+            return self.llm_interface.is_available()
+        except Exception as e:
+            logger.warning(f"LLM health check failed: {e}")
+            return False
 
     # =========================================================================
     # SESSION MANAGEMENT (Phase 2, Task 2.4)
@@ -854,6 +1009,28 @@ class Orchestrator:
                     "Orchestrator not ready",
                     context={'state': self._state.value},
                     recovery="Call initialize() first"
+                )
+
+            # Check if LLM is available before executing task
+            if not self.check_llm_available():
+                error_msg = (
+                    "Cannot execute task: LLM service not available. "
+                    "Configure and connect to an LLM first."
+                )
+                logger.error(error_msg)
+                self._print_obra(
+                    "❌ LLM service required but not connected.",
+                    prefix="[OBRA ERROR]"
+                )
+                self._print_obra(
+                    "Fix: Run orchestrator.reconnect_llm() or orchestrator.reconnect_llm("
+                    "llm_type='openai-codex', llm_config={'model': 'gpt-5-codex'})",
+                    prefix="[OBRA ERROR]"
+                )
+                raise OrchestratorException(
+                    error_msg,
+                    context={'llm_interface': str(self.llm_interface)},
+                    recovery="Call orchestrator.reconnect_llm() to connect to LLM service"
                 )
 
             # BUG-PHASE4-002 FIX: Create temporary session for standalone execution

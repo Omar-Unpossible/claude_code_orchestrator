@@ -93,6 +93,15 @@ class CommandExecutor:
         ...     print(f"Created epic {result.created_ids[0]}")
     """
 
+    # Priority mapping from string to integer
+    PRIORITY_MAP = {
+        'CRITICAL': 1,
+        'HIGH': 3,
+        'MEDIUM': 5,
+        'LOW': 7,
+        'OPTIONAL': 9
+    }
+
     def __init__(
         self,
         state_manager: StateManager,
@@ -146,11 +155,19 @@ class CommandExecutor:
         proj_id = project_id or self.default_project_id
 
         # Check if confirmation required
+        # TODO: Implement interactive confirmation workflow in NLCommandProcessor
+        # Currently, confirmation prompts are shown but responses aren't handled
+        # Workaround: Use CLI commands for delete/update operations
         if context.operation.value in self.require_confirmation_for and not confirmed:
             return ExecutionResult(
                 success=False,
                 confirmation_required=True,
-                errors=[f"{context.operation.value} operation requires confirmation"]
+                errors=[f"{context.operation.value} operation requires confirmation"],
+                results={
+                    'operation': context.operation.value,
+                    'entity_type': context.entity_type.value,
+                    'identifier': context.identifier
+                }
             )
 
         # Route to operation handler
@@ -354,6 +371,34 @@ class CommandExecutor:
 
     # ==================== Helper Methods for Operation Handlers ====================
 
+    def _normalize_priority(self, priority: Union[str, int]) -> int:
+        """Normalize priority value to integer (1-10 range).
+
+        Args:
+            priority: Priority as string ("HIGH", "MEDIUM", "LOW") or integer
+
+        Returns:
+            Priority as integer (1-10)
+        """
+        if isinstance(priority, int):
+            return priority
+
+        if isinstance(priority, str):
+            priority_upper = priority.upper()
+            if priority_upper in self.PRIORITY_MAP:
+                return self.PRIORITY_MAP[priority_upper]
+
+            # Try to parse as integer string
+            try:
+                return int(priority)
+            except ValueError:
+                # Default to MEDIUM if unknown
+                logger.warning(f"Unknown priority '{priority}', defaulting to MEDIUM (5)")
+                return 5
+
+        # Default fallback
+        return 5
+
     def _create_entity_from_context(self, context: OperationContext, project_id: int) -> int:
         """Create entity from OperationContext.
 
@@ -374,9 +419,11 @@ class CommandExecutor:
             # Create project directly via StateManager
             name = entity.get('name') or entity.get('title', '')
             description = entity.get('description', '')
+            working_dir = entity.get('working_dir') or entity.get('working_directory', f'/tmp/{name.replace(" ", "_")}')
             return self.state_manager.create_project(
-                project_name=name,
-                description=description
+                name=name,
+                description=description,
+                working_dir=working_dir
             )
         elif context.entity_type == EntityType.EPIC:
             return self._create_epic(entity, project_id)
@@ -410,7 +457,7 @@ class CommandExecutor:
         # Resolve name to ID
         if context.entity_type == EntityType.PROJECT:
             # Search projects by name
-            projects = self.state_manager.get_all_projects()
+            projects = self.state_manager.list_projects()
             for proj in projects:
                 if proj.project_name.lower() == identifier.lower():
                     return proj.id
@@ -453,36 +500,35 @@ class CommandExecutor:
         params = context.parameters
 
         if context.entity_type == EntityType.PROJECT:
-            # Update project
-            project = self.state_manager.get_project(entity_id)
-            if not project:
-                raise ExecutionException(f"Project {entity_id} not found")
+            # Build updates dict for StateManager
+            updates = {}
 
-            # Update fields
             if 'status' in params:
-                # Map status string to TaskStatus enum
+                # Map status string to ProjectStatus enum
+                from core.models import ProjectStatus
                 status_map = {
-                    'ACTIVE': TaskStatus.RUNNING,
-                    'INACTIVE': TaskStatus.CANCELLED,
-                    'COMPLETED': TaskStatus.COMPLETED,
-                    'PAUSED': TaskStatus.PENDING,
-                    'BLOCKED': TaskStatus.BLOCKED
+                    'ACTIVE': ProjectStatus.ACTIVE,
+                    'INACTIVE': ProjectStatus.PAUSED,  # Map INACTIVE to PAUSED
+                    'PAUSED': ProjectStatus.PAUSED,
+                    'COMPLETED': ProjectStatus.COMPLETED,
+                    'ARCHIVED': ProjectStatus.ARCHIVED
                 }
                 status_str = params['status'].upper()
                 if status_str in status_map:
-                    project.status = status_map[status_str]
+                    updates['status'] = status_map[status_str]
 
             if 'description' in params:
-                project.description = params['description']
+                updates['description'] = params['description']
 
             if 'name' in params or 'title' in params:
-                project.project_name = params.get('name') or params.get('title')
+                updates['project_name'] = params.get('name') or params.get('title')
 
-            # Save changes
-            self.state_manager.db.commit()
+            # Use StateManager's update_project method
+            self.state_manager.update_project(entity_id, updates)
 
         else:  # EPIC, STORY, TASK, SUBTASK
-            # Update task
+            # For tasks, we need to update manually since there's no update_task() method
+            # Get task and update in a transaction
             task = self.state_manager.get_task(entity_id)
             if not task:
                 raise ExecutionException(f"Task {entity_id} not found")
@@ -501,7 +547,7 @@ class CommandExecutor:
                 }
                 status_str = params['status'].upper()
                 if status_str in status_map:
-                    task.status = status_map[status_str]
+                    self.state_manager.update_task_status(entity_id, status_map[status_str])
 
             if 'title' in params:
                 task.title = params['title']
@@ -510,13 +556,12 @@ class CommandExecutor:
                 task.description = params['description']
 
             if 'priority' in params:
-                task.priority = params['priority']
+                task.priority = self._normalize_priority(params['priority'])
 
             if 'dependencies' in params:
                 task.dependencies = params['dependencies']
 
-            # Save changes
-            self.state_manager.db.commit()
+            # Changes are automatically committed by StateManager's transaction context
 
     def _delete_entity(self, context: OperationContext, entity_id: int, project_id: int):
         """Delete entity via StateManager.
@@ -527,18 +572,23 @@ class CommandExecutor:
             project_id: Project ID
         """
         if context.entity_type == EntityType.PROJECT:
-            # Delete project (if StateManager supports it)
-            raise ExecutionException("Project deletion not supported via NL commands")
+            # Use StateManager's delete_project method
+            self.state_manager.delete_project(entity_id, soft=True)
 
         elif context.entity_type == EntityType.MILESTONE:
-            # Delete milestone
-            self.state_manager.db.query(self.state_manager.db.Milestone).filter_by(id=entity_id).delete()
-            self.state_manager.db.commit()
+            # Milestone deletion not yet supported in StateManager
+            raise ExecutionException(
+                "Milestone deletion not yet supported via NL commands",
+                recovery="Use CLI command: obra milestone delete <id>"
+            )
 
         else:  # EPIC, STORY, TASK, SUBTASK
-            # Delete task
-            self.state_manager.db.query(self.state_manager.db.Task).filter_by(id=entity_id).delete()
-            self.state_manager.db.commit()
+            # Task deletion not yet supported in StateManager
+            # TODO: Add delete_task() method to StateManager
+            raise ExecutionException(
+                "Task deletion not yet supported via NL commands",
+                recovery="Use CLI command: obra task delete <id>"
+            )
 
     def _query_simple(self, context: OperationContext, project_id: int) -> ExecutionResult:
         """Execute simple QUERY (list entities).
@@ -551,7 +601,7 @@ class CommandExecutor:
             ExecutionResult with entity list
         """
         if context.entity_type == EntityType.PROJECT:
-            projects = self.state_manager.get_all_projects()
+            projects = self.state_manager.list_projects()
             return ExecutionResult(
                 success=True,
                 results={
@@ -1016,7 +1066,7 @@ class CommandExecutor:
         """
         title = entity.get('title', '')
         description = entity.get('description', '')
-        priority = entity.get('priority', 5)
+        priority = self._normalize_priority(entity.get('priority', 5))
 
         # Build kwargs for additional fields
         kwargs = {}
@@ -1057,7 +1107,7 @@ class CommandExecutor:
                 recovery="Specify epic_id or epic_reference"
             )
 
-        priority = entity.get('priority', 5)
+        priority = self._normalize_priority(entity.get('priority', 5))
         kwargs = {}
         if priority != 5:
             kwargs['priority'] = priority
@@ -1087,7 +1137,7 @@ class CommandExecutor:
             'title': entity.get('title', ''),
             'description': entity.get('description', ''),
             'task_type': TaskType.TASK,
-            'priority': entity.get('priority', 5)
+            'priority': self._normalize_priority(entity.get('priority', 5))
         }
 
         # Add optional fields
@@ -1128,7 +1178,7 @@ class CommandExecutor:
             'description': entity.get('description', ''),
             'task_type': TaskType.SUBTASK,
             'parent_task_id': parent_task_id,
-            'priority': entity.get('priority', 5)
+            'priority': self._normalize_priority(entity.get('priority', 5))
         }
 
         task = self.state_manager.create_task(project_id, task_data)
