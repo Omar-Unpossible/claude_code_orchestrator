@@ -41,9 +41,9 @@ When starting a new session, read these documents in priority order:
 ### Key References
 - **Documentation Index**: `docs/README.md` - Browse all docs
 - **ADRs**: `docs/decisions/` - Architecture decisions (14 ADRs total)
-- **Phase Reports**: `docs/development/phase-reports/` - Latest work summaries
+- **Phase Reports**: `docs/archive/phase-reports/` - Latest work summaries
 - **Configuration**: `docs/guides/CONFIGURATION_PROFILES_GUIDE.md`
-- **Interactive Mode**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` - v1.5.0 UX improvements
+- **Interactive Mode**: `docs/guides/INTERACTIVE_STREAMING_QUICKREF.md` - v1.5.0 UX improvements
 - **Natural Language Interface**: `docs/guides/NL_COMMAND_GUIDE.md` - Natural language command guide
 - **Agile Workflow**: `docs/guides/AGILE_WORKFLOW_GUIDE.md` - Epic/story/milestone workflows
 - **Project Infrastructure**: `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` - Automatic doc maintenance
@@ -186,7 +186,7 @@ When starting a new session, read these documents in priority order:
   - `InputManager`: Non-blocking input with prompt_toolkit and tab completion
   - `TaskStoppedException`: Graceful shutdown signal
 
-**See**: `docs/development/INTERACTIVE_STREAMING_QUICKREF.md` for v1.5.0 command reference
+**See**: `docs/guides/INTERACTIVE_STREAMING_QUICKREF.md` for v1.5.0 command reference
 
 ### 11. Session Management Architecture
 **Per-iteration session model for maximum reliability:**
@@ -678,10 +678,13 @@ See `docs/architecture/data_flow.md` for detailed flow diagrams.
 
 ### Documentation
 - ❌ **Don't save docs in wrong locations**: Always use `docs/` subfolders, never project root or `/tmp`
-  - Planning → `docs/development/` or `docs/design/`
+  - Planning (active) → `docs/development/` (currently empty - for new planning work only)
+  - Planning (completed) → Archived to appropriate `docs/archive/` subfolder
   - Architecture → `docs/architecture/`
   - Decisions → `docs/decisions/`
   - Guides → `docs/guides/`
+  - Testing → `docs/testing/`
+  - Operations → `docs/operations/`
 - ❌ **Don't create duplicate docs**: Check `docs/archive/README.md` first
 
 ## Hardware & Environment
@@ -728,11 +731,11 @@ See `docs/guides/COMPLETE_SETUP_WALKTHROUGH.md` for detailed setup instructions.
 
 - **System overview**: Read `docs/design/OBRA_SYSTEM_OVERVIEW.md` for complete system understanding
 - **Architecture decisions**: Check `docs/decisions/` for ADRs (14 total)
-- **Latest changes**: Review `CHANGELOG.md` and `docs/development/phase-reports/`
+- **Latest changes**: Review `CHANGELOG.md` and `docs/archive/phase-reports/`
 - **Technical architecture**: Consult `docs/architecture/ARCHITECTURE.md`
 - **Natural language interface**: See `docs/guides/NL_COMMAND_GUIDE.md` for conversational commands
 - **Project maintenance**: See `docs/guides/PROJECT_INFRASTRUCTURE_GUIDE.md` for auto-doc maintenance
-- **Testing issues**: Check `docs/development/WSL2_TEST_CRASH_POSTMORTEM.md` for WSL2 crash prevention
+- **Testing issues**: Check `docs/testing/postmortems/WSL2_TEST_CRASH_POSTMORTEM.md` for WSL2 crash prevention
 - **Configuration**: See `docs/guides/CONFIGURATION_PROFILES_GUIDE.md` for profile setup
 - **Historical context**: Browse `docs/archive/README.md` for archived milestones and analysis
 
