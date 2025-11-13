@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **NL Query System - Missing task_type Parameter**:
+  - Fixed `StateManager.list_tasks()` missing `task_type` parameter causing NL hierarchical queries to fail
+  - Added `task_type: Optional[TaskType] = None` parameter to `StateManager.list_tasks()` (src/core/state.py:644)
+  - Enables filtering by EPIC, STORY, TASK, SUBTASK types
+  - Fixes error: "StateManager.list_tasks() got an unexpected keyword argument 'task_type'"
+  - Bug discovered during interactive NL query: "list the plans (epics, stories, tasks, etc) in project #1"
+  - **Impact**: NL queries for hierarchical task structures now work correctly
+  - **Files modified**:
+    - `src/core/state.py` (1 method signature + 3 lines)
+    - `tests/test_state_manager_task_operations.py` (154 lines, 7 new tests)
+  - **Tests**: All 17 tests passing in test_state_manager_task_operations.py
+
 ## [1.7.4] - 2025-11-13
 
 ### Added

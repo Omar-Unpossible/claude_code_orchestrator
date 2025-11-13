@@ -645,6 +645,7 @@ class StateManager:
         self,
         project_id: Optional[int] = None,
         status: Optional[TaskStatus] = None,
+        task_type: Optional[TaskType] = None,
         limit: Optional[int] = None
     ) -> List[Task]:
         """Get all tasks with optional filtering.
@@ -652,6 +653,7 @@ class StateManager:
         Args:
             project_id: Filter by project ID (None = all projects)
             status: Filter by status (None = all statuses)
+            task_type: Filter by task type (None = all types)
             limit: Maximum number of tasks to return (None = no limit)
 
         Returns:
@@ -662,6 +664,8 @@ class StateManager:
             >>> all_tasks = state_manager.list_tasks()
             >>> # Get all pending tasks
             >>> pending = state_manager.list_tasks(status='pending')
+            >>> # Get all epics
+            >>> epics = state_manager.list_tasks(task_type=TaskType.EPIC)
             >>> # Get tasks for project 1
             >>> project_tasks = state_manager.list_tasks(project_id=1)
         """
@@ -674,6 +678,8 @@ class StateManager:
                 query = query.filter(Task.project_id == project_id)
             if status is not None:
                 query = query.filter(Task.status == status)
+            if task_type is not None:
+                query = query.filter(Task.task_type == task_type)
 
             # Order by priority (desc) and created date
             query = query.order_by(desc(Task.priority), Task.created_at)
