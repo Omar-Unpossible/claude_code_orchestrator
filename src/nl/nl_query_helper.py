@@ -202,6 +202,17 @@ class NLQueryHelper:
         """
         if context.entity_type == EntityType.PROJECT:
             projects = self.state_manager.list_projects()
+
+            # Filter by identifier if provided
+            if context.identifier is not None:
+                if isinstance(context.identifier, int):
+                    # Filter by ID
+                    projects = [p for p in projects if p.id == context.identifier]
+                elif isinstance(context.identifier, str):
+                    # Filter by name (case-insensitive partial match)
+                    projects = [p for p in projects
+                               if context.identifier.lower() in p.project_name.lower()]
+
             return QueryResult(
                 success=True,
                 query_type='simple',
@@ -224,6 +235,17 @@ class NLQueryHelper:
 
         elif context.entity_type == EntityType.MILESTONE:
             milestones = self.state_manager.list_milestones(project_id)
+
+            # Filter by identifier if provided
+            if context.identifier is not None:
+                if isinstance(context.identifier, int):
+                    # Filter by ID
+                    milestones = [m for m in milestones if m.id == context.identifier]
+                elif isinstance(context.identifier, str):
+                    # Filter by name (case-insensitive partial match)
+                    milestones = [m for m in milestones
+                                 if context.identifier.lower() in m.name.lower()]
+
             return QueryResult(
                 success=True,
                 query_type='simple',
@@ -236,7 +258,7 @@ class NLQueryHelper:
                             'id': m.id,
                             'name': m.name,
                             'description': m.description,
-                            'status': m.status.value if hasattr(m, 'status') else 'ACTIVE'
+                            'status': 'COMPLETED' if m.achieved else 'ACTIVE'
                         }
                         for m in milestones
                     ],
@@ -449,7 +471,7 @@ class NLQueryHelper:
             milestone_data = {
                 'milestone_id': milestone.id,
                 'milestone_name': milestone.name,
-                'milestone_status': milestone.status.value if hasattr(milestone, 'status') else 'ACTIVE',
+                'milestone_status': 'COMPLETED' if milestone.achieved else 'ACTIVE',
                 'required_epics': []
             }
 

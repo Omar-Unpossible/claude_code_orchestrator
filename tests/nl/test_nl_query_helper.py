@@ -146,8 +146,7 @@ class TestQueryOperations:
         mock_milestone.id = 3
         mock_milestone.name = "MVP Release"
         mock_milestone.description = "Minimum viable product"
-        mock_milestone.status = MagicMock()
-        mock_milestone.status.value = "ACTIVE"
+        mock_milestone.achieved = False  # Use achieved boolean instead of status
         mock_state_manager.list_milestones.return_value = [mock_milestone]
 
         # Create query context
@@ -319,8 +318,7 @@ class TestQueryOperations:
         mock_milestone.id = 1
         mock_milestone.name = "Phase 1 Complete"
         mock_milestone.required_epic_ids = [5]
-        mock_milestone.status = MagicMock()
-        mock_milestone.status.value = "ACTIVE"
+        mock_milestone.achieved = False  # Use achieved boolean instead of status
 
         mock_state_manager.list_milestones.return_value = [mock_milestone]
         mock_state_manager.get_task.return_value = mock_epic

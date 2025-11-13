@@ -1089,6 +1089,50 @@ class StateManager:
             ).all()
             return tasks
 
+    def list_milestones(
+        self,
+        project_id: Optional[int] = None,
+        achieved: Optional[bool] = None,
+        limit: Optional[int] = None
+    ) -> List[Milestone]:
+        """Get all milestones with optional filtering.
+
+        Args:
+            project_id: Filter by project ID (None = all projects)
+            achieved: Filter by achievement status (None = all)
+            limit: Maximum number to return (None = no limit)
+
+        Returns:
+            List of milestones matching criteria, ordered by target_date
+
+        Example:
+            >>> milestones = state.list_milestones(project_id=1)
+            >>> active = state.list_milestones(project_id=1, achieved=False)
+        """
+        with self._lock:
+            session = self._get_session()
+            query = session.query(Milestone).filter(
+                Milestone.is_deleted == False
+            )
+
+            # Apply filters
+            if project_id is not None:
+                query = query.filter(Milestone.project_id == project_id)
+            if achieved is not None:
+                query = query.filter(Milestone.achieved == achieved)
+
+            # Order by target_date (nulls last), then created_at
+            query = query.order_by(
+                Milestone.target_date.asc().nullslast(),
+                Milestone.created_at
+            )
+
+            # Apply limit
+            if limit is not None:
+                query = query.limit(limit)
+
+            return query.all()
+
     def create_milestone(
         self,
         project_id: int,
