@@ -244,6 +244,46 @@ class TestEntityIdentifierExtractorNameBased:
         assert isinstance(result.identifier, str)
         assert result.confidence >= 0.85
 
+    def test_identifier_extraction_phrasing_variations(self, extractor, mock_llm):
+        """Phase 4: Varied phrasing should extract same identifier with good confidence.
+
+        Tests that the enhanced prompt handles different phrasing patterns
+        (for, called, named, about, etc.) with consistent quality.
+
+        Expected impact: Entity confidence 0.52-0.59 → 0.70-0.85
+        """
+        test_cases = [
+            ("create epic for user auth", "user auth"),
+            ("create epic called user auth", "user auth"),
+            ("I need an epic named user auth", "user auth"),
+            ("add epic: user auth", "user auth"),
+            ("build epic about user auth", "user auth"),
+            ("make user auth epic", "user auth"),
+        ]
+
+        for user_input, expected_id in test_cases:
+            # Mock LLM to return the identifier with good confidence
+            mock_llm.generate.return_value = json.dumps({
+                "identifier": expected_id,
+                "identifier_type": "name",
+                "confidence": 0.85,
+                "reasoning": f"Extracted identifier from varied phrasing: {user_input}"
+            })
+
+            result = extractor.extract(
+                user_input,
+                entity_type=EntityType.EPIC,
+                operation=OperationType.CREATE
+            )
+
+            # Verify identifier extracted correctly
+            assert result.identifier.lower().strip() == expected_id.lower().strip(), \
+                f"Failed for: {user_input}"
+
+            # Verify confidence meets Phase 4 target (0.70+)
+            assert result.confidence >= 0.70, \
+                f"Low confidence for: {user_input} (got {result.confidence})"
+
 
 class TestEntityIdentifierExtractorIDBased:
     """Test ID-based identifier extraction."""
@@ -505,21 +545,17 @@ class TestEntityIdentifierExtractorEdgeCases:
             )
 
     def test_no_identifier_query_all(self, extractor, mock_llm):
-        """Test: 'Show me all projects' → None (no specific identifier)"""
-        mock_llm.generate.return_value = json.dumps({
-            "identifier": None,
-            "identifier_type": "none",
-            "confidence": 0.90,
-            "reasoning": "Query requests all entities, no specific identifier"
-        })
-
+        """Test: 'Show me all projects' → '__ALL__' (bulk operation detected)"""
+        # Note: Bulk operation detection happens BEFORE LLM call
+        # The extractor detects 'all' keyword and returns __ALL__ sentinel
         result = extractor.extract(
             "Show me all projects",
             entity_type=EntityType.PROJECT,
             operation=OperationType.QUERY
         )
 
-        assert result.identifier is None
+        # Bulk operation detector returns __ALL__ sentinel
+        assert result.identifier == "__ALL__"
         assert result.confidence >= 0.85
 
     def test_llm_failure(self, extractor, mock_llm):

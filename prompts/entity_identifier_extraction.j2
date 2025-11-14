@@ -1,8 +1,32 @@
-Extract identifier ({{ entity_type }}, {{ operation_type }}):
-- Name: text after "the", "called", "for"
-- ID: number from "project 1", "#5"
-- null: if "all", "list" without specific
+Extract the identifier from this command:
 
-Input: {{ user_command }}
+"{{ user_command }}"
 
-JSON: {"identifier": null, "identifier_type": "name|id|none", "confidence": 0.0, "reasoning": ""}
+Entity type: {{ entity_type }}
+Operation: {{ operation_type }}
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
