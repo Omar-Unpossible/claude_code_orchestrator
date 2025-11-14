@@ -39,6 +39,10 @@ from src.nl.types import OperationType, EntityType, IdentifierResult
 
 logger = logging.getLogger(__name__)
 
+# Bulk operation constants
+BULK_KEYWORDS = ['all', 'every', 'each', 'entire']
+BULK_SENTINEL = "__ALL__"
+
 
 class EntityIdentifierExtractionException(OrchestratorException):
     """Exception raised when entity identifier extraction fails."""
@@ -123,6 +127,18 @@ class EntityIdentifierExtractor(EntityIdentifierExtractorInterface):
             f"template_path={template_path}"
         )
 
+    def _detect_bulk_operation(self, user_input: str) -> bool:
+        """Detect if user wants bulk operation.
+
+        Args:
+            user_input: Raw user command string
+
+        Returns:
+            True if bulk operation detected, False otherwise
+        """
+        tokens = user_input.lower().split()
+        return any(keyword in tokens for keyword in BULK_KEYWORDS)
+
     def extract(
         self,
         user_input: str,
@@ -148,6 +164,27 @@ class EntityIdentifierExtractor(EntityIdentifierExtractorInterface):
 
         if not user_input or not user_input.strip():
             raise ValueError("user_input cannot be empty")
+
+        # Check for bulk operation first
+        if self._detect_bulk_operation(user_input):
+            logger.info(f"Detected bulk operation with sentinel {BULK_SENTINEL}")
+            result = IdentifierResult(
+                identifier=BULK_SENTINEL,
+                confidence=0.95,
+                raw_response=f"Bulk operation detected (keywords: {BULK_KEYWORDS})",
+                reasoning="Bulk operation keyword detected in user input"
+            )
+
+            # Record metrics
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_llm_request(
+                provider='rule-based',
+                latency_ms=latency_ms,
+                success=True,
+                model='bulk-detection'
+            )
+
+            return result
 
         # Build prompt with full context
         prompt = self._build_prompt(user_input, entity_type, operation)

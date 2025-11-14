@@ -263,6 +263,135 @@ class TestQueryPipeline:
 
         assert response.success
 
+    def test_query_type_llm_extraction_priority(self, processor, mock_llm, mock_state_manager):
+        """Test: LLM-extracted query_type takes priority over keyword matching (BUG FIX)"""
+        # Mock pipeline stages - LLM extracts 'hierarchical', no hierarchical keywords in message
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),  # IntentClassifier
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),  # OperationClassifier
+            json.dumps({"entity_type": "PROJECT", "confidence": 0.91}),  # EntityTypeClassifier
+            json.dumps({"identifier": 1, "confidence": 0.90}),  # EntityIdentifierExtractor
+            json.dumps({"parameters": {"query_type": "hierarchical"}, "confidence": 0.88})  # ParameterExtractor
+        ]
+
+        # Message has NO hierarchical keywords, but LLM extracted query_type
+        parsed_intent = processor.process("For project #1, list the current plan", project_id=1)
+
+        # Verify ParsedIntent structure (ADR-017)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.requires_execution is True
+        # Verify query_type was correctly extracted and set to HIERARCHICAL
+        assert parsed_intent.operation_context.query_type == QueryType.HIERARCHICAL
+
+    def test_query_type_keyword_fallback(self, processor, mock_llm, mock_state_manager):
+        """Test: Keyword fallback when LLM doesn't extract query_type (BUG FIX)"""
+        # Mock pipeline stages - LLM does NOT extract query_type
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),  # IntentClassifier
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),  # OperationClassifier
+            json.dumps({"entity_type": "PROJECT", "confidence": 0.91}),  # EntityTypeClassifier
+            json.dumps({"identifier": None, "confidence": 0.90}),  # EntityIdentifierExtractor
+            json.dumps({"parameters": {}, "confidence": 0.88})  # ParameterExtractor (no query_type)
+        ]
+
+        # Message has 'plan' keyword (newly added to hierarchical keywords)
+        parsed_intent = processor.process("Show me the plan", project_id=1)
+
+        # Verify ParsedIntent structure (ADR-017)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.requires_execution is True
+        # Verify keyword fallback set query_type to HIERARCHICAL
+        assert parsed_intent.operation_context.query_type == QueryType.HIERARCHICAL
+
+    def test_query_type_invalid_enum_fallback(self, processor, mock_llm, mock_state_manager):
+        """Test: Invalid LLM value falls back to keyword matching (BUG FIX)"""
+        # Mock pipeline stages - LLM extracts invalid query_type
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),  # IntentClassifier
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),  # OperationClassifier
+            json.dumps({"entity_type": "PROJECT", "confidence": 0.91}),  # EntityTypeClassifier
+            json.dumps({"identifier": None, "confidence": 0.90}),  # EntityIdentifierExtractor
+            json.dumps({"parameters": {"query_type": "invalid_type"}, "confidence": 0.88})  # Invalid!
+        ]
+
+        # Message has 'plans' keyword
+        parsed_intent = processor.process("Show me the plans", project_id=1)
+
+        # Verify ParsedIntent structure (ADR-017)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.requires_execution is True
+        # Verify keyword fallback worked after invalid LLM value
+        assert parsed_intent.operation_context.query_type == QueryType.HIERARCHICAL
+
+    def test_query_type_plan_keyword(self, processor, mock_llm, mock_state_manager):
+        """Test: 'plan' and 'plans' keywords route to HIERARCHICAL (BUG FIX)"""
+        # Mock pipeline stages - Test both 'plan' and 'plans' keywords
+        mock_llm.generate.side_effect = [
+            # First test: 'plan'
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),
+            json.dumps({"entity_type": "PROJECT", "confidence": 0.91}),
+            json.dumps({"identifier": None, "confidence": 0.90}),
+            json.dumps({"parameters": {}, "confidence": 0.88}),
+            # Second test: 'plans'
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),
+            json.dumps({"entity_type": "PROJECT", "confidence": 0.91}),
+            json.dumps({"identifier": None, "confidence": 0.90}),
+            json.dumps({"parameters": {}, "confidence": 0.88}),
+        ]
+
+        # Test 'plan' keyword
+        parsed_intent1 = processor.process("List project plan", project_id=1)
+        assert parsed_intent1.intent_type == 'COMMAND'
+        assert parsed_intent1.operation_context.query_type == QueryType.HIERARCHICAL
+
+        # Test 'plans' keyword
+        parsed_intent2 = processor.process("Show project plans", project_id=1)
+        assert parsed_intent2.intent_type == 'COMMAND'
+        assert parsed_intent2.operation_context.query_type == QueryType.HIERARCHICAL
+
+    def test_all_query_types(self, processor, mock_llm, mock_state_manager):
+        """Test: All query types work with both LLM and keyword paths (BUG FIX)"""
+        # Test NEXT_STEPS via LLM extraction
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),
+            json.dumps({"entity_type": "TASK", "confidence": 0.91}),
+            json.dumps({"identifier": None, "confidence": 0.90}),
+            json.dumps({"parameters": {"query_type": "next_steps"}, "confidence": 0.88})
+        ]
+
+        parsed_intent = processor.process("What should I do next", project_id=1)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.operation_context.query_type == QueryType.NEXT_STEPS
+
+        # Test BACKLOG via keyword
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),
+            json.dumps({"entity_type": "TASK", "confidence": 0.91}),
+            json.dumps({"identifier": None, "confidence": 0.90}),
+            json.dumps({"parameters": {}, "confidence": 0.88})  # No query_type
+        ]
+
+        parsed_intent = processor.process("Show backlog", project_id=1)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.operation_context.query_type == QueryType.BACKLOG
+
+        # Test ROADMAP via keyword
+        mock_llm.generate.side_effect = [
+            json.dumps({"intent": "COMMAND", "confidence": 0.95}),
+            json.dumps({"operation_type": "QUERY", "confidence": 0.93}),
+            json.dumps({"entity_type": "MILESTONE", "confidence": 0.91}),
+            json.dumps({"identifier": None, "confidence": 0.90}),
+            json.dumps({"parameters": {}, "confidence": 0.88})
+        ]
+
+        parsed_intent = processor.process("Show roadmap", project_id=1)
+        assert parsed_intent.intent_type == 'COMMAND'
+        assert parsed_intent.operation_context.query_type == QueryType.ROADMAP
+
 
 class TestQuestionIntent:
     """Test QUESTION intent handling with QuestionHandler."""

@@ -439,6 +439,50 @@ class TestEntityIdentifierExtractorIDBased:
         assert result.confidence >= 0.9
 
 
+class TestEntityIdentifierExtractorBulkOperations:
+    """Test bulk operation detection."""
+
+    def test_bulk_keyword_all(self, extractor):
+        """Test 'all' keyword returns bulk sentinel."""
+        result = extractor.extract(
+            "delete all tasks",
+            entity_type=EntityType.TASK,
+            operation=OperationType.DELETE
+        )
+        assert result.identifier == "__ALL__"
+        assert result.confidence >= 0.95
+
+    def test_bulk_keyword_every(self, extractor):
+        """Test 'every' keyword returns bulk sentinel."""
+        result = extractor.extract(
+            "remove every epic",
+            entity_type=EntityType.EPIC,
+            operation=OperationType.DELETE
+        )
+        assert result.identifier == "__ALL__"
+        assert result.confidence >= 0.95
+
+    def test_bulk_keyword_each(self, extractor):
+        """Test 'each' keyword returns bulk sentinel."""
+        result = extractor.extract(
+            "clear each story",
+            entity_type=EntityType.STORY,
+            operation=OperationType.DELETE
+        )
+        assert result.identifier == "__ALL__"
+        assert result.confidence >= 0.95
+
+    def test_bulk_keyword_entire(self, extractor):
+        """Test 'entire' keyword returns bulk sentinel."""
+        result = extractor.extract(
+            "delete entire project",
+            entity_type=EntityType.PROJECT,
+            operation=OperationType.DELETE
+        )
+        assert result.identifier == "__ALL__"
+        assert result.confidence >= 0.95
+
+
 class TestEntityIdentifierExtractorEdgeCases:
     """Test edge cases and error handling."""
 

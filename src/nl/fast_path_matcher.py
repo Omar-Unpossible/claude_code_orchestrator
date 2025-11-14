@@ -169,7 +169,7 @@ class FastPathMatcher:
                 # Build OperationContext
                 context = OperationContext(
                     operation=pattern_def.operation,
-                    entity_type=pattern_def.entity_type,
+                    entity_types=[pattern_def.entity_type],
                     identifier=identifier,
                     parameters={},
                     confidence=1.0,  # Rule-based = 100% confidence

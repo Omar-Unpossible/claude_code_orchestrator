@@ -1295,6 +1295,19 @@ class Orchestrator:
         if llm_type:
             self.config.set('llm.type', llm_type)
 
+            # IMPORTANT: When switching providers, clear the model so the new
+            # provider can use its default model (unless user explicitly provides one)
+            if llm_config is None or 'model' not in llm_config:
+                # Clear old model to prevent cross-provider model conflicts
+                # (e.g., trying to use qwen2.5-coder:32b with openai-codex)
+                if self.config.get('llm.model'):
+                    logger.info(f"Clearing old model when switching to {llm_type}")
+                    # Remove model from config - new LLM will use its default
+                    llm_config_dict = self.config.get('llm', {})
+                    if 'model' in llm_config_dict:
+                        del llm_config_dict['model']
+                        self.config.set('llm', llm_config_dict)
+
         if llm_config:
             # Merge new config with existing
             current_llm_config = self.config.get('llm', {})
@@ -1304,6 +1317,7 @@ class Orchestrator:
 
         # Attempt initialization
         try:
+            old_llm = self.llm_interface  # Save reference to detect changes
             self._initialize_llm()
 
             if self.llm_interface is None:
@@ -1322,6 +1336,12 @@ class Orchestrator:
                 self.llm_interface = None
                 return False
 
+            # Update all component references to new LLM instance
+            # This ensures all components use the same LLM after switching
+            if self.llm_interface != old_llm:
+                self._update_llm_references()
+                logger.info("Updated LLM references in all components")
+
             llm_name = llm_type or self.config.get('llm.type', 'unknown')
             self._print_obra(
                 f"✓ Successfully connected to LLM: {llm_name}",
@@ -1337,6 +1357,62 @@ class Orchestrator:
             )
             self.llm_interface = None
             return False
+
+    def _update_llm_references(self) -> None:
+        """Update LLM reference in all components.
+
+        Called after LLM reconnection/switching to ensure all components
+        use the current LLM instance. This prevents stale references when
+        switching between LLM providers.
+
+        This is the single source of truth maintenance method - add any
+        new LLM-dependent components here.
+
+        Components updated:
+            - ContextManager
+            - ConfidenceScorer
+            - PromptGenerator (recreated with new LLM)
+            - ComplexityEstimator (if enabled)
+
+        Note: NL processor is updated separately in InteractiveMode after
+        reconnect_llm() returns, via _initialize_nl_processor().
+        """
+        logger.debug("Updating LLM references in all components...")
+
+        # Update context manager
+        if self.context_manager and self.llm_interface:
+            self.context_manager.llm_interface = self.llm_interface
+            logger.debug("  ✓ Updated ContextManager LLM reference")
+
+        # Update confidence scorer
+        if self.confidence_scorer and self.llm_interface:
+            self.confidence_scorer.llm_interface = self.llm_interface
+            logger.debug("  ✓ Updated ConfidenceScorer LLM reference")
+
+        # Recreate prompt generator with new LLM
+        # (PromptGenerator stores LLM in __init__, so we need to recreate it)
+        if self.llm_interface:
+            try:
+                template_dir = self.config.get('prompt.template_dir', 'config')
+                self.prompt_generator = PromptGenerator(
+                    template_dir=template_dir,
+                    llm_interface=self.llm_interface,
+                    state_manager=self.state_manager
+                )
+                logger.debug("  ✓ Recreated PromptGenerator with new LLM")
+            except Exception as e:
+                logger.warning(f"  ⚠ Failed to recreate PromptGenerator: {e}")
+
+        # Update complexity estimator if enabled
+        if self._enable_complexity_estimation and self.complexity_estimator:
+            if self.llm_interface:
+                self.complexity_estimator.llm_interface = self.llm_interface
+                logger.debug("  ✓ Updated ComplexityEstimator LLM reference")
+
+        # Note: GitManager doesn't need real-time LLM updates
+        # It gets LLM when generating commit messages, which is rare
+
+        logger.info("✓ All component LLM references updated")
 
     def check_llm_available(self) -> bool:
         """Check if LLM is connected and available.
@@ -1696,10 +1772,19 @@ class Orchestrator:
                         operation_context,
                         project_id=project_id
                     )
+
+                    # Format message from query results
+                    if query_result.success:
+                        count = query_result.results.get('count', 0)
+                        entity_type = query_result.results.get('entity_type', 'items')
+                        message = f"Found {count} {entity_type}(s)"
+                    else:
+                        message = '\n'.join(query_result.errors) if query_result.errors else 'Query failed'
+
                     return {
                         'success': query_result.success,
-                        'message': query_result.formatted_output,
-                        'data': query_result.data,
+                        'message': message,
+                        'data': query_result.results,
                         'confidence': parsed_intent.confidence,
                         'task_id': None
                     }
@@ -1720,6 +1805,58 @@ class Orchestrator:
                     project_id=project_id,
                     original_message=parsed_intent.original_message
                 )
+
+                # Check if this is a bulk operation
+                if task.context and task.context.get('bulk_operation'):
+                    logger.info(f"Executing bulk delete operation: task_id={task.id}")
+
+                    # Import here to avoid circular imports
+                    from src.nl.bulk_command_executor import BulkCommandExecutor
+                    from src.nl.types import EntityType
+
+                    # Initialize bulk executor
+                    bulk_executor = BulkCommandExecutor(self.state_manager)
+
+                    # Extract entity types from context
+                    entity_types_str = task.context.get('entity_types', [])
+                    entity_types = [EntityType(et) for et in entity_types_str]
+
+                    # Execute bulk delete
+                    try:
+                        results = bulk_executor.execute_bulk_delete(
+                            project_id=project_id,
+                            entity_types=entity_types,
+                            require_confirmation=True
+                        )
+
+                        if results.get('cancelled'):
+                            return {
+                                'success': False,
+                                'message': "Bulk delete cancelled by user.",
+                                'task_id': task.id,
+                                'confidence': parsed_intent.confidence,
+                                'validation_passed': True
+                            }
+                        else:
+                            deleted_items = ", ".join([f"{count} {name}" for name, count in results.items()])
+                            return {
+                                'success': True,
+                                'message': f"✓ Deleted {deleted_items}",
+                                'task_id': task.id,
+                                'confidence': parsed_intent.confidence,
+                                'validation_passed': True,
+                                'bulk_results': results
+                            }
+
+                    except Exception as e:
+                        logger.error(f"Bulk delete failed: {e}", exc_info=True)
+                        return {
+                            'success': False,
+                            'message': f"✗ Bulk delete failed: {e}",
+                            'task_id': task.id,
+                            'confidence': 0.0,
+                            'validation_passed': False
+                        }
 
                 # Execute task through full orchestration pipeline
                 logger.info(f"Executing NL command via orchestrator: task_id={task.id}")

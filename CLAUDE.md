@@ -567,6 +567,40 @@ export ORCHESTRATOR_LLM_TYPE=ollama
 export ORCHESTRATOR_LLM_API_URL=http://localhost:11434
 ```
 
+### Helper Scripts
+
+**Location**: All helper scripts have been organized in the `scripts/` directory.
+
+**⭐ Most Commonly Used:**
+
+```bash
+# Start Obra interactive mode (USE THIS!)
+./scripts/startup/obra.sh
+
+# Alternative startup with auto-setup
+./scripts/startup/start_obra.sh
+
+# Test the exact interactive flow
+python scripts/testing/test_exact_flow.py
+
+# Check Python environment and LLM plugins
+./scripts/diagnostic/check_python_env.sh
+
+# Diagnose LLM connection issues
+python scripts/diagnostic/diagnose_llm_issue.py
+
+# Run a simple orchestration example
+python scripts/examples/run_obra.py
+```
+
+**Script Categories:**
+- **`scripts/startup/`** - Main startup scripts (obra.sh, start_obra.sh)
+- **`scripts/testing/`** - Integration and manual test scripts (test_exact_flow.py, test_llm_*.py)
+- **`scripts/diagnostic/`** - Debugging and troubleshooting (check_python_env.sh, diagnose_llm_issue.py)
+- **`scripts/examples/`** - Example usage scripts (run_obra.py, run_obra_iterative.py)
+
+**See**: `scripts/README.md` for complete documentation of all available scripts.
+
 **Programmatic Reconnection**:
 ```python
 # In Python/interactive mode

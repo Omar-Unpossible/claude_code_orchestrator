@@ -115,7 +115,7 @@ class OperationContext:
 
     Attributes:
         operation: Type of operation (CREATE/UPDATE/DELETE/QUERY)
-        entity_type: Type of entity (project/epic/story/task/milestone)
+        entity_types: List of entity types (project/epic/story/task/milestone)
         identifier: Entity identifier (name string or ID integer)
         parameters: Operation-specific parameters (status, priority, dependencies, etc.)
         query_type: Type of query (for QUERY operations only)
@@ -125,7 +125,7 @@ class OperationContext:
     Example:
         >>> context = OperationContext(
         ...     operation=OperationType.UPDATE,
-        ...     entity_type=EntityType.PROJECT,
+        ...     entity_types=[EntityType.PROJECT],
         ...     identifier="manual tetris test",
         ...     parameters={"status": "INACTIVE"},
         ...     confidence=0.95,
@@ -133,22 +133,36 @@ class OperationContext:
         ... )
     """
     operation: OperationType
-    entity_type: EntityType
+    entity_types: List[EntityType]
     identifier: Optional[Union[str, int]] = None
     parameters: Dict[str, Any] = field(default_factory=dict)
     query_type: Optional[QueryType] = None
     confidence: float = 0.0
     raw_input: str = ""
 
+    @property
+    def entity_type(self) -> EntityType:
+        """Backward compatibility: return first entity type."""
+        return self.entity_types[0] if self.entity_types else None
+
     def __post_init__(self):
         """Validate confidence score and operation-specific requirements."""
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
 
-        # UPDATE and DELETE operations require an identifier
+        # UPDATE and DELETE operations require an identifier OR bulk flag
         if self.operation in [OperationType.UPDATE, OperationType.DELETE]:
-            if self.identifier is None:
-                raise ValueError(f"{self.operation.value} operation requires an identifier")
+            is_bulk = (
+                self.identifier == "__ALL__" or
+                (self.parameters and self.parameters.get('bulk') is True) or
+                (self.parameters and self.parameters.get('all') is True)
+            )
+
+            if self.identifier is None and not is_bulk:
+                raise ValueError(
+                    f"{self.operation.value} operation requires an identifier or bulk flag. "
+                    f"To operate on all items, use 'all' keyword (e.g., 'delete all tasks')."
+                )
 
         # QUERY operations should have a query_type
         if self.operation == OperationType.QUERY and self.query_type is None:

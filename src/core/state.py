@@ -619,6 +619,182 @@ class StateManager:
                     details=str(e)
                 ) from e
 
+    def delete_all_tasks(self, project_id: int) -> int:
+        """
+        Delete all tasks in project (excluding stories/epics/subtasks).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Count of tasks deleted
+
+        Raises:
+            DatabaseException: If deletion fails
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    tasks = session.query(Task).filter(
+                        Task.project_id == project_id,
+                        Task.task_type == TaskType.TASK,
+                        Task.is_deleted == False
+                    ).all()
+
+                    count = len(tasks)
+                    for task in tasks:
+                        session.delete(task)
+
+                    logger.info(f"Deleted {count} tasks from project {project_id}")
+                    return count
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_all_tasks',
+                    details=str(e)
+                ) from e
+
+    def delete_all_stories(self, project_id: int) -> int:
+        """
+        Delete all stories in project (cascade to child tasks).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Count of stories deleted
+
+        Raises:
+            DatabaseException: If deletion fails
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    stories = session.query(Task).filter(
+                        Task.project_id == project_id,
+                        Task.task_type == TaskType.STORY,
+                        Task.is_deleted == False
+                    ).all()
+
+                    count = len(stories)
+
+                    # Delete child tasks first
+                    for story in stories:
+                        child_tasks = session.query(Task).filter(
+                            Task.story_id == story.id,
+                            Task.is_deleted == False
+                        ).all()
+                        for task in child_tasks:
+                            session.delete(task)
+
+                    # Delete stories
+                    for story in stories:
+                        session.delete(story)
+
+                    logger.info(f"Deleted {count} stories from project {project_id}")
+                    return count
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_all_stories',
+                    details=str(e)
+                ) from e
+
+    def delete_all_epics(self, project_id: int) -> int:
+        """
+        Delete all epics in project (cascade to stories and tasks).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Count of epics deleted
+
+        Raises:
+            DatabaseException: If deletion fails
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    epics = session.query(Task).filter(
+                        Task.project_id == project_id,
+                        Task.task_type == TaskType.EPIC,
+                        Task.is_deleted == False
+                    ).all()
+
+                    count = len(epics)
+
+                    # Delete child stories and their tasks first
+                    for epic in epics:
+                        stories = session.query(Task).filter(
+                            Task.epic_id == epic.id,
+                            Task.is_deleted == False
+                        ).all()
+
+                        for story in stories:
+                            # Delete tasks belonging to this story
+                            child_tasks = session.query(Task).filter(
+                                Task.story_id == story.id,
+                                Task.is_deleted == False
+                            ).all()
+                            for task in child_tasks:
+                                session.delete(task)
+
+                            # Delete the story
+                            session.delete(story)
+
+                    # Delete epics
+                    for epic in epics:
+                        session.delete(epic)
+
+                    logger.info(f"Deleted {count} epics from project {project_id}")
+                    return count
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_all_epics',
+                    details=str(e)
+                ) from e
+
+    def delete_all_subtasks(self, project_id: int) -> int:
+        """
+        Delete all subtasks in project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Count of subtasks deleted
+
+        Raises:
+            DatabaseException: If deletion fails
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+                    subtasks = session.query(Task).filter(
+                        Task.project_id == project_id,
+                        Task.parent_task_id.isnot(None),
+                        Task.is_deleted == False
+                    ).all()
+
+                    count = len(subtasks)
+                    for subtask in subtasks:
+                        session.delete(subtask)
+
+                    logger.info(f"Deleted {count} subtasks from project {project_id}")
+                    return count
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_all_subtasks',
+                    details=str(e)
+                ) from e
+
     def get_tasks_by_status(
         self,
         project_id: int,
@@ -880,6 +1056,66 @@ class StateManager:
     # ============================================================================
     # Agile/Scrum Hierarchy Methods (ADR-013)
     # ============================================================================
+
+    def list_epics(
+        self,
+        project_id: int,
+        status: Optional[TaskStatus] = None
+    ) -> List[Task]:
+        """List all epics for a project.
+
+        Args:
+            project_id: Project ID
+            status: Optional status filter (None = all statuses)
+
+        Returns:
+            List of Epic tasks
+
+        Example:
+            >>> epics = state.list_epics(project_id=1)
+            >>> open_epics = state.list_epics(project_id=1, status=TaskStatus.PENDING)
+        """
+        return self.list_tasks(
+            project_id=project_id,
+            task_type=TaskType.EPIC,
+            status=status
+        )
+
+    def list_stories(
+        self,
+        project_id: int,
+        epic_id: Optional[int] = None,
+        status: Optional[TaskStatus] = None
+    ) -> List[Task]:
+        """List all stories for a project, optionally filtered by epic.
+
+        Args:
+            project_id: Project ID
+            epic_id: Optional epic ID filter (None = all epics)
+            status: Optional status filter (None = all statuses)
+
+        Returns:
+            List of Story tasks
+
+        Example:
+            >>> stories = state.list_stories(project_id=1)
+            >>> epic_stories = state.list_stories(project_id=1, epic_id=5)
+            >>> open_stories = state.list_stories(project_id=1, status=TaskStatus.PENDING)
+        """
+        with self._lock:
+            session = self._get_session()
+            query = session.query(Task).filter(
+                Task.project_id == project_id,
+                Task.task_type == TaskType.STORY,
+                Task.is_deleted == False
+            )
+
+            if epic_id is not None:
+                query = query.filter(Task.epic_id == epic_id)
+            if status is not None:
+                query = query.filter(Task.status == status)
+
+            return query.all()
 
     def create_epic(
         self,

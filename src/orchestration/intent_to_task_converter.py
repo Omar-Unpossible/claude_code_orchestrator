@@ -395,32 +395,60 @@ class IntentToTaskConverter:
                 recovery="Provide entity identifier (name or ID)"
             )
 
-        # Build task title
-        entity_name = str(parsed_intent.entity_type).title()
-        task_title = f"Delete {entity_name.lower()} '{identifier}'"
+        # Check if bulk operation
+        if identifier == "__ALL__":
+            # Bulk delete operation
+            entity_list = ", ".join([et.value for et in parsed_intent.entity_types])
+            task_title = f"Bulk delete: {entity_list}"
 
-        # Build description with safety context
-        task_description = (
-            f"Natural language request to delete {entity_name.lower()} '{identifier}'.\n\n"
-            f"⚠️ WARNING: This will permanently remove the {entity_name.lower()} "
-            f"and may affect dependent items.\n\n"
-            f"Please review carefully before executing."
-        )
+            task_description = (
+                f"Natural language request to delete all {entity_list}.\n\n"
+                f"⚠️ WARNING: This will permanently remove ALL {entity_list} in the project.\n"
+                f"This action cannot be undone and may cascade to dependent items.\n\n"
+                f"User will be prompted for confirmation before execution."
+            )
 
-        # Build task data (DELETE operations create TASK type by default)
-        task_data = {
-            'title': task_title,
-            'description': task_description,
-            'task_type': TaskType.TASK,
-            'priority': parsed_intent.parameters.get('priority', 5),
-            # Store delete metadata in context
-            'context': {
-                'delete_target': {
-                    'entity_type': str(parsed_intent.entity_type),
-                    'identifier': identifier,
+            # Build task data for bulk operation
+            task_data = {
+                'title': task_title,
+                'description': task_description,
+                'task_type': TaskType.TASK,
+                'priority': parsed_intent.parameters.get('priority', 5),
+                # Store bulk operation metadata in context
+                'context': {
+                    'bulk_operation': True,
+                    'entity_types': [et.value for et in parsed_intent.entity_types],
+                    'scope': 'current_project',
+                    'requires_confirmation': True,
+                    'operation': 'delete'
                 }
             }
-        }
+        else:
+            # Single delete operation (existing logic)
+            entity_name = str(parsed_intent.entity_type).title()
+            task_title = f"Delete {entity_name.lower()} '{identifier}'"
+
+            task_description = (
+                f"Natural language request to delete {entity_name.lower()} '{identifier}'.\n\n"
+                f"⚠️ WARNING: This will permanently remove the {entity_name.lower()} "
+                f"and may affect dependent items.\n\n"
+                f"Please review carefully before executing."
+            )
+
+            # Build task data (DELETE operations create TASK type by default)
+            task_data = {
+                'title': task_title,
+                'description': task_description,
+                'task_type': TaskType.TASK,
+                'priority': parsed_intent.parameters.get('priority', 5),
+                # Store delete metadata in context
+                'context': {
+                    'delete_target': {
+                        'entity_type': str(parsed_intent.entity_type),
+                        'identifier': identifier,
+                    }
+                }
+            }
 
         return task_data
 

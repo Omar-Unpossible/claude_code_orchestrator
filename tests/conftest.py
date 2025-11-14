@@ -627,3 +627,205 @@ def integration_workspace():
     # Cleanup
     if os.path.exists(workspace):
         shutil.rmtree(workspace)
+
+
+# ============================================================================
+# PHASE 1: Real Component Fixtures (Integrated NL Testing)
+# ============================================================================
+
+@pytest.fixture
+def real_state_manager():
+    """REAL StateManager with in-memory SQLite.
+
+    Use this instead of mocks for integration tests.
+    Provides actual database operations with zero persistence.
+    """
+    from src.core.state import StateManager
+
+    state = StateManager(database_url='sqlite:///:memory:')
+    yield state
+    state.close()
+
+
+@pytest.fixture
+def real_nl_processor(real_state_manager, mock_llm_realistic):
+    """REAL NLCommandProcessor with realistic mock LLM.
+
+    Uses REAL StateManager and REAL processing logic.
+    Only LLM responses are mocked (but realistic).
+    """
+    from src.nl.nl_command_processor import NLCommandProcessor
+
+    return NLCommandProcessor(
+        llm_plugin=mock_llm_realistic,
+        state_manager=real_state_manager,
+        config={'nl_commands': {'enabled': True}}
+    )
+
+
+@pytest.fixture
+def mock_llm_realistic():
+    """Mock LLM with REALISTIC responses matching Qwen 2.5 Coder output.
+
+    Responses match actual LLM output format for controlled testing.
+    """
+    from unittest.mock import MagicMock
+    import re
+
+    llm = MagicMock()
+
+    # Response templates matching Qwen 2.5 Coder output format
+    def generate_realistic(prompt, **kwargs):
+        prompt_lower = prompt.lower()
+
+        # Intent classification
+        if "intent" in prompt_lower and "classify" in prompt_lower:
+            if any(word in prompt_lower for word in ["create", "add", "make", "update", "delete", "remove"]):
+                return '{"intent": "COMMAND", "confidence": 0.95}'
+            elif any(word in prompt_lower for word in ["show", "list", "display", "query"]):
+                return '{"intent": "COMMAND", "confidence": 0.93}'
+            else:
+                return '{"intent": "QUESTION", "confidence": 0.93}'
+
+        # Operation classification - check user message directly
+        if "operation" in prompt_lower and "classify" in prompt_lower:
+            # Extract user message for more accurate classification
+            user_msg = prompt_lower
+            if "user message" in prompt_lower:
+                idx = prompt_lower.find("user message")
+                user_msg = prompt_lower[idx:]
+
+            # More sophisticated matching
+            if any(word in user_msg for word in ["delete", "remove"]):
+                return '{"operation_type": "DELETE", "confidence": 0.94}'
+            elif any(word in user_msg for word in ["update", "change", "modify", "mark", "set"]):
+                return '{"operation_type": "UPDATE", "confidence": 0.93}'
+            elif any(word in user_msg for word in ["show", "list", "display", "query", "find", "get", "view", "how many"]):
+                return '{"operation_type": "QUERY", "confidence": 0.96}'
+            elif any(word in user_msg for word in ["create", "add", "make", "new"]):
+                return '{"operation_type": "CREATE", "confidence": 0.94}'
+            else:
+                # Default to CREATE if unclear
+                return '{"operation_type": "CREATE", "confidence": 0.70}'
+
+        # Entity type classification
+        if "entity" in prompt_lower and "type" in prompt_lower:
+            if "epic" in prompt_lower:
+                return '{"entity_types": ["EPIC"], "confidence": 0.96}'
+            elif "story" in prompt_lower or "stories" in prompt_lower:
+                return '{"entity_types": ["STORY"], "confidence": 0.94}'
+            elif "task" in prompt_lower:
+                return '{"entity_types": ["TASK"], "confidence": 0.95}'
+            elif "project" in prompt_lower:
+                return '{"entity_types": ["PROJECT"], "confidence": 0.97}'
+            elif "milestone" in prompt_lower:
+                return '{"entity_types": ["MILESTONE"], "confidence": 0.93}'
+
+        # Entity identifier extraction
+        if "identifier" in prompt_lower or "extract" in prompt_lower:
+            match = re.search(r'\b(\d+)\b', prompt)
+            if match:
+                return f'{{"identifier": {match.group(1)}, "confidence": 0.98}}'
+            return '{"identifier": null, "confidence": 0.92}'
+
+        # Parameter extraction
+        if "parameter" in prompt_lower or "extract" in prompt_lower:
+            params = {}
+            # Try to extract title from quotes
+            title_match = re.search(r'["\']([^"\']+)["\']', prompt)
+            if title_match:
+                params["title"] = title_match.group(1)
+            return f'{{"parameters": {params}, "confidence": 0.90}}'
+
+        return '{"result": "unknown", "confidence": 0.5}'
+
+    llm.generate.side_effect = generate_realistic
+    return llm
+
+
+# ============================================================================
+# PHASE 2: Real LLM Fixtures (Integrated NL Testing)
+# ============================================================================
+
+@pytest.fixture
+def real_llm():
+    """REAL LLM using OpenAI Codex (default for testing).
+
+    This is the TRUE test - uses actual LLM via OpenAI Codex.
+    Skips test gracefully if API unavailable (for CI).
+
+    Environment:
+        OPENAI_API_KEY: Required for OpenAI Codex
+    """
+    import os
+    from src.llm.openai_codex_interface import OpenAICodexLLMPlugin
+
+    try:
+        llm = OpenAICodexLLMPlugin()
+        llm.initialize({
+            'model': 'gpt-4',  # Use GPT-4 for testing
+            'temperature': 0.1,  # Deterministic for testing
+            'timeout': 60.0
+        })
+
+        # Health check
+        llm.generate("test", max_tokens=5)
+        return llm
+
+    except Exception as e:
+        pytest.skip(f"OpenAI Codex unavailable: {e}")
+
+
+@pytest.fixture
+def real_orchestrator(real_llm, test_config):
+    """REAL Orchestrator with REAL LLM and NL processing.
+
+    This is the complete production stack for acceptance testing.
+    Includes convenience method for executing NL commands directly.
+    """
+    from src.orchestrator import Orchestrator
+    from src.core.state import StateManager
+    from src.nl.nl_command_processor import NLCommandProcessor
+
+    orchestrator = Orchestrator(config=test_config)
+    orchestrator.llm_provider = real_llm
+
+    # Initialize state manager if not already initialized
+    if orchestrator.state_manager is None:
+        orchestrator.state_manager = StateManager(database_url='sqlite:///:memory:')
+        # Re-initialize NL components now that state_manager is set
+        orchestrator._initialize_nl_components()
+
+    # Create NL processor with real LLM
+    nl_processor = NLCommandProcessor(
+        llm_plugin=real_llm,
+        state_manager=orchestrator.state_manager,
+        config={'nl_commands': {'enabled': True}}
+    )
+
+    # Add convenience method for direct NL execution
+    def execute_nl_string(nl_command: str, project_id: int, interactive: bool = False):
+        """Execute NL command from string (convenience wrapper)."""
+        parsed_intent = nl_processor.process(nl_command, context={'project_id': project_id})
+        return orchestrator.execute_nl_command(parsed_intent, project_id, interactive)
+
+    orchestrator.execute_nl_string = execute_nl_string
+    orchestrator.nl_processor = nl_processor
+
+    yield orchestrator
+
+    # Cleanup
+    if orchestrator.state_manager:
+        orchestrator.state_manager.close()
+
+
+@pytest.fixture
+def real_nl_processor_with_llm(real_state_manager, real_llm):
+    """REAL NLCommandProcessor with REAL LLM."""
+    from src.nl.nl_command_processor import NLCommandProcessor
+
+    return NLCommandProcessor(
+        llm_plugin=real_llm,
+        state_manager=real_state_manager,
+        config={'nl_commands': {'enabled': True}}
+    )

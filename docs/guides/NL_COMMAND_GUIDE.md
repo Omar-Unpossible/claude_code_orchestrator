@@ -175,6 +175,78 @@ Update task 15 dependencies to include tasks 3 and 7
 ✓ Updated Task #15: dependencies: [3, 7]
 ```
 
+### Bulk Operations *(New in v1.7.5)*
+
+Delete multiple items at once with confirmation prompts for safety:
+
+#### Delete All Tasks
+
+```
+delete all tasks
+⚠️ WARNING: This will delete 5 tasks
+This action cannot be undone.
+Continue? (yes/no): yes
+✓ Deleted 5 tasks
+```
+
+#### Delete All Stories
+
+```
+delete all stories
+⚠️ WARNING: This will delete 3 stories
+This action cannot be undone and may cascade to dependent items.
+Continue? (yes/no): yes
+✓ Deleted 3 stories
+```
+
+#### Delete All Epics (with cascade)
+
+```
+delete all epics
+⚠️ WARNING: This will delete 2 epics, 5 stories, 12 tasks
+This action cannot be undone and will cascade to dependent items.
+Continue? (yes/no): yes
+✓ Deleted 2 epics, 5 stories, 12 tasks
+```
+
+#### Delete Multiple Entity Types
+
+```
+delete all epics stories and tasks
+⚠️ WARNING: This will delete 2 epics, 5 stories, 12 tasks
+This action cannot be undone.
+Continue? (yes/no): yes
+✓ Deleted 2 epics, 5 stories, 12 tasks
+```
+
+#### Cancel Bulk Delete
+
+```
+delete all tasks
+⚠️ WARNING: This will delete 15 tasks
+This action cannot be undone.
+Continue? (yes/no): no
+✗ Bulk delete cancelled by user.
+```
+
+**Important Notes:**
+- **Confirmation Required**: All bulk deletes require user confirmation (interactive prompt)
+- **Cascade Behavior**: Deleting an epic automatically deletes its stories and tasks
+- **Scope**: "all" means "all in current project" (not database-wide)
+- **Cannot Be Undone**: Bulk deletes are permanent - use with caution
+- **Dependency Ordering**: Items are deleted in safe order (subtasks → tasks → stories → epics)
+
+**Supported Bulk Operations:**
+- `delete all tasks` - Delete all regular tasks (not stories/epics/subtasks)
+- `delete all stories` - Delete all stories and their child tasks
+- `delete all epics` - Delete all epics and their stories/tasks
+- `delete all subtasks` - Delete all subtasks (preserves parent tasks)
+- `delete all <type1> <type2> <type3>` - Delete multiple types in one command
+
+**Not Supported:**
+- `delete all milestones` - Milestones are checkpoints (delete manually if needed)
+- `delete all projects` - Too dangerous (not implemented)
+
 ### Hierarchical Queries *(New in v1.6.0)*
 
 Query work item hierarchies and relationships:
@@ -196,6 +268,13 @@ List the workplans for the projects
       └─ 📖 Story #4: Main Menu
           └─ ⏸️ Task #9: Design layout
 ```
+
+**Alternative phrasings** *(Supported keywords: `workplan`, `hierarchy`, `hierarchical`, `plan`, `plans`)*:
+- `"Show me the plan for project #1"` - Uses `plan` keyword
+- `"List project plans"` - Uses `plans` keyword
+- `"For project #1, list the current plan"` - Natural phrasing with `plan`
+
+All variations route to the hierarchical view showing the epic → story → task structure.
 
 #### Next Steps Query
 

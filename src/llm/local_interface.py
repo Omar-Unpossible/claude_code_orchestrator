@@ -255,13 +255,22 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
             cache_info_before = self._generate_cached.cache_info()
 
             # Try to get from cache
-            response = self._generate_cached(cache_key, prompt, **kwargs)
+            try:
+                response = self._generate_cached(cache_key, prompt, **kwargs)
+            except TypeError as te:
+                # Handle unhashable type in kwargs (e.g., lists) by skipping cache
+                if "unhashable type" in str(te):
+                    logger.debug(f"Skipping cache due to unhashable kwargs: {te}")
+                    response = self._generate_uncached(cache_key, prompt, **kwargs)
+                    self.metrics['cache_misses'] += 1
+                else:
+                    raise
 
             # Check if this was a cache hit by comparing hits count
             cache_info_after = self._generate_cached.cache_info()
             if cache_info_after.hits > cache_info_before.hits:
                 self.metrics['cache_hits'] += 1
-            else:
+            elif 'cache_misses' not in locals():  # Only increment if not already done above
                 self.metrics['cache_misses'] += 1
 
             # Update metrics

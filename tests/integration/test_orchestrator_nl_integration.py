@@ -112,7 +112,7 @@ def test_execute_nl_command_create_epic(orchestrator, test_project):
     # Create ParsedIntent for "create epic for auth"
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.EPIC,
+        entity_types=[EntityType.EPIC],
         identifier=None,
         parameters={
             'title': 'User Authentication',
@@ -159,7 +159,7 @@ def test_execute_nl_command_update_task(orchestrator, state_manager, test_projec
     # Create ParsedIntent for "mark task 1 as completed"
     operation_context = OperationContext(
         operation=OperationType.UPDATE,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=task.id,
         parameters={'status': 'COMPLETED'},
         confidence=0.90,
@@ -204,7 +204,7 @@ def test_execute_nl_command_delete_story(orchestrator, state_manager, test_proje
     # Create ParsedIntent for delete operation
     operation_context = OperationContext(
         operation=OperationType.DELETE,
-        entity_type=EntityType.STORY,
+        entity_types=[EntityType.STORY],
         identifier=story_id,
         parameters={},
         confidence=0.85,
@@ -254,7 +254,7 @@ def test_execute_nl_command_query_tasks(orchestrator, state_manager, test_projec
     # Create ParsedIntent for query operation
     operation_context = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         query_type=QueryType.SIMPLE,
         parameters={},
@@ -321,7 +321,7 @@ def test_nl_command_validation_failure(orchestrator, test_project):
     # Create ParsedIntent with validation failure metadata
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={},  # Missing required parameters
         confidence=0.60,
@@ -364,7 +364,7 @@ def test_nl_command_quality_scoring(orchestrator, test_project):
     # Create ParsedIntent
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'description': 'Implement feature X'},
         confidence=0.90,
@@ -397,7 +397,7 @@ def test_nl_command_confidence_tracking(orchestrator, test_project):
     # Create ParsedIntent with specific confidence
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.EPIC,
+        entity_types=[EntityType.EPIC],
         identifier=None,
         parameters={'title': 'Test Epic', 'description': 'Test'},
         confidence=0.87,
@@ -449,7 +449,7 @@ def test_cli_nl_process_command(orchestrator, test_project):
 
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'description': 'CLI test task'},
         confidence=0.91,
@@ -479,7 +479,7 @@ def test_cli_interactive_nl_routing(orchestrator, test_project):
     # Simulate interactive mode routing
     operation_context = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         query_type=QueryType.SIMPLE,
         parameters={},
@@ -510,7 +510,7 @@ def test_cli_nl_error_propagation(orchestrator):
     # Create ParsedIntent with invalid project_id
     operation_context = OperationContext(
         operation=OperationType.CREATE,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'description': 'Test'},
         confidence=0.85,

@@ -149,6 +149,17 @@ class ParameterExtractor(ParameterExtractorInterface):
         if not user_input or not user_input.strip():
             raise ValueError("user_input cannot be empty")
 
+        # Detect bulk operation keywords
+        bulk_keywords = ['all', 'every', 'each', 'entire']
+        detected_bulk = any(keyword in user_input.lower() for keyword in bulk_keywords)
+
+        # Detect scope keywords
+        scope = None
+        if 'this project' in user_input.lower() or 'current project' in user_input.lower():
+            scope = 'current_project'
+        elif 'all projects' in user_input.lower():
+            scope = 'all_projects'
+
         # Build prompt with full context
         prompt = self._build_prompt(user_input, operation, entity_type)
 
@@ -169,6 +180,14 @@ class ParameterExtractor(ParameterExtractorInterface):
             # Parse response
             parameters = self._parse_response(response)
             confidence = self._calculate_confidence(response)
+
+            # Add detected bulk and scope parameters
+            if detected_bulk:
+                parameters['bulk'] = True
+                parameters['all'] = True
+
+            if scope:
+                parameters['scope'] = scope
 
             # Extract reasoning from response
             reasoning = self._extract_reasoning(response)

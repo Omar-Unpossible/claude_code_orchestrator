@@ -580,20 +580,20 @@ class NLCommandProcessor:
 
             # Stage 2: Classify entity type (project/epic/story/task/milestone)
             logger.debug(f"Stage 2: Classifying entity type (operation={operation_result.operation_type.value})")
-            entity_type_result = self.entity_type_classifier.classify(
+            entity_types, et_conf = self.entity_type_classifier.classify(
                 message,
                 operation=operation_result.operation_type
             )
             logger.info(
-                f"Stage 2 complete: EntityType={entity_type_result.entity_type.value} "
-                f"(confidence={entity_type_result.confidence:.2f})"
+                f"Stage 2 complete: EntityTypes={[et.value for et in entity_types]} "
+                f"(confidence={et_conf:.2f})"
             )
 
             # Stage 3: Extract entity identifier (name or ID)
             logger.debug(f"Stage 3: Extracting identifier")
             identifier_result = self.entity_identifier_extractor.extract(
                 message,
-                entity_type=entity_type_result.entity_type,
+                entity_type=entity_types[0],  # Use first entity type for identifier extraction
                 operation=operation_result.operation_type
             )
             logger.info(
@@ -606,7 +606,7 @@ class NLCommandProcessor:
             parameter_result = self.parameter_extractor.extract(
                 message,
                 operation=operation_result.operation_type,
-                entity_type=entity_type_result.entity_type
+                entity_type=entity_types[0]  # Use first entity type for parameter extraction
             )
             logger.info(
                 f"Stage 4 complete: Parameters={list(parameter_result.parameters.keys())} "
@@ -619,7 +619,7 @@ class NLCommandProcessor:
             # Calculate aggregate confidence (average of all stages)
             aggregate_confidence = (
                 operation_result.confidence +
-                entity_type_result.confidence +
+                et_conf +
                 identifier_result.confidence +
                 parameter_result.confidence
             ) / 4.0
@@ -657,7 +657,7 @@ class NLCommandProcessor:
 
             operation_context = OperationContext(
                 operation=operation_result.operation_type,
-                entity_type=entity_type_result.entity_type,
+                entity_types=entity_types,
                 identifier=identifier_result.identifier,
                 parameters=parameter_result.parameters,
                 query_type=query_type,
@@ -667,7 +667,7 @@ class NLCommandProcessor:
 
             logger.info(
                 f"OperationContext built: {operation_context.operation.value} "
-                f"{operation_context.entity_type.value} (confidence={aggregate_confidence:.2f})"
+                f"{[et.value for et in operation_context.entity_types]} (confidence={aggregate_confidence:.2f})"
             )
 
             # Step 6: Validate OperationContext

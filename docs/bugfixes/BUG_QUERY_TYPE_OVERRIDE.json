@@ -1,0 +1,326 @@
+{
+  "bug_id": "query_type_keyword_override",
+  "date": "2025-11-13",
+  "severity": "medium",
+  "status": "planning",
+  "component": "nl_command_processor",
+  "related_adrs": ["ADR-016", "ADR-017"],
+
+  "problem": {
+    "summary": "LLM-extracted query_type overridden by hardcoded keyword matching",
+    "user_input": "For project #1, list the current plan (epics, stories, tasks, etc)",
+    "expected_behavior": "Show hierarchical structure filtered to project #1",
+    "actual_behavior": "Shows flat list of ALL 11 projects",
+    "expected_handler": "_query_hierarchical()",
+    "actual_handler": "_query_simple()"
+  },
+
+  "root_causes": [
+    {
+      "issue_id": 1,
+      "name": "llm_extraction_ignored",
+      "location": "src/nl/nl_command_processor.py:532-545",
+      "description": "ParameterExtractor correctly extracts query_type='hierarchical' (confidence=0.59), but hardcoded keyword matching overrides it because 'plan' is not in keyword list",
+      "current_behavior": "Only checks hardcoded keywords, defaults to SIMPLE if no match",
+      "impact": "LLM's semantic understanding wasted"
+    },
+    {
+      "issue_id": 2,
+      "name": "identifier_filtering_missing",
+      "location": "src/nl/nl_query_helper.py:203-223",
+      "description": "_query_simple() returns ALL projects when identifier is provided, instead of filtering to specified project",
+      "current_behavior": "list_projects() returns all, no filtering applied",
+      "impact": "Identifier parameter ignored for PROJECT queries"
+    }
+  ],
+
+  "solution": {
+    "strategy": "Prioritize LLM extraction over keyword matching, add identifier filtering",
+    "fixes": [
+      {
+        "fix_id": 1,
+        "name": "prioritize_llm_extraction",
+        "file": "src/nl/nl_command_processor.py",
+        "lines": "532-545",
+        "priority": "primary",
+        "changes": [
+          "Check parameter_result.parameters for 'query_type' key",
+          "Convert string to QueryType enum with ValueError handling",
+          "Fall back to keyword matching if LLM didn't extract or invalid",
+          "Add 'plan' and 'plans' to hierarchical keyword list",
+          "Add debug/warning logging"
+        ],
+        "estimated_time_minutes": 10
+      },
+      {
+        "fix_id": 2,
+        "name": "add_identifier_filtering",
+        "file": "src/nl/nl_query_helper.py",
+        "lines": "203-223",
+        "priority": "secondary",
+        "changes": [
+          "Filter projects by identifier if provided",
+          "Handle both int (ID) and str (name) identifiers",
+          "Preserve backward compatibility (identifier=None shows all)",
+          "Apply same pattern to MILESTONE queries"
+        ],
+        "estimated_time_minutes": 10
+      }
+    ]
+  },
+
+  "implementation_tasks": [
+    {
+      "step": 1,
+      "name": "analysis",
+      "status": "completed",
+      "tasks": [
+        "Analyzed NL pipeline logs",
+        "Identified LLM vs keyword discrepancy",
+        "Traced execution path",
+        "Documented root causes"
+      ]
+    },
+    {
+      "step": 2,
+      "name": "modify_query_type_detection",
+      "status": "pending",
+      "file": "src/nl/nl_command_processor.py",
+      "lines": "532-545",
+      "estimated_time_minutes": 10,
+      "tasks": [
+        "Add LLM extraction priority check",
+        "Add QueryType() enum conversion with try/except",
+        "Keep keyword fallback logic",
+        "Add 'plan' and 'plans' to hierarchical keywords",
+        "Add debug logging for LLM path",
+        "Add warning logging for fallback path"
+      ]
+    },
+    {
+      "step": 3,
+      "name": "add_identifier_filtering",
+      "status": "pending",
+      "file": "src/nl/nl_query_helper.py",
+      "lines": "203-223",
+      "estimated_time_minutes": 10,
+      "tasks": [
+        "Add identifier filtering for PROJECT queries",
+        "Handle int (ID) and str (name) identifiers",
+        "Preserve backward compatibility",
+        "Apply pattern to MILESTONE queries"
+      ]
+    },
+    {
+      "step": 4,
+      "name": "write_unit_tests",
+      "status": "pending",
+      "file": "tests/test_nl_command_processor.py",
+      "estimated_time_minutes": 20,
+      "test_cases": [
+        {
+          "name": "test_query_type_llm_extraction_priority",
+          "description": "LLM extraction takes priority over keywords",
+          "setup": "Mock ParameterExtractor returns {'query_type': 'hierarchical'}",
+          "input": "Message with NO hierarchical keywords",
+          "expected": "operation_context.query_type == QueryType.HIERARCHICAL"
+        },
+        {
+          "name": "test_query_type_keyword_fallback",
+          "description": "Keyword fallback when LLM doesn't extract",
+          "setup": "Mock ParameterExtractor returns {} (no query_type)",
+          "input": "Message contains 'plan'",
+          "expected": "operation_context.query_type == QueryType.HIERARCHICAL"
+        },
+        {
+          "name": "test_query_type_invalid_enum_fallback",
+          "description": "Invalid LLM value falls back to keywords",
+          "setup": "Mock ParameterExtractor returns {'query_type': 'invalid_type'}",
+          "input": "Message contains 'plan'",
+          "expected": "Falls back to keyword matching, uses HIERARCHICAL"
+        },
+        {
+          "name": "test_query_type_plan_keyword",
+          "description": "'plan' keyword routes to HIERARCHICAL",
+          "setup": "Mock ParameterExtractor returns {} (no query_type)",
+          "input": "Message contains 'plan'",
+          "expected": "operation_context.query_type == QueryType.HIERARCHICAL"
+        },
+        {
+          "name": "test_all_query_types",
+          "description": "All query types work with both LLM and keyword paths",
+          "query_types": ["NEXT_STEPS", "BACKLOG", "ROADMAP", "SIMPLE", "HIERARCHICAL"]
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "name": "write_integration_test",
+      "status": "pending",
+      "file": "tests/test_integration_nl_queries.py",
+      "estimated_time_minutes": 15,
+      "test_cases": [
+        {
+          "name": "test_project_plan_query_e2e",
+          "description": "End-to-end test with real StateManager",
+          "setup": [
+            "Create project #1",
+            "Create epic for project #1",
+            "Create story for epic"
+          ],
+          "input": "For project #1, list the current plan",
+          "assertions": [
+            "ParsedIntent.operation_context.query_type == QueryType.HIERARCHICAL",
+            "query_result has 'hierarchy' key",
+            "query_result['epic_count'] > 0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "name": "manual_testing",
+      "status": "pending",
+      "estimated_time_minutes": 10,
+      "test_commands": [
+        {
+          "command": "For project #1, list the current plan (epics, stories, tasks, etc)",
+          "expected": "Hierarchical structure, filtered to project #1"
+        },
+        {
+          "command": "Show me the workplan for project #2",
+          "expected": "Hierarchical structure, filtered to project #2"
+        },
+        {
+          "command": "List all projects",
+          "expected": "ALL projects (SIMPLE query, no filtering)"
+        }
+      ],
+      "success_criteria": [
+        "No 'Found 11 project(s)' for hierarchical queries",
+        "Shows epic→story→task tree",
+        "Filters to specified project",
+        "SIMPLE queries still work for 'list all'"
+      ]
+    },
+    {
+      "step": 7,
+      "name": "update_documentation",
+      "status": "pending",
+      "estimated_time_minutes": 10,
+      "files": [
+        {
+          "file": "docs/guides/NL_COMMAND_GUIDE.md",
+          "changes": ["Add 'plan' keyword examples"]
+        },
+        {
+          "file": "src/nl/nl_command_processor.py",
+          "changes": ["Update docstring with priority explanation"]
+        },
+        {
+          "file": "docs/architecture/LLM_REFERENCE_MANAGEMENT.md",
+          "changes": ["Document query_type extraction priority (if applicable)"]
+        }
+      ]
+    }
+  ],
+
+  "testing": {
+    "unit_tests": {
+      "count": 5,
+      "estimated_time_minutes": 20,
+      "file": "tests/test_nl_command_processor.py"
+    },
+    "integration_tests": {
+      "count": 1,
+      "estimated_time_minutes": 15,
+      "file": "tests/test_integration_nl_queries.py"
+    },
+    "manual_tests": {
+      "count": 3,
+      "estimated_time_minutes": 10
+    },
+    "total_tests": 9,
+    "total_time_minutes": 45
+  },
+
+  "risk_assessment": {
+    "risk_level": "low",
+    "reasons": [
+      "LLM extraction already exists, just currently unused",
+      "Keyword fallback ensures backward compatibility",
+      "Clear error handling prevents failures",
+      "Small focused change (20 lines)",
+      "Comprehensive test coverage"
+    ],
+    "backward_compatibility": {
+      "preserved": true,
+      "details": [
+        "Keyword matching preserved as fallback",
+        "Existing SIMPLE queries unaffected",
+        "All current query types still work"
+      ]
+    },
+    "rollback_plan": {
+      "method": "git revert",
+      "fallback": "Keyword-only mode works as fallback",
+      "database_changes": false
+    }
+  },
+
+  "effort_estimate": {
+    "code_changes_minutes": 20,
+    "unit_tests_minutes": 20,
+    "integration_tests_minutes": 15,
+    "manual_testing_minutes": 10,
+    "documentation_minutes": 10,
+    "total_minutes": 75
+  },
+
+  "success_metrics": {
+    "before_fix": [
+      "list project plan → Returns all projects (SIMPLE query)",
+      "Identifier filtering not working for PROJECT queries",
+      "plan keyword not recognized"
+    ],
+    "after_fix": [
+      "list project plan → Returns hierarchical structure (HIERARCHICAL query)",
+      "Identifier filtering works for PROJECT queries",
+      "plan keyword routes to HIERARCHICAL",
+      "LLM extraction takes priority over keywords",
+      "Keyword fallback still works",
+      "All existing queries unaffected"
+    ]
+  },
+
+  "code_locations": [
+    {
+      "file": "src/nl/nl_command_processor.py",
+      "lines": "532-545",
+      "description": "Query type detection (primary fix)"
+    },
+    {
+      "file": "src/nl/nl_query_helper.py",
+      "lines": "203-223",
+      "description": "Query execution (secondary fix)"
+    },
+    {
+      "file": "src/nl/parameter_extractor.py",
+      "description": "LLM parameter extraction (Stage 4)"
+    },
+    {
+      "file": "src/nl/types.py",
+      "description": "OperationContext, QueryType enums"
+    }
+  ],
+
+  "references": {
+    "adrs": [
+      "docs/decisions/ADR-016-decompose-nl-entity-extraction.md",
+      "docs/decisions/ADR-017-unified-execution-architecture.md"
+    ],
+    "guides": [
+      "docs/testing/TEST_GUIDELINES.md"
+    ]
+  }
+}

@@ -716,16 +716,62 @@ class InteractiveMode:
                 if self.current_project:
                     context['project_id'] = self.current_project
 
-                # Process through NL pipeline
-                nl_response = self.nl_processor.process(message, context=context)
+                # Process through NL pipeline to get ParsedIntent
+                parsed_intent = self.nl_processor.process(message, context=context)
 
-                # Display result
-                print(f"\n{nl_response.response}\n")
+                # Handle based on intent type
+                if parsed_intent.is_question():
+                    # QUESTION intent - extract answer from question_context
+                    answer = parsed_intent.question_context.get('answer', 'No answer available')
+                    print(f"\n{answer}\n")
+                elif parsed_intent.is_command():
+                    # COMMAND intent - route to orchestrator for execution
 
-                # Update current project if changed (for project query/creation)
-                if nl_response.execution_result and hasattr(nl_response.execution_result, 'results'):
-                    if 'project_id' in nl_response.execution_result.results:
-                        self.current_project = nl_response.execution_result.results['project_id']
+                    # Import here to avoid circular imports
+                    from src.nl.types import OperationType
+
+                    # Check if operation requires a current project
+                    operation_context = parsed_intent.operation_context
+                    operation = operation_context.operation if operation_context else None
+
+                    # Only CREATE/UPDATE/DELETE operations require a current project
+                    # QUERY operations can work without a project (e.g., "list projects")
+                    requires_project = operation in [
+                        OperationType.CREATE,
+                        OperationType.UPDATE,
+                        OperationType.DELETE
+                    ]
+
+                    if requires_project and not self.current_project:
+                        print("\n⚠ No project selected. Use /project list to see projects or /project create to create one\n")
+                        return
+
+                    try:
+                        result = self.orchestrator.execute_nl_command(
+                            parsed_intent,
+                            project_id=self.current_project,
+                            interactive=True
+                        )
+
+                        # Display result message
+                        if result.get('success'):
+                            print(f"\n✓ {result.get('message', 'Command executed successfully')}")
+
+                            # If this was a query operation, display the results
+                            if operation == OperationType.QUERY and 'data' in result:
+                                self._display_query_results(result['data'])
+                            print()
+                        else:
+                            print(f"\n✗ {result.get('message', 'Command execution failed')}\n")
+
+                        # Update current project if changed
+                        if 'project_id' in result.get('data', {}):
+                            self.current_project = result['data']['project_id']
+                    except Exception as exec_error:
+                        print(f"\n✗ Execution failed: {exec_error}\n")
+                        logger.exception("Error executing NL command through orchestrator")
+                else:
+                    print(f"\n⚠ Unknown intent type: {parsed_intent.intent_type}\n")
 
             else:
                 # Fallback: Natural language processing disabled (LLM unavailable)
@@ -1091,3 +1137,51 @@ class InteractiveMode:
         except Exception as e:
             print(f"\n✗ Reconnection failed: {e}\n")
             logger.exception("Error in llm reconnect")
+
+    def _display_query_results(self, data: Dict[str, Any]) -> None:
+        """Display query results in a user-friendly format.
+
+        Args:
+            data: Query result data containing entities and metadata
+        """
+        entity_type = data.get('entity_type', 'item')
+        entities = data.get('entities', [])
+
+        if not entities:
+            print("  No results found")
+            return
+
+        print(f"\n{entity_type.capitalize()}s:")
+        print("-" * 80)
+
+        # Display based on entity type
+        if entity_type == 'project':
+            for entity in entities:
+                current = " (current)" if entity.get('id') == self.current_project else ""
+                print(f"  #{entity.get('id')}: {entity.get('name')}{current}")
+                if entity.get('description'):
+                    print(f"       {entity.get('description')}")
+                print(f"       Status: {entity.get('status')}")
+                print()
+
+        elif entity_type in ['epic', 'story', 'task', 'subtask']:
+            for entity in entities:
+                print(f"  #{entity.get('id')}: {entity.get('title')} [{entity.get('status')}]")
+                if entity.get('description'):
+                    print(f"       {entity.get('description')}")
+                print(f"       Priority: {entity.get('priority', 'N/A')}")
+                print()
+
+        elif entity_type == 'milestone':
+            for entity in entities:
+                print(f"  #{entity.get('id')}: {entity.get('name')}")
+                if entity.get('description'):
+                    print(f"       {entity.get('description')}")
+                print(f"       Status: {entity.get('status')}")
+                print()
+
+        else:
+            # Generic display for unknown entity types
+            for entity in entities:
+                print(f"  {entity}")
+                print()

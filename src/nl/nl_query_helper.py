@@ -275,7 +275,11 @@ class NLQueryHelper:
             }
             task_type = task_type_map.get(context.entity_type)
 
-            tasks = self.state_manager.list_tasks(task_type=task_type, limit=50)
+            tasks = self.state_manager.list_tasks(
+                project_id=project_id,
+                task_type=task_type,
+                limit=50
+            )
             return QueryResult(
                 success=True,
                 query_type='simple',
@@ -312,7 +316,11 @@ class NLQueryHelper:
             QueryResult with hierarchical task structure
         """
         # Get all epics for project
-        epics = self.state_manager.list_tasks(task_type=TaskType.EPIC, limit=50)
+        epics = self.state_manager.list_tasks(
+            project_id=project_id,
+            task_type=TaskType.EPIC,
+            limit=50
+        )
 
         hierarchy = []
         for epic in epics:
@@ -375,11 +383,13 @@ class NLQueryHelper:
             QueryResult with next pending tasks
         """
         # Get all pending/active tasks for project
-        all_tasks = self.state_manager.list_tasks(limit=100)
+        all_tasks = self.state_manager.list_tasks(
+            project_id=project_id,
+            limit=100
+        )
         pending_tasks = [
             t for t in all_tasks
             if t.status in [TaskStatus.READY, TaskStatus.PENDING, TaskStatus.RUNNING]
-            and t.project_id == project_id
         ]
 
         # Sort by priority (lower number = higher priority)
@@ -420,12 +430,14 @@ class NLQueryHelper:
         Returns:
             QueryResult with all pending tasks
         """
-        # Get all pending tasks
-        all_tasks = self.state_manager.list_tasks(limit=200)
+        # Get all pending tasks for this project
+        all_tasks = self.state_manager.list_tasks(
+            project_id=project_id,
+            limit=200
+        )
         pending_tasks = [
             t for t in all_tasks
             if t.status in [TaskStatus.READY, TaskStatus.PENDING, TaskStatus.RUNNING]
-            and t.project_id == project_id
         ]
 
         return QueryResult(

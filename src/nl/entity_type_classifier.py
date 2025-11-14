@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
+from typing import List
 from plugins.base import LLMPlugin
 from core.exceptions import OrchestratorException
 from src.core.metrics import get_metrics_collector
@@ -38,6 +39,22 @@ from src.nl.base import EntityTypeClassifierInterface
 from src.nl.types import OperationType, EntityType, EntityTypeResult
 
 logger = logging.getLogger(__name__)
+
+# Keywords for detecting multiple entity types
+ENTITY_KEYWORDS = {
+    'epic': EntityType.EPIC,
+    'epics': EntityType.EPIC,
+    'story': EntityType.STORY,
+    'stories': EntityType.STORY,
+    'task': EntityType.TASK,
+    'tasks': EntityType.TASK,
+    'subtask': EntityType.SUBTASK,
+    'subtasks': EntityType.SUBTASK,
+    'milestone': EntityType.MILESTONE,
+    'milestones': EntityType.MILESTONE,
+    'project': EntityType.PROJECT,
+    'projects': EntityType.PROJECT
+}
 
 
 class EntityTypeClassificationException(OrchestratorException):
@@ -123,15 +140,34 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
             f"template_path={template_path}"
         )
 
-    def classify(self, user_input: str, operation: OperationType) -> EntityTypeResult:
-        """Classify entity type given operation context.
+    def _detect_multiple_entity_types(self, user_input: str) -> List[EntityType]:
+        """Detect multiple entity types mentioned in input.
+
+        Args:
+            user_input: Raw user command
+
+        Returns:
+            List of entity types detected (may be empty)
+        """
+        tokens = user_input.lower().split()
+        detected = []
+
+        for keyword, entity_type in ENTITY_KEYWORDS.items():
+            if keyword in tokens:
+                if entity_type not in detected:
+                    detected.append(entity_type)
+
+        return detected
+
+    def classify(self, user_input: str, operation: OperationType) -> tuple:
+        """Classify entity type(s) from user input.
 
         Args:
             user_input: Raw user command string
             operation: Operation type from OperationClassifier
 
         Returns:
-            EntityTypeResult with entity type and confidence
+            (entity_types: List[EntityType], confidence: float)
 
         Raises:
             ValueError: If user_input is empty
@@ -142,6 +178,53 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
 
         if not user_input or not user_input.strip():
             raise ValueError("user_input cannot be empty")
+
+        # First try multi-entity detection
+        detected_types = self._detect_multiple_entity_types(user_input)
+
+        if len(detected_types) > 1:
+            logger.info(f"Detected multiple entity types: {detected_types}")
+            # High confidence for explicit mentions
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_llm_request(
+                provider='keyword_match',
+                latency_ms=latency_ms,
+                success=True,
+                model='rule_based'
+            )
+            return (detected_types, 0.85)
+
+        elif len(detected_types) == 1:
+            logger.info(f"Detected single entity type: {detected_types[0]}")
+            # High confidence for explicit mention
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_llm_request(
+                provider='keyword_match',
+                latency_ms=latency_ms,
+                success=True,
+                model='rule_based'
+            )
+            return ([detected_types[0]], 0.90)
+
+        else:
+            # Fallback to LLM classification for single entity
+            return self._llm_classify_single(user_input, operation)
+
+    def _llm_classify_single(self, user_input: str, operation: OperationType) -> tuple:
+        """Classify single entity type using LLM.
+
+        Args:
+            user_input: Raw user command
+            operation: Operation type
+
+        Returns:
+            (entity_types: List[EntityType], confidence: float)
+
+        Raises:
+            EntityTypeClassificationException: If LLM call fails
+        """
+        metrics = get_metrics_collector()
+        start = time.time()
 
         # Build prompt with operation context
         prompt = self._build_prompt(user_input, operation)
@@ -154,7 +237,7 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
             )
             response = self.llm.generate(
                 prompt,
-                max_tokens=100,  # Reduced from 200
+                max_tokens=100,
                 temperature=0.1,
                 stop=["\n```", "}\n", "}\r\n"]
             )
@@ -164,22 +247,12 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
             entity_type = self._parse_response(response)
             confidence = self._calculate_confidence(response)
 
-            # Extract reasoning from response
-            reasoning = self._extract_reasoning(response)
-
-            result = EntityTypeResult(
-                entity_type=entity_type,
-                confidence=confidence,
-                raw_response=response,
-                reasoning=reasoning
-            )
-
             logger.info(
                 f"Classified entity type: {entity_type.value} "
                 f"(confidence={confidence:.2f}, operation={operation.value})"
             )
 
-            # Record metrics BEFORE return
+            # Record metrics
             latency_ms = (time.time() - start) * 1000
             metrics.record_llm_request(
                 provider='ollama',
@@ -188,7 +261,7 @@ class EntityTypeClassifier(EntityTypeClassifierInterface):
                 model=self.llm.model if hasattr(self.llm, 'model') else 'unknown'
             )
 
-            return result
+            return ([entity_type], confidence)
 
         except Exception as e:
             raise EntityTypeClassificationException(

@@ -43,18 +43,36 @@ class TestSmokeWorkflows:
         assert project.id is not None
         assert project.project_name == "Smoke Test Project"
 
-    def test_create_epic_smoke(self, nl_processor, mock_llm_smart):
+    def test_create_epic_smoke(self, nl_processor, mock_llm_smart, state_manager):
         """Smoke test: Create epic via NL."""
-        # Setup mock responses
-        mock_llm_smart.generate.side_effect = [
+        # Create project first
+        project = state_manager.create_project(
+            name="Test Project",
+            description="Test",
+            working_dir="/tmp/test"
+        )
+
+        # Use a repeating mock that handles unlimited calls
+        responses = [
             '{"intent": "COMMAND", "confidence": 0.95}',
             '{"operation_type": "CREATE", "confidence": 0.94}',
-            '{"entity_type": "epic", "confidence": 0.96}',
+            '{"entity_types": ["EPIC"], "confidence": 0.96}',
             '{"identifier": null, "confidence": 0.98}',
-            '{"parameters": {"title": "User Auth"}, "confidence": 0.90}'
+            '{"parameters": {"title": "User Auth", "project_id": ' + str(project.id) + '}, "confidence": 0.90}'
         ]
+        call_count = [0]
 
-        response = nl_processor.process("create epic for user auth")
+        def mock_generate(*args, **kwargs):
+            idx = call_count[0]
+            call_count[0] += 1
+            if idx < len(responses):
+                return responses[idx]
+            # Return default for any additional calls
+            return '{"status": "ok", "confidence": 0.9}'
+
+        mock_llm_smart.generate.side_effect = mock_generate
+
+        response = nl_processor.process("create epic for user auth", context={'project_id': project.id})
 
         # After ADR-017, nl_processor returns ParsedIntent
         assert response is not None
@@ -77,7 +95,7 @@ class TestSmokeWorkflows:
         mock_llm_smart.generate.side_effect = [
             '{"intent": "COMMAND", "confidence": 0.95}',
             '{"operation_type": "QUERY", "confidence": 0.94}',
-            '{"entity_type": "task", "confidence": 0.96}',
+            '{"entity_types": ["TASK"], "confidence": 0.96}',
             '{"identifier": null, "confidence": 0.98}',
             '{"parameters": {"project_id": 1}, "confidence": 0.90}'  # Use project_id instead
         ]
@@ -122,17 +140,16 @@ class TestSmokeWorkflows:
             working_dir="/tmp/test"
         )
 
-        # Setup mock for UPDATE (requires confirmation)
+        # Setup mock for UPDATE (matching working test pattern)
         mock_llm_smart.generate.side_effect = [
             '{"intent": "COMMAND", "confidence": 0.95}',
             '{"operation_type": "UPDATE", "confidence": 0.94}',
-            '{"entity_type": "project", "confidence": 0.96}',
-            '{"identifier": 1, "confidence": 0.98}',
+            '{"entity_types": ["PROJECT"], "confidence": 0.96}',
+            '{"identifier": ' + str(project.id) + ', "confidence": 0.98}',
             '{"parameters": {"status": "COMPLETED"}, "confidence": 0.90}'
         ]
 
-        # Send UPDATE command
-        response = nl_processor.process("update project 1 status to completed")
+        response = nl_processor.process("update project 1 status to completed", context={'project_id': project.id})
 
         # After ADR-017, UPDATE operations return ParsedIntent with metadata
         assert response is not None
@@ -216,16 +233,16 @@ class TestSmokeWorkflows:
             working_dir="/tmp/test"
         )
 
-        # Setup mock for updating non-existent project (should trigger error)
+        # Setup mock for updating non-existent project
         mock_llm_smart.generate.side_effect = [
             '{"intent": "COMMAND", "confidence": 0.95}',
-            '{"operation_type": "UPDATE", "confidence": 0.94}',  # UPDATE requires project to exist
-            '{"entity_type": "project", "confidence": 0.96}',
+            '{"operation_type": "UPDATE", "confidence": 0.94}',
+            '{"entity_types": ["PROJECT"], "confidence": 0.96}',
             '{"identifier": 999, "confidence": 0.98}',
             '{"parameters": {"description": "Updated"}, "confidence": 0.90}'
         ]
 
-        response = nl_processor.process("update project 999 description to Updated")
+        response = nl_processor.process("update project 999 description to Updated", context={'project_id': project.id})
 
         # After ADR-017, returns ParsedIntent
         # Just verify it doesn't crash and returns something meaningful

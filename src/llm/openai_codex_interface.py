@@ -63,7 +63,7 @@ class OpenAICodexLLMPlugin(LLMPlugin):
 
     DEFAULT_CONFIG = {
         'codex_command': 'codex',  # CLI command name
-        'model': 'codex-mini-latest',  # Default model (or gpt-5-codex, o3, etc.)
+        'model': None,  # No default model - let Codex CLI auto-select based on account
         'full_auto': True,  # Use --full-auto for automatic execution
         'json_output': False,  # Use --json for JSONL output (optional)
         'timeout': 120,  # Longer timeout for CLI execution
@@ -76,7 +76,7 @@ class OpenAICodexLLMPlugin(LLMPlugin):
         """Initialize OpenAI Codex LLM interface."""
         # Configuration (set in initialize())
         self.codex_command: str = 'codex'
-        self.model: str = 'codex-mini-latest'
+        self.model: Optional[str] = None  # No default - let Codex CLI auto-select
         self.full_auto: bool = True
         self.json_output: bool = False
         self.timeout: int = 120
@@ -111,7 +111,7 @@ class OpenAICodexLLMPlugin(LLMPlugin):
         Args:
             config: Configuration dictionary with keys:
                 - codex_command: Command to execute (default: 'codex')
-                - model: Model to use (default: 'codex-mini-latest')
+                - model: Model to use (default: None = auto-select based on account)
                 - full_auto: Use --full-auto flag (default: True)
                 - json_output: Use --json for JSONL output (default: False)
                 - timeout: Subprocess timeout in seconds (default: 120)
@@ -150,9 +150,10 @@ class OpenAICodexLLMPlugin(LLMPlugin):
                 details=f'Codex CLI not found: {self.codex_command}'
             )
 
+        model_info = self.model if self.model else "auto-select"
         logger.info(
             f"Initialized OpenAICodexLLMPlugin: command={codex_path}, "
-            f"model={self.model}, full_auto={self.full_auto}"
+            f"model={model_info}, full_auto={self.full_auto}"
         )
 
         # Verify CLI is authenticated (quick check)
@@ -209,7 +210,8 @@ class OpenAICodexLLMPlugin(LLMPlugin):
         if self.json_output:
             cmd.append('--json')
 
-        # Add model
+        # Add model (only if explicitly configured)
+        # If model is None, Codex CLI will auto-select based on account type
         if self.model:
             cmd.extend(['--model', self.model])
 

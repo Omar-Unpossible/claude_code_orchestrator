@@ -1,14 +1,34 @@
 # Testing Documentation Index
 
-**Last Updated**: 2025-11-11
+**Last Updated**: 2025-11-13
 
 ---
 
 ## Core Testing Guides
 
-- **[Test Guidelines](../development/TEST_GUIDELINES.md)** - WSL2-safe testing practices (CRITICAL)
-- **[NL Testing Strategy](NL_TESTING_STRATEGY.md)** - Mock vs Real LLM testing strategy ⭐ NEW!
-- **[Real LLM Testing Guide](../development/REAL_LLM_TESTING_GUIDE.md)** - Running integration tests with Ollama/Qwen
+- **[Test Guidelines](TEST_GUIDELINES.md)** - WSL2-safe testing practices (CRITICAL) ⚠️
+- **[NL Testing Strategy](NL_TESTING_STRATEGY.md)** - Mock vs Real LLM testing strategy
+- **[Real LLM Testing Guide](REAL_LLM_TESTING_GUIDE.md)** - Running integration tests with Ollama/Qwen
+
+## New: NL Query Testing Suite (2025-11-13) ⭐
+
+**Bug Fix Release**: Comprehensive testing improvements for NL query system
+
+- **[Implementation Guide for Claude Code](CLAUDE_IMPLEMENTATION_NL_QUERY_TESTS.md)** - Machine-optimized step-by-step implementation guide
+- **[Implementation Plan](NL_QUERY_TESTING_IMPLEMENTATION_PLAN.md)** - Human-readable plan with timelines and risk assessment
+- **[Testing Strategy](NL_QUERY_TESTING_STRATEGY.md)** - Complete testing strategy for NL queries
+
+**What's New**:
+- 4 new test files (100+ tests)
+- Integration testing for FastPathMatcher
+- StateManager API completeness validation
+- Multi-project query filtering tests
+- End-to-end NL command workflow tests
+
+**Bugs Fixed**:
+- FastPathMatcher API mismatch (entity_type → entity_types)
+- Missing StateManager.list_epics() and list_stories() methods
+- Query filtering by project_id (multi-project isolation)
 
 ## Test Suites
 
@@ -186,16 +206,53 @@ When adding new NL command features:
 3. **Add real LLM test** (if it involves prompts)
 4. **Update this documentation** (if adding new test files)
 
-**See**: [Test Guidelines](../development/TEST_GUIDELINES.md) for WSL2-specific practices
+**See**: [Test Guidelines](TEST_GUIDELINES.md) for WSL2-specific practices
+
+---
+
+## Testing Documentation Structure
+
+```
+docs/testing/
+├── README.md                                    (This file)
+├── TEST_GUIDELINES.md                           (WSL2-safe testing rules)
+│
+├── NL Query Testing (NEW - 2025-11-13)
+│   ├── CLAUDE_IMPLEMENTATION_NL_QUERY_TESTS.md  (Machine-optimized guide)
+│   ├── NL_QUERY_TESTING_IMPLEMENTATION_PLAN.md  (Human-readable plan)
+│   └── NL_QUERY_TESTING_STRATEGY.md             (Testing strategy)
+│
+├── NL Command Testing (Original)
+│   ├── NL_TESTING_STRATEGY.md                   (Mock vs Real LLM)
+│   ├── REAL_LLM_TESTING_GUIDE.md                (Ollama/Qwen setup)
+│   ├── NL_COMMAND_USER_STORIES.md               (20 user stories)
+│   ├── NL_TEST_IMPLEMENTATION_PLAN.md           (3-phase roadmap)
+│   └── NL_TEST_QUICK_START.md                   (Quick onboarding)
+│
+├── Coverage & Gap Analysis
+│   ├── TEST_COVERAGE_GAP_ANALYSIS.md
+│   ├── TESTING_GAP_ANALYSIS_SUMMARY.md
+│   ├── WORKFLOW_TEST_GAP_ANALYSIS.md
+│   └── WORKFLOW_TEST_FIX_PLAN.md
+│
+├── Infrastructure & Integration
+│   ├── INFRASTRUCTURE_TESTING_STRATEGY.md
+│   └── INTEGRATION_TESTING_ENHANCEMENT_PLAN.md
+│
+└── Phase Reports
+    ├── NL_PHASE1_COMPLETION_REPORT.md
+    ├── NL_PHASE2_SUMMARY.md
+    └── NL_PHASE3_FINAL_REPORT.md
+```
 
 ---
 
 ## Contact
 
-For questions about NL testing:
-- Check the [NL Testing Strategy](NL_TESTING_STRATEGY.md)
-- Review [Real LLM Testing Guide](../development/REAL_LLM_TESTING_GUIDE.md)
-- See main [CLAUDE.md](../../CLAUDE.md) for system overview
+For questions about testing:
+- **NL Query Testing**: See [NL_QUERY_TESTING_STRATEGY.md](NL_QUERY_TESTING_STRATEGY.md)
+- **NL Command Testing**: See [NL_TESTING_STRATEGY.md](NL_TESTING_STRATEGY.md)
+- **System Overview**: See [CLAUDE.md](../../CLAUDE.md)
 
 ---
 

@@ -109,9 +109,7 @@ class BulkCommandExecutor:
                 tasks = self.state_manager.list_tasks(project_id)
                 counts['tasks'] = len(tasks)
             elif entity_type == EntityType.STORY:
-                stories = self.state_manager.list_tasks(
-                    project_id, task_type='story'
-                )
+                stories = self.state_manager.list_stories(project_id)
                 counts['stories'] = len(stories) if stories else 0
             elif entity_type == EntityType.EPIC:
                 epics = self.state_manager.list_epics(project_id)
