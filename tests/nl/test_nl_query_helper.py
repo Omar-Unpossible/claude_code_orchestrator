@@ -63,7 +63,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             query_type=QueryType.SIMPLE,
             confidence=0.95,
             raw_input="list projects"
@@ -94,7 +94,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.SIMPLE,
             confidence=0.90,
             raw_input="list tasks"
@@ -124,7 +124,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             query_type=QueryType.SIMPLE,
             confidence=0.92,
             raw_input="list epics"
@@ -152,7 +152,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.MILESTONE,
+            entity_types=[EntityType.MILESTONE],
             query_type=QueryType.SIMPLE,
             confidence=0.88,
             raw_input="list milestones"
@@ -192,7 +192,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.HIERARCHICAL,
             confidence=0.90,
             raw_input="show work plan"
@@ -218,7 +218,7 @@ class TestQueryOperations:
         # Create query context with WORKPLAN
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.WORKPLAN,  # User-facing synonym
             confidence=0.90,
             raw_input="show workplan"
@@ -255,7 +255,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.NEXT_STEPS,
             confidence=0.92,
             raw_input="what's next"
@@ -291,7 +291,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.BACKLOG,
             confidence=0.88,
             raw_input="show backlog"
@@ -326,7 +326,7 @@ class TestQueryOperations:
         # Create query context
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.MILESTONE,
+            entity_types=[EntityType.MILESTONE],
             query_type=QueryType.ROADMAP,
             confidence=0.90,
             raw_input="show roadmap"
@@ -354,7 +354,7 @@ class TestWriteOperationRejection:
         """Test CREATE operation raises QueryException."""
         context = OperationContext(
             operation=OperationType.CREATE,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             parameters={'title': 'New Epic'},
             confidence=0.95,
             raw_input="create epic"
@@ -370,7 +370,7 @@ class TestWriteOperationRejection:
         """Test UPDATE operation raises QueryException."""
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=5,
             parameters={'status': 'COMPLETED'},
             confidence=0.90,
@@ -386,7 +386,7 @@ class TestWriteOperationRejection:
         """Test DELETE operation raises QueryException."""
         context = OperationContext(
             operation=OperationType.DELETE,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             identifier=10,
             confidence=0.85,
             raw_input="delete epic 10"
@@ -409,7 +409,7 @@ class TestEdgeCases:
 
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             # No query_type specified
             confidence=0.90,
             raw_input="list tasks"
@@ -426,7 +426,7 @@ class TestEdgeCases:
 
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             query_type=QueryType.SIMPLE,
             confidence=0.90,
             raw_input="list projects"
@@ -477,7 +477,7 @@ class TestEdgeCases:
 
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             query_type=QueryType.NEXT_STEPS,
             confidence=0.90,
             raw_input="next steps"
@@ -497,7 +497,7 @@ class TestEdgeCases:
 
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             query_type=QueryType.SIMPLE,
             confidence=0.90,
             raw_input="list epics"
