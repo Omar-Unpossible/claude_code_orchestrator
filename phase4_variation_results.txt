@@ -1,0 +1,3593 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/omarwsl/projects/claude_code_orchestrator/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/omarwsl/projects/claude_code_orchestrator
+configfile: pytest.ini
+plugins: cov-7.0.0, timeout-2.4.0, asyncio-1.2.0
+timeout: 600.0s
+timeout method: thread
+timeout func_only: False
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/integration/test_nl_variations.py::TestNLCreateVariations::test_create_epic_variations PASSED [  9%]
+tests/integration/test_nl_variations.py::TestNLCreateVariations::test_create_story_variations PASSED [ 18%]
+tests/integration/test_nl_variations.py::TestNLCreateVariations::test_create_task_variations FAILED [ 27%]
+tests/integration/test_nl_variations.py::TestNLUpdateVariations::test_update_task_status_variations FAILED [ 36%]
+tests/integration/test_nl_variations.py::TestNLUpdateVariations::test_update_task_title_variations PASSED [ 45%]
+tests/integration/test_nl_variations.py::TestNLQueryVariations::test_list_tasks_variations PASSED [ 54%]
+tests/integration/test_nl_variations.py::TestNLQueryVariations::test_count_tasks_variations PASSED [ 63%]
+tests/integration/test_nl_variations.py::TestNLDeleteVariations::test_delete_task_variations PASSED [ 72%]
+tests/integration/test_nl_variations.py::TestNLCategoryValidation::test_synonym_variations PASSED [ 81%]
+tests/integration/test_nl_variations.py::TestNLCategoryValidation::test_typo_variations FAILED [ 90%]
+tests/integration/test_nl_variations.py::TestNLCategoryValidation::test_verbose_variations PASSED [100%]
+
+=================================== FAILURES ===================================
+______________ TestNLCreateVariations.test_create_task_variations ______________
+tests/integration/test_nl_variations.py:164: in test_create_task_variations
+    assert parsed.operation_context.operation == OperationType.CREATE
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'operation'
+        base_command = 'create a task for implementing the login form'
+        entity_types = ['task']
+        failed     = []
+        i          = 3
+        parsed     = ParsedIntent(intent_type='QUESTION',
+             operation_context=None,
+             original_message='I need a task for implementing the login form',
+             confidence=0.55,
+             requires_execution=False,
+             question_context={'answer': "I'm not sure what you'd like to do. "
+                                         'Did you mean:',
+                               'detected_entities': {},
+                               'question': 'I need a task for implementing the '
+                                           'login form',
+                               'question_type': 'clarification',
+                               'suggestions': []},
+             metadata={'clarification_needed': True, 'intent_confidence': 0.55})
+        passed     = 2
+        real_nl_processor_with_llm = <src.nl.nl_command_processor.NLCommandProcessor object at 0x7cea07498e90>
+        self       = <tests.integration.test_nl_variations.TestNLCreateVariations object at 0x7cea0e1d43e0>
+        variant    = 'I need a task for implementing the login form'
+        variation_generator = <tests.fixtures.nl_variation_generator.NLVariationGenerator object at 0x7cea0e3302c0>
+        variations = ['Add a task for implementing the login form',
+ 'Make a task to implement the login form',
+ 'I need a task for implementing the login form',
+ 'Add a task for implementing the login form',
+ 'CREATE A TASK FOR IMPLEMENTING THE LOGIN FORM',
+ 'Crete a task to implement the login form',
+ 'Please create a task for implementing the login form',
+ 'Can you please create a task for implementing the login form',
+ 'Add a task to implement the login form, please',
+ 'I WOULD LIKE YOU TO CREATE A TASK FOR IMPLEMENTING THE LOGIN FORM']
+------------------------------ Captured log setup ------------------------------
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: mock -> MockAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: claude-code-local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: ollama -> LocalLLMInterface
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: openai-codex -> OpenAICodexLLMPlugin
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: mock -> MockLLM
+INFO     src.core.state:state.py:116 StateManager initialized with database: sqlite:///:memory:
+INFO     src.llm.openai_codex_interface:openai_codex_interface.py:154 Initialized OpenAICodexLLMPlugin: command=/usr/local/bin/codex, model=gpt-5-codex, full_auto=True
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex test
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2421ms, ~32 tokens
+INFO     nl.intent_classifier:intent_classifier.py:143 IntentClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.operation_classifier:operation_classifier.py:163 OperationClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:138 EntityTypeClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:125 EntityIdentifierExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.parameter_extractor:parameter_extractor.py:135 ParameterExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.question_handler:question_handler.py:107 QuestionHandler initialized with template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.entity_extractor:entity_extractor.py:155 EntityExtractor initialized with schema=src/nl/schemas/obra_schema.json, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.command_validator:command_validator.py:120 CommandValidator initialized
+INFO     nl.command_executor:command_executor.py:121 CommandExecutor initialized
+INFO     nl.response_formatter:response_formatter.py:52 ResponseFormatter initialized
+INFO     src.nl.nl_command_processor:nl_command_processor.py:223 NLCommandProcessor initialized (threshold=0.7, max_turns=10)
+------------------------------ Captured log call -------------------------------
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:100 Generating 10 variations for: 'create a task for implementing the login form'
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: synonyms
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "create a task for implementing the login form"
+
+Variation strategy: Replace action verbs with synonyms (create→add, make, build)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "synonyms":
+- "add epic for user authentication"
+- "make epic for user authentication"
+- "build epic for user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2416ms, ~17 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for synonyms
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: phrasings
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "create a task for implementing the login form"
+
+Variation strategy: Rephrase command structure (create X → I need X, add X, make X)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "phrasings":
+- "I need an epic for user authentication"
+- "I want to create an epic for user authentication"
+- "add an epic called user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1774ms, ~18 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for phrasings
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 1 variations for category: case
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 1 variations of this command: "create a task for implementing the login form"
+
+Variation strategy: Vary capitalization (lowercase, UPPERCASE, Title Case)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "case":
+- "CREATE EPIC FOR USER AUTHENTICATION"
+- "Create Epic For User Authentication"
+- "create epic for user authentication"
+
+Now generate 1 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3369ms, ~9 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 1 variations for case
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 1 variations for category: typos
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 1 variations of this command: "create a task for implementing the login form"
+
+Variation strategy: Inject subtle misspellings (create→crete, epic→epik)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "typos":
+- "crete epic for user authentication"
+- "create epik for user authentication"
+- "create epic for user autentication"
+
+Now generate 1 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1534ms, ~9 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 1 variations for typos
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: verbose
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "create a task for implementing the login form"
+
+Variation strategy: Add politeness and filler words (please, can you, I would like)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "verbose":
+- "please create epic for user authentication"
+- "can you create epic for user authentication"
+- "I would like to create epic for user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1455ms, ~21 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for verbose
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 different variations of this command: "create a task for implementing the login form"
+
+Mix different strategies:
+- Synonyms (create→add, make, build)
+- Different phrasings (create X → I need X)
+- Case variations (lowercase, UPPERCASE, Title Case)
+- Politeness (please, can you, I would like)
+
+Requirements:
+1. Each variation must be semantically equivalent
+2. Use different strategies for variety
+3. Return ONLY the variations, one per line
+
+Generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2514ms, ~26 tokens
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:137 Generated 10 variations successfully
+INFO     tests.integration.test_nl_variations:test_nl_variations.py:152 Testing 10 variations of: 'create a task for implementing the login form'
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Add a task for implementing the login form'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Add a task for implementing the login form'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Add a task for implementing the login form
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Add a task for implementing the login form...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Add a task for implementing the login form
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 4087ms, ~65 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.91
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.91)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Add a task for implementing the login form
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Add a task for implementing the login form...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Add a task for implementing the login form
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1514ms, ~42 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "CREATE", "confidence": 0.89, "reasoning": "The verb “add” is a synonym for creating something new, so the command is a CREATE operation."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: create (confidence=0.89)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=create (confidence=0.89)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=create)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Add a task for implementing the login form... (entity=task, operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Add a task for implementing the login form"
+
+Entity type: TASK
+Operation: CREATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2623ms, ~41 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": "implementing the login form", "identifier_type": "name", "confidence": 0.93, "reasoning": "Phrase after 'for' clearly names the task focus"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: implementing the login form (type=str, confidence=0.93)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=implementing the login form (confidence=0.93)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Add a task for implementing the login form... (operation=create, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (CREATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Add a task for implementing the login form
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 6236ms, ~61 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"action":"CREATE","task_description":"implementing the login form"},"confidence":0.58,"reasoning":"The request explicitly asks to add a task, so this is a CREATE action with the describ...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'action': 'CREATE', 'task_description': 'implementing the login form'} (confidence=0.58)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['action', 'task_description'] (confidence=0.58)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: create ['task'] (confidence=0.83)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for create task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: create task
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Make a task to implement the login form'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Make a task to implement the login form'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Make a task to implement the login form
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Make a task to implement the login form...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Make a task to implement the login form
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1697ms, ~37 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.91
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.91)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Make a task to implement the login form
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Make a task to implement the login form...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Make a task to implement the login form
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1678ms, ~34 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type":"CREATE","confidence":0.63,"reasoning":"The verb “make” is synonymous with create; the user wants to create a task."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: create (confidence=0.63)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=create (confidence=0.63)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=create)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Make a task to implement the login form... (entity=task, operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Make a task to implement the login form"
+
+Entity type: TASK
+Operation: CREATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2439ms, ~49 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": "login form", "identifier_type": "name", "confidence": 0.92, "reasoning": "Command requests creating a task specifically for implementing the login form, making 'login form' the clear i...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: login form (type=str, confidence=0.92)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=login form (confidence=0.92)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Make a task to implement the login form... (operation=create, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (CREATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Make a task to implement the login form
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2912ms, ~56 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"status":"ACTIVE","priority":"MEDIUM"},"confidence":0.16,"reasoning":"The request asks to create a new task for implementing the login form, so I treat it as creating an active, medium-...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'status': 'ACTIVE', 'priority': 'MEDIUM'} (confidence=0.16)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['status', 'priority'] (confidence=0.16)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: create ['task'] (confidence=0.65)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for create task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: create task
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'I need a task for implementing the login form'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'I need a task for implementing the login form'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: I need a task for implementing the login form
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: I need a task for implementing the login form...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+I need a task for implementing the login form
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3827ms, ~42 tokens
+INFO     nl.intent_classifier:intent_classifier.py:228 Confidence 0.55 below threshold 0.7, requesting clarification
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as CLARIFICATION_NEEDED with confidence 0.55
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: CLARIFICATION_NEEDED (confidence=0.55)
+---------------------------- Captured log teardown -----------------------------
+INFO     src.core.state:state.py:2905 StateManager closed
+DEBUG    src.plugins.registry:registry.py:194 Cleared all agent registrations
+DEBUG    src.plugins.registry:registry.py:349 Cleared all LLM registrations
+__________ TestNLUpdateVariations.test_update_task_status_variations ___________
+tests/integration/test_nl_variations.py:210: in test_update_task_status_variations
+    assert parsed.operation_context.operation == OperationType.UPDATE
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'operation'
+        base_command = 'mark task 42 as completed'
+        entity_types = ['task']
+        failed     = [{'error': "assert <OperationType.CREATE: 'create'> == <OperationType.UPDATE: "
+           "'update'>\n"
+           " +  where <OperationType.CREATE: 'create'> = "
+           "OperationContext(operation=<OperationType.CREATE: 'create'>, "
+           "entity_types=[<EntityType.TASK: 'task'>], identifier=42, "
+           'parameters={}, query_type=None, confidence=0.8400000000000001, '
+           "raw_input='Add task 42 to the completed tasks').operation\n"
+           ' +    where OperationContext(operation=<OperationType.CREATE: '
+           "'create'>, entity_types=[<EntityType.TASK: 'task'>], "
+           'identifier=42, parameters={}, query_type=None, '
+           "confidence=0.8400000000000001, raw_input='Add task 42 to the "
+           "completed tasks') = ParsedIntent(intent_type='COMMAND', "
+           'operation_context=OperationContext(operation=<OperationType.CREATE: '
+           "'create'>, entity_types=[<EntityType.TASK: 'task'>], "
+           'identifier=42, parameters={}, query_type=None, '
+           "confidence=0.8400000000000001, raw_input='Add task 42 to the "
+           "completed tasks'), original_message='Add task 42 to the completed "
+           "tasks', confidence=0.8400000000000001, requires_execution=True, "
+           "question_context=None, metadata={'intent_confidence': 0.91, "
+           "'entity_confidence': 0.8400000000000001, 'operation': 'create', "
+           "'entity_type': 'task', 'project_id': None, 'confirmed': "
+           'False}).operation_context\n'
+           " +  and   <OperationType.UPDATE: 'update'> = OperationType.UPDATE",
+  'variation': 'Add task 42 to the completed tasks'}]
+        i          = 7
+        identifier = 42
+        parsed     = ParsedIntent(intent_type='QUESTION',
+             operation_context=None,
+             original_message='Please mark task 42 as completed',
+             confidence=0.0,
+             requires_execution=False,
+             question_context={'answer': 'Processing error: Failed to parse '
+                                         'LLM response: Invalid JSON in LLM '
+                                         'response: Extra data: line 1 column '
+                                         '177 (char 176)',
+                               'error': True,
+                               'question': 'Please mark task 42 as completed',
+                               'question_type': 'error'},
+             metadata={'processing_error': 'Failed to parse LLM response: '
+                                           'Invalid JSON in LLM response: '
+                                           'Extra data: line 1 column 177 '
+                                           '(char 176)'})
+        passed     = 5
+        real_nl_processor_with_llm = <src.nl.nl_command_processor.NLCommandProcessor object at 0x7cea063d46e0>
+        self       = <tests.integration.test_nl_variations.TestNLUpdateVariations object at 0x7cea0e1d4860>
+        variant    = 'Please mark task 42 as completed'
+        variation_generator = <tests.fixtures.nl_variation_generator.NLVariationGenerator object at 0x7cea07400e60>
+        variations = ['Set task 42 as completed',
+ 'Flag task 42 as completed',
+ 'I need task 42 marked as completed',
+ 'Add task 42 to the completed tasks',
+ 'Mark Task 42 As Completed',
+ 'mark tasck 42 as completed',
+ 'Please mark task 42 as completed',
+ 'Can you please mark task 42 as completed',
+ 'Please mark task 42 as completed',
+ 'I NEED YOU TO COMPLETE TASK 42']
+------------------------------ Captured log setup ------------------------------
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: mock -> MockAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: claude-code-local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: ollama -> LocalLLMInterface
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: openai-codex -> OpenAICodexLLMPlugin
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: mock -> MockLLM
+INFO     src.core.state:state.py:116 StateManager initialized with database: sqlite:///:memory:
+INFO     src.llm.openai_codex_interface:openai_codex_interface.py:154 Initialized OpenAICodexLLMPlugin: command=/usr/local/bin/codex, model=gpt-5-codex, full_auto=True
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex test
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 8222ms, ~25 tokens
+INFO     nl.intent_classifier:intent_classifier.py:143 IntentClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.operation_classifier:operation_classifier.py:163 OperationClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:138 EntityTypeClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:125 EntityIdentifierExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.parameter_extractor:parameter_extractor.py:135 ParameterExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.question_handler:question_handler.py:107 QuestionHandler initialized with template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.entity_extractor:entity_extractor.py:155 EntityExtractor initialized with schema=src/nl/schemas/obra_schema.json, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.command_validator:command_validator.py:120 CommandValidator initialized
+INFO     nl.command_executor:command_executor.py:121 CommandExecutor initialized
+INFO     nl.response_formatter:response_formatter.py:52 ResponseFormatter initialized
+INFO     src.nl.nl_command_processor:nl_command_processor.py:223 NLCommandProcessor initialized (threshold=0.7, max_turns=10)
+------------------------------ Captured log call -------------------------------
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:100 Generating 10 variations for: 'mark task 42 as completed'
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: synonyms
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "mark task 42 as completed"
+
+Variation strategy: Replace action verbs with synonyms (create→add, make, build)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "synonyms":
+- "add epic for user authentication"
+- "make epic for user authentication"
+- "build epic for user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3015ms, ~13 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for synonyms
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: phrasings
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "mark task 42 as completed"
+
+Variation strategy: Rephrase command structure (create X → I need X, add X, make X)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "phrasings":
+- "I need an epic for user authentication"
+- "I want to create an epic for user authentication"
+- "add an epic called user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2663ms, ~17 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for phrasings
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 1 variations for category: case
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 1 variations of this command: "mark task 42 as completed"
+
+Variation strategy: Vary capitalization (lowercase, UPPERCASE, Title Case)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "case":
+- "CREATE EPIC FOR USER AUTHENTICATION"
+- "Create Epic For User Authentication"
+- "create epic for user authentication"
+
+Now generate 1 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1856ms, ~6 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 1 variations for case
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 1 variations for category: typos
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 1 variations of this command: "mark task 42 as completed"
+
+Variation strategy: Inject subtle misspellings (create→crete, epic→epik)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "typos":
+- "crete epic for user authentication"
+- "create epik for user authentication"
+- "create epic for user autentication"
+
+Now generate 1 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2119ms, ~7 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 1 variations for typos
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 2 variations for category: verbose
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 variations of this command: "mark task 42 as completed"
+
+Variation strategy: Add politeness and filler words (please, can you, I would like)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "verbose":
+- "please create epic for user authentication"
+- "can you create epic for user authentication"
+- "I would like to create epic for user authentication"
+
+Now generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2229ms, ~17 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 2 variations for verbose
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 2 different variations of this command: "mark task 42 as completed"
+
+Mix different strategies:
+- Synonyms (create→add, make, build)
+- Different phrasings (create X → I need X)
+- Case variations (lowercase, UPPERCASE, Title Case)
+- Politeness (please, can you, I would like)
+
+Requirements:
+1. Each variation must be semantically equivalent
+2. Use different strategies for variety
+3. Return ONLY the variations, one per line
+
+Generate 2 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1871ms, ~16 tokens
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:137 Generated 10 variations successfully
+INFO     tests.integration.test_nl_variations:test_nl_variations.py:197 Testing 10 variations of: 'mark task 42 as completed'
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Set task 42 as completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Set task 42 as completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Set task 42 as completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Set task 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Set task 42 as completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2827ms, ~58 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.94
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.94)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Set task 42 as completed
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Set task 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Set task 42 as completed
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3598ms, ~37 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "UPDATE", "confidence": 0.72, "reasoning": "“Set” is a synonym for modify, indicating a status change to completed."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: update (confidence=0.72)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=update (confidence=0.72)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=update)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Set task 42 as completed... (entity=task, operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Set task 42 as completed"
+
+Entity type: TASK
+Operation: UPDATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2167ms, ~38 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": 42, "identifier_type": "id", "confidence": 0.99, "reasoning": "Command targets a specific task by numeric identifier '42'"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.99)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.99)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Set task 42 as completed... (operation=update, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (UPDATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Set task 42 as completed
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2890ms, ~46 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: ```json
+{"parameters":{"task_id":42,"status":"COMPLETED"},"confidence":0.69,"reasoning":"User explicitly asked to mark task 42 as completed, so only the status parameter is provided."}
+```...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'task_id': 42, 'status': 'COMPLETED'} (confidence=0.69)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['task_id', 'status'] (confidence=0.69)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: update ['task'] (confidence=0.83)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+WARNING  nl.command_validator:command_validator.py:192 Validation failed with 1 error(s): ['Task with ID 42 not found']
+WARNING  src.nl.nl_command_processor:nl_command_processor.py:679 Validation failed: ['Task with ID 42 not found']
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Flag task 42 as completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Flag task 42 as completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Flag task 42 as completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Flag task 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Flag task 42 as completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1916ms, ~58 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.92
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.92)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Flag task 42 as completed
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Flag task 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Flag task 42 as completed
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1590ms, ~32 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type":"UPDATE","confidence":0.92,"reasoning":"Flagging a task as completed changes its status, which is an update operation."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: update (confidence=0.92)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=update (confidence=0.92)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=update)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Flag task 42 as completed... (entity=task, operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Flag task 42 as completed"
+
+Entity type: TASK
+Operation: UPDATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2596ms, ~43 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": 42, "identifier_type": "id", "confidence": 0.99, "reasoning": "Command directly references a specific task number ('task 42'), indicating a numeric identifier"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.99)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.99)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Flag task 42 as completed... (operation=update, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (UPDATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Flag task 42 as completed
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2973ms, ~12 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: status → `COMPLETED`; task_id → `42`....
+INFO     src.nl.parameter_extractor:parameter_extractor.py:301 No JSON parameters found in response, returning empty dict
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {} (confidence=0.80)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=[] (confidence=0.80)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: update ['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+WARNING  nl.command_validator:command_validator.py:192 Validation failed with 1 error(s): ['Task with ID 42 not found']
+WARNING  src.nl.nl_command_processor:nl_command_processor.py:679 Validation failed: ['Task with ID 42 not found']
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'I need task 42 marked as completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'I need task 42 marked as completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: I need task 42 marked as completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: I need task 42 marked as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+I need task 42 marked as completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2044ms, ~66 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.91
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.91)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: I need task 42 marked as completed
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: I need task 42 marked as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: I need task 42 marked as completed
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2442ms, ~38 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "UPDATE", "confidence": 0.74, "reasoning": "Marking an existing task as completed changes its status, which is an update action."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: update (confidence=0.74)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=update (confidence=0.74)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=update)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: I need task 42 marked as completed... (entity=task, operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"I need task 42 marked as completed"
+
+Entity type: TASK
+Operation: UPDATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1745ms, ~31 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier":42,"identifier_type":"id","confidence":0.99,"reasoning":"Phrase specifies numeric task identifier '42' to update status"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.99)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.99)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: I need task 42 marked as completed... (operation=update, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (UPDATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: I need task 42 marked as completed
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 4983ms, ~34 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"task_id":42,"status":"COMPLETED"},"confidence":0.72,"reasoning":"User explicitly requested task 42 be marked as completed."}...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'task_id': 42, 'status': 'COMPLETED'} (confidence=0.72)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['task_id', 'status'] (confidence=0.72)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: update ['task'] (confidence=0.84)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+WARNING  nl.command_validator:command_validator.py:192 Validation failed with 1 error(s): ['Task with ID 42 not found']
+WARNING  src.nl.nl_command_processor:nl_command_processor.py:679 Validation failed: ['Task with ID 42 not found']
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Add task 42 to the completed tasks'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Add task 42 to the completed tasks'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Add task 42 to the completed tasks
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Add task 42 to the completed tasks...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Add task 42 to the completed tasks
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1617ms, ~39 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.91
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.91)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Add task 42 to the completed tasks
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Add task 42 to the completed tasks...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Add task 42 to the completed tasks
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1934ms, ~46 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "CREATE", "confidence": 0.68, "reasoning": "The verb “add” is a synonym for create-type operations, indicating a new task should be added to the completed list."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: create (confidence=0.68)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=create (confidence=0.68)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=create)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Add task 42 to the completed tasks... (entity=task, operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Add task 42 to the completed tasks"
+
+Entity type: TASK
+Operation: CREATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2817ms, ~42 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": 42, "identifier_type": "id", "confidence": 0.98, "reasoning": "Explicit numeric task reference 'task 42' indicates the identifier is 42"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.98)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.98)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Add task 42 to the completed tasks... (operation=create, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (CREATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Add task 42 to the completed tasks
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 4496ms, ~21 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: status becomes `COMPLETED` for task 42 (priority/limit/query_type/dependencies remain unspecified)....
+INFO     src.nl.parameter_extractor:parameter_extractor.py:301 No JSON parameters found in response, returning empty dict
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {} (confidence=0.80)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=[] (confidence=0.80)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: create ['task'] (confidence=0.84)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for create task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: create task
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Mark Task 42 As Completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Mark Task 42 As Completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Mark Task 42 As Completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Mark Task 42 As Completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Mark Task 42 As Completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3207ms, ~42 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.92
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.92)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Mark Task 42 As Completed
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Mark Task 42 As Completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Mark Task 42 As Completed
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1612ms, ~32 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type":"UPDATE","confidence":0.77,"reasoning":"Marking a task as completed modifies its status, which is an update operation."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: update (confidence=0.77)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=update (confidence=0.77)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=update)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Mark Task 42 As Completed... (entity=task, operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Mark Task 42 As Completed"
+
+Entity type: TASK
+Operation: UPDATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1790ms, ~45 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": 42, "identifier_type": "id", "confidence": 0.99, "reasoning": "Explicit numeric task reference ('Task 42') indicates the identifier is the ID 42."}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.99)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.99)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Mark Task 42 As Completed... (operation=update, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (UPDATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Mark Task 42 As Completed
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3041ms, ~41 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"status":"COMPLETED"},"confidence":0.75,"reasoning":"Marking task 42 as completed maps directly to setting its status to COMPLETED; no other parameters are implied."}...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'status': 'COMPLETED'} (confidence=0.75)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['status'] (confidence=0.75)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: update ['task'] (confidence=0.85)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+WARNING  nl.command_validator:command_validator.py:192 Validation failed with 1 error(s): ['Task with ID 42 not found']
+WARNING  src.nl.nl_command_processor:nl_command_processor.py:679 Validation failed: ['Task with ID 42 not found']
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'mark tasck 42 as completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'mark tasck 42 as completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: mark tasck 42 as completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: mark tasck 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+mark tasck 42 as completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1871ms, ~45 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.90
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: mark tasck 42 as completed
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: mark tasck 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: mark tasck 42 as completed
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3046ms, ~41 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "UPDATE", "confidence": 0.82, "reasoning": "The verb “mark” implies changing the task’s state to completed, which is an update operation."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: update (confidence=0.82)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=update (confidence=0.82)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=update)
+DEBUG    src.nl.entity_type_classifier:entity_type_classifier.py:234 Calling LLM for entity type classification: mark tasck 42 as completed... (operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify entity type (Operation: UPDATE):
+- PROJECT: top-level product
+- EPIC: large feature (3-15 sessions)
+- STORY: user feature (1 session)
+- TASK: technical work
+- SUBTASK: part of task
+- MILESTONE: checkpoint
+
+Input: mark tasck 42 as completed
+
+JSON: {"entity_type": "", "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2333ms, ~43 tokens
+DEBUG    src.nl.entity_type_classifier:entity_type_classifier.py:244 LLM response: {"entity_type":"TASK","confidence":0.68,"reasoning":"The request is to mark a specific task (number 42) as completed, which corresponds directly to managing an individual technical work item."}...
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:250 Classified entity type: task (confidence=0.68, operation=update)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.68)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: mark tasck 42 as completed... (entity=task, operation=update)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"mark tasck 42 as completed"
+
+Entity type: TASK
+Operation: UPDATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2083ms, ~36 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": 42, "identifier_type": "id", "confidence": 0.98, "reasoning": "Command targets specific task number 42 for update"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: 42 (type=int, confidence=0.98)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=42 (confidence=0.98)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: mark tasck 42 as completed... (operation=update, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (UPDATE, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: mark tasck 42 as completed
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2235ms, ~45 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"status":"COMPLETED"},"confidence":0.07,"reasoning":"Interpreted “mark task 42 as completed” as an update request changing the task status to completed; no other fields implied."}...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'status': 'COMPLETED'} (confidence=0.07)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['status'] (confidence=0.07)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: update ['task'] (confidence=0.64)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+WARNING  nl.command_validator:command_validator.py:192 Validation failed with 1 error(s): ['Task with ID 42 not found']
+WARNING  src.nl.nl_command_processor:nl_command_processor.py:679 Validation failed: ['Task with ID 42 not found']
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Please mark task 42 as completed'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Please mark task 42 as completed'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Please mark task 42 as completed
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Please mark task 42 as completed...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Please mark task 42 as completed
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2075ms, ~42 tokens
+ERROR    src.nl.nl_command_processor:nl_command_processor.py:395 NL processing failed: Failed to parse LLM response: Invalid JSON in LLM response: Extra data: line 1 column 177 (char 176)
+Traceback (most recent call last):
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/nl/intent_classifier.py", line 296, in _parse_llm_response
+    data = json.loads(json_str)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 340, in decode
+    raise JSONDecodeError("Extra data", s, end)
+json.decoder.JSONDecodeError: Extra data: line 1 column 177 (char 176)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/nl/intent_classifier.py", line 215, in classify
+    result_data = self._parse_llm_response(response)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/nl/intent_classifier.py", line 298, in _parse_llm_response
+    raise ValueError(f"Invalid JSON in LLM response: {e}")
+ValueError: Invalid JSON in LLM response: Extra data: line 1 column 177 (char 176)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/nl/nl_command_processor.py", line 342, in process
+    intent_result = self.intent_classifier.classify(message, conv_context)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omarwsl/projects/claude_code_orchestrator/src/nl/intent_classifier.py", line 217, in classify
+    raise IntentClassificationException(
+nl.intent_classifier.IntentClassificationException: Failed to parse LLM response: Invalid JSON in LLM response: Extra data: line 1 column 177 (char 176)
+---------------------------- Captured log teardown -----------------------------
+INFO     src.core.state:state.py:2905 StateManager closed
+DEBUG    src.plugins.registry:registry.py:194 Cleared all agent registrations
+DEBUG    src.plugins.registry:registry.py:349 Cleared all LLM registrations
+________________ TestNLCategoryValidation.test_typo_variations _________________
+tests/integration/test_nl_variations.py:486: in test_typo_variations
+    assert parsed.operation_context.operation == OperationType.CREATE
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'operation'
+        base_command = 'create epic for user authentication'
+        entity_types = ['epic']
+        parsed     = ParsedIntent(intent_type='QUESTION',
+             operation_context=None,
+             original_message='Create epic for user authenticacion',
+             confidence=0.62,
+             requires_execution=False,
+             question_context={'answer': "I'm not sure what you'd like to do. "
+                                         'Did you mean:',
+                               'detected_entities': {},
+                               'question': 'Create epic for user '
+                                           'authenticacion',
+                               'question_type': 'clarification',
+                               'suggestions': []},
+             metadata={'clarification_needed': True, 'intent_confidence': 0.62})
+        passed     = 2
+        real_nl_processor_with_llm = <src.nl.nl_command_processor.NLCommandProcessor object at 0x7cea0639b4a0>
+        self       = <tests.integration.test_nl_variations.TestNLCategoryValidation object at 0x7cea0e1d5760>
+        variant    = 'Create epic for user authenticacion'
+        variation_generator = <tests.fixtures.nl_variation_generator.NLVariationGenerator object at 0x7cea06373d10>
+        variations = ['Crete epic for user authentication',
+ 'Create epik for user authentication',
+ 'Create epic for user authenticacion',
+ 'Crete epik for user authentication',
+ 'Create epic for user autentification']
+------------------------------ Captured log setup ------------------------------
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: mock -> MockAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: claude-code-local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: ollama -> LocalLLMInterface
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: openai-codex -> OpenAICodexLLMPlugin
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: mock -> MockLLM
+INFO     src.core.state:state.py:116 StateManager initialized with database: sqlite:///:memory:
+INFO     src.llm.openai_codex_interface:openai_codex_interface.py:154 Initialized OpenAICodexLLMPlugin: command=/usr/local/bin/codex, model=gpt-5-codex, full_auto=True
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex test
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1888ms, ~20 tokens
+INFO     nl.intent_classifier:intent_classifier.py:143 IntentClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.operation_classifier:operation_classifier.py:163 OperationClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:138 EntityTypeClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:125 EntityIdentifierExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.parameter_extractor:parameter_extractor.py:135 ParameterExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.question_handler:question_handler.py:107 QuestionHandler initialized with template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.entity_extractor:entity_extractor.py:155 EntityExtractor initialized with schema=src/nl/schemas/obra_schema.json, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.command_validator:command_validator.py:120 CommandValidator initialized
+INFO     nl.command_executor:command_executor.py:121 CommandExecutor initialized
+INFO     nl.response_formatter:response_formatter.py:52 ResponseFormatter initialized
+INFO     src.nl.nl_command_processor:nl_command_processor.py:223 NLCommandProcessor initialized (threshold=0.7, max_turns=10)
+------------------------------ Captured log call -------------------------------
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:100 Generating 5 variations for: 'create epic for user authentication'
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:115 Generating 5 variations for category: typos
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Generate 5 variations of this command: "create epic for user authentication"
+
+Variation strategy: Inject subtle misspellings (create→crete, epic→epik)
+
+Requirements:
+1. Each variation must be semantically equivalent to the original
+2. Each variation should be a COMPLETE natural language command
+3. Variations should feel natural (how a human would phrase it)
+4. Return ONLY the variations, one per line
+5. Do not number them or add any other text
+
+Examples for strategy "typos":
+- "crete epic for user authentication"
+- "create epik for user authentication"
+- "create epic for user autentication"
+
+Now generate 5 variations:
+
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2555ms, ~36 tokens
+DEBUG    tests.fixtures.nl_variation_generator:nl_variation_generator.py:222 Generated 5 variations for typos
+INFO     tests.fixtures.nl_variation_generator:nl_variation_generator.py:137 Generated 5 variations successfully
+INFO     tests.integration.test_nl_variations:test_nl_variations.py:476 Testing 5 typo variations
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Crete epic for user authentication'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Crete epic for user authentication'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Crete epic for user authentication
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Crete epic for user authentication...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Crete epic for user authentication
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2480ms, ~69 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.83
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.83)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Crete epic for user authentication
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Crete epic for user authentication...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Crete epic for user authentication
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1429ms, ~41 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "CREATE", "confidence": 0.62, "reasoning": "The user likely intended “Create epic for user authentication,” and “create” indicates a CREATE operation."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: create (confidence=0.62)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=create (confidence=0.62)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=create)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: epic
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['epic'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Crete epic for user authentication... (entity=epic, operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Crete epic for user authentication"
+
+Entity type: EPIC
+Operation: CREATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2560ms, ~43 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": "user authentication", "identifier_type": "name", "confidence": 0.93, "reasoning": "Phrase specifies the epic is for 'user authentication,' which is the clear concept"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: user authentication (type=str, confidence=0.93)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=user authentication (confidence=0.93)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Crete epic for user authentication... (operation=create, entity=epic)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (CREATE, EPIC):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Crete epic for user authentication
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 4638ms, ~36 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: No explicit status, priority, dependencies, limit, or query type are mentioned in the input “Crete epic for user authentication,” so there’s nothing to extract for those parameters....
+INFO     src.nl.parameter_extractor:parameter_extractor.py:301 No JSON parameters found in response, returning empty dict
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {} (confidence=0.80)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=[] (confidence=0.80)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: create ['epic'] (confidence=0.81)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for create epic
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: create epic
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Create epik for user authentication'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Create epik for user authentication'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Create epik for user authentication
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Create epik for user authentication...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Create epik for user authentication
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2279ms, ~62 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.88
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.88)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: Create epik for user authentication
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: Create epik for user authentication...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: Create epik for user authentication
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1708ms, ~37 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "CREATE", "confidence": 0.94, "reasoning": "The command uses the verb 'Create', which directly matches the CREATE operation type."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: create (confidence=0.94)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=create (confidence=0.94)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=create)
+DEBUG    src.nl.entity_type_classifier:entity_type_classifier.py:234 Calling LLM for entity type classification: Create epik for user authentication... (operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify entity type (Operation: CREATE):
+- PROJECT: top-level product
+- EPIC: large feature (3-15 sessions)
+- STORY: user feature (1 session)
+- TASK: technical work
+- SUBTASK: part of task
+- MILESTONE: checkpoint
+
+Input: Create epik for user authentication
+
+JSON: {"entity_type": "", "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 12138ms, ~47 tokens
+DEBUG    src.nl.entity_type_classifier:entity_type_classifier.py:244 LLM response: {"entity_type":"EPIC","confidence":0.68,"reasoning":"Request mentions creating an “epik” (likely epic) covering the larger user-authentication feature, which spans multiple sessions rather than a sing...
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:250 Classified entity type: epic (confidence=0.68, operation=create)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['epic'] (confidence=0.68)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: Create epik for user authentication... (entity=epic, operation=create)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"Create epik for user authentication"
+
+Entity type: EPIC
+Operation: CREATE
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2095ms, ~39 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": "user authentication", "identifier_type": "name", "confidence": 0.97, "reasoning": "Phrase after 'for' clearly names the epic being created"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: user authentication (type=str, confidence=0.97)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=user authentication (confidence=0.97)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: Create epik for user authentication... (operation=create, entity=epic)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (CREATE, EPIC):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: Create epik for user authentication
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2550ms, ~43 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters": {}, "confidence": 0.02, "reasoning": "The request only asks to create an epic for user authentication without specifying status, priority, dependencies, limit, or query type."}...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {} (confidence=0.02)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=[] (confidence=0.02)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: create ['epic'] (confidence=0.65)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for create epic
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: create epic
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'Create epic for user authenticacion'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'Create epic for user authenticacion'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: Create epic for user authenticacion
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: Create epic for user authenticacion...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+Create epic for user authenticacion
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 2093ms, ~50 tokens
+INFO     nl.intent_classifier:intent_classifier.py:228 Confidence 0.62 below threshold 0.7, requesting clarification
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as CLARIFICATION_NEEDED with confidence 0.62
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: CLARIFICATION_NEEDED (confidence=0.62)
+---------------------------- Captured log teardown -----------------------------
+INFO     src.core.state:state.py:2905 StateManager closed
+DEBUG    src.plugins.registry:registry.py:194 Cleared all agent registrations
+DEBUG    src.plugins.registry:registry.py:349 Cleared all LLM registrations
+=========================== short test summary info ============================
+FAILED tests/integration/test_nl_variations.py::TestNLCreateVariations::test_create_task_variations - AttributeError: 'NoneType' object has no attribute 'operation'
+FAILED tests/integration/test_nl_variations.py::TestNLUpdateVariations::test_update_task_status_variations - AttributeError: 'NoneType' object has no attribute 'operation'
+FAILED tests/integration/test_nl_variations.py::TestNLCategoryValidation::test_typo_variations - AttributeError: 'NoneType' object has no attribute 'operation'
+=================== 3 failed, 8 passed in 1648.63s (0:27:28) ===================

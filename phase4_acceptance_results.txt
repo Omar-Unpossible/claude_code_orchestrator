@@ -1,0 +1,360 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/omarwsl/projects/claude_code_orchestrator/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/omarwsl/projects/claude_code_orchestrator
+configfile: pytest.ini
+plugins: cov-7.0.0, timeout-2.4.0, asyncio-1.2.0
+timeout: 600.0s
+timeout method: thread
+timeout func_only: False
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 20 items
+
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMProjectWorkflows::test_list_projects_real_llm PASSED [  5%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMProjectWorkflows::test_query_project_statistics_real_llm PASSED [ 10%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEpicStoryTaskCreation::test_create_epic_real_llm PASSED [ 15%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEpicStoryTaskCreation::test_create_story_real_llm PASSED [ 20%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEpicStoryTaskCreation::test_create_task_real_llm PASSED [ 25%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMModificationWorkflows::test_update_task_status_real_llm PASSED [ 30%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMModificationWorkflows::test_update_task_title_real_llm PASSED [ 35%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMModificationWorkflows::test_delete_task_real_llm PASSED [ 40%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMBulkOperations::test_bulk_delete_tasks_real_llm PASSED [ 45%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMBulkOperations::test_list_all_epics_real_llm PASSED [ 50%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMQueryWorkflows::test_query_tasks_by_status_real_llm FAILED [ 55%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMQueryWorkflows::test_query_epic_stories_real_llm PASSED [ 60%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMQueryWorkflows::test_query_task_count_real_llm PASSED [ 65%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEdgeCases::test_invalid_task_id_real_llm PASSED [ 70%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEdgeCases::test_missing_required_parameter_real_llm PASSED [ 75%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMEdgeCases::test_ambiguous_command_real_llm PASSED [ 80%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMConfirmationWorkflows::test_delete_with_confirmation_real_llm PASSED [ 85%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMConfirmationWorkflows::test_bulk_operation_confirmation_real_llm PASSED [ 90%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMMultiEntityOperations::test_create_multiple_tasks_at_once_real_llm PASSED [ 95%]
+tests/integration/test_nl_workflows_real_llm.py::TestRealLLMMultiEntityOperations::test_delete_all_epics_real_llm PASSED [100%]
+
+=================================== FAILURES ===================================
+________ TestRealLLMQueryWorkflows.test_query_tasks_by_status_real_llm _________
+tests/integration/test_nl_workflows_real_llm.py:294: in test_query_tasks_by_status_real_llm
+    assert 'completed' in result['message'].lower() or 'task' in result['message'].lower() or '1' in result['message']
+E   AssertionError: assert ('completed' in 'found 2 items(s)' or 'task' in 'found 2 items(s)' or '1' in 'Found 2 items(s)')
+E    +  where 'found 2 items(s)' = <built-in method lower of str object at 0x7c81665b6f70>()
+E    +    where <built-in method lower of str object at 0x7c81665b6f70> = 'Found 2 items(s)'.lower
+E    +  and   'found 2 items(s)' = <built-in method lower of str object at 0x7c81665b6f70>()
+E    +    where <built-in method lower of str object at 0x7c81665b6f70> = 'Found 2 items(s)'.lower
+        project    = <ProjectState(id=1, name='Test', status='active')>
+        real_orchestrator = <src.orchestrator.Orchestrator object at 0x7c8166573da0>
+        result     = {'confidence': 0.7849999999999999,
+ 'data': {'count': 2,
+          'project_id': 1,
+          'query_type': 'backlog',
+          'tasks': [{'id': 1,
+                     'priority': 5,
+                     'status': 'pending',
+                     'task_type': 'task',
+                     'title': 'Completed Task'},
+                    {'id': 2,
+                     'priority': 5,
+                     'status': 'pending',
+                     'task_type': 'task',
+                     'title': 'Pending Task'}]},
+ 'message': 'Found 2 items(s)',
+ 'success': True,
+ 'task_id': None}
+        self       = <tests.integration.test_nl_workflows_real_llm.TestRealLLMQueryWorkflows object at 0x7c81656f06e0>
+------------------------------ Captured log setup ------------------------------
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: mock -> MockAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: claude-code-local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:104 Registered agent: local -> ClaudeCodeLocalAgent
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: ollama -> LocalLLMInterface
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: openai-codex -> OpenAICodexLLMPlugin
+DEBUG    src.plugins.registry:registry.py:301 Registered LLM: mock -> MockLLM
+INFO     src.llm.openai_codex_interface:openai_codex_interface.py:154 Initialized OpenAICodexLLMPlugin: command=/usr/local/bin/codex, model=gpt-5-codex, full_auto=True
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex test
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 3391ms, ~27 tokens
+INFO     src.orchestrator:orchestrator.py:152 Orchestrator created
+INFO     src.core.state:state.py:116 StateManager initialized with database: sqlite:///:memory:
+INFO     src.orchestration.intent_to_task_converter:intent_to_task_converter.py:69 IntentToTaskConverter initialized
+INFO     src.nl.nl_query_helper:nl_query_helper.py:108 NLQueryHelper initialized (query-only mode)
+INFO     src.orchestrator:orchestrator.py:1214 Natural Language components initialized (ADR-017)
+INFO     nl.intent_classifier:intent_classifier.py:143 IntentClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.operation_classifier:operation_classifier.py:163 OperationClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:138 EntityTypeClassifier initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:125 EntityIdentifierExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.parameter_extractor:parameter_extractor.py:135 ParameterExtractor initialized with threshold=0.7, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     src.nl.question_handler:question_handler.py:107 QuestionHandler initialized with template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.entity_extractor:entity_extractor.py:155 EntityExtractor initialized with schema=src/nl/schemas/obra_schema.json, template_path=/home/omarwsl/projects/claude_code_orchestrator/prompts
+INFO     nl.command_validator:command_validator.py:120 CommandValidator initialized
+INFO     nl.command_executor:command_executor.py:121 CommandExecutor initialized
+INFO     nl.response_formatter:response_formatter.py:52 ResponseFormatter initialized
+INFO     src.nl.nl_command_processor:nl_command_processor.py:223 NLCommandProcessor initialized (threshold=0.7, max_turns=10)
+------------------------------ Captured log call -------------------------------
+INFO     src.core.state:state.py:261 Created project: 1 (Test)
+DEBUG    src.core.state:state.py:204 Transaction committed
+INFO     src.core.state:state.py:426 Created task: 1 (Completed Task)
+DEBUG    src.core.state:state.py:204 Transaction committed
+INFO     src.core.state:state.py:426 Created task: 2 (Pending Task)
+DEBUG    src.core.state:state.py:204 Transaction committed
+DEBUG    src.nl.fast_path_matcher:fast_path_matcher.py:186 Fast path MISS: 'show completed tasks'
+DEBUG    src.nl.query_cache:query_cache.py:116 Cache MISS: 'show completed tasks'
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:335 Fast path miss and cache miss, using LLM pipeline: show completed tasks
+DEBUG    nl.intent_classifier:intent_classifier.py:199 Classifying intent for message: show completed tasks...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex You are an intent classifier for Obra, an AI orchestration system. Your task is to classify user messages into one of three categories:
+
+1. **COMMAND** - User wants to execute an action OR query/display information from the database
+2. **QUESTION** - User wants guidance, explanation, or help on HOW to do something
+3. **CLARIFICATION_NEEDED** - Message is ambiguous, vague, or lacks necessary details
+
+## Classification Guidelines
+
+### COMMAND Intent
+Use COMMAND for:
+- **Action verbs**: create, add, update, delete, remove, execute, run, start, stop
+- **Query/display verbs**: show, tell, display, list, get, find, search
+- Examples: "Create an epic", "Show me all tasks", "Tell me the current project", "Display my plan"
+- Confidence should be >0.8 if action/query and target are clear
+
+### QUESTION Intent
+Use QUESTION for:
+- **Seeking guidance**: how, why, when, which way, what's the process
+- **Asking for help**: "How do I create an epic?", "What's the best way to...?", "Explain how..."
+- **Process questions**: "How should I structure...?", "What steps do I take...?"
+- Confidence should be >0.8 if clearly asking for guidance/explanation (not data)
+
+### CLARIFICATION_NEEDED Intent
+- Vague or incomplete: "Maybe do something", "That thing", "Fix it"
+- Ambiguous pronouns without context: "Add it", "Update that"
+- Missing critical details: "Create epic" (no title/description)
+- Confidence should be <0.7 when unclear
+
+## Context Awareness
+
+## Output Format
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+  "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of classification",
+  "detected_entities": {
+    "action": "create|update|delete|list|execute|show" (if COMMAND),
+    "entity_type": "epic|story|task|subtask|milestone" (if detectable),
+    "question_type": "how_to|what_is|show_info" (if QUESTION)
+  }
+}
+```
+
+## Examples
+
+### Example 1: Clear Command
+Input: "Create an epic called User Authentication"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.95,
+  "reasoning": "Clear action verb 'create' with target 'epic' and title specified",
+  "detected_entities": {
+    "action": "create",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 2: Clear Question
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.93,
+  "reasoning": "Question word 'how' asking for guidance on process",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 3: Needs Clarification
+Input: "Maybe add something"
+Output:
+```json
+{
+  "intent": "CLARIFICATION_NEEDED",
+  "confidence": 0.45,
+  "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
+  "detected_entities": {}
+}
+```
+
+### Example 4: Display/Query Command (IMPORTANT!)
+Input: "Show me all epics"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.92,
+  "reasoning": "Query verb 'show' with target 'all epics', clear display request",
+  "detected_entities": {
+    "action": "list",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 5: Tell/Display Command (IMPORTANT!)
+Input: "Tell me the current project and plan"
+Output:
+```json
+{
+  "intent": "COMMAND",
+  "confidence": 0.93,
+  "reasoning": "Query verb 'tell' requesting data display, not asking for guidance",
+  "detected_entities": {
+    "action": "show",
+    "entity_type": "project"
+  }
+}
+```
+
+### Example 6: Guidance Question (NOT a command!)
+Input: "How do I create an epic?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.90,
+  "reasoning": "Seeking guidance on process, not requesting data or action execution",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "epic"
+  }
+}
+```
+
+### Example 7: Process Question (NOT a command!)
+Input: "What's the best way to structure my tasks?"
+Output:
+```json
+{
+  "intent": "QUESTION",
+  "confidence": 0.88,
+  "reasoning": "Asking for advice/guidance on approach, not querying existing data",
+  "detected_entities": {
+    "question_type": "how_to",
+    "entity_type": "task"
+  }
+}
+```
+
+## User Message to Classify
+
+show completed tasks
+
+## Your Classification
+
+Respond with ONLY the JSON object (no additional text):
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1867ms, ~39 tokens
+INFO     nl.intent_classifier:intent_classifier.py:241 Classified as COMMAND with confidence 0.93
+INFO     src.nl.nl_command_processor:nl_command_processor.py:343 Intent classified: COMMAND (confidence=0.93)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:574 Stage 1: Classifying operation for: show completed tasks
+DEBUG    src.nl.operation_classifier:operation_classifier.py:192 Calling LLM for operation classification: show completed tasks...
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Classify the operation type from this user command.
+
+Operation types and their synonyms:
+- CREATE: create, add, make, new, build, construct, assemble, craft, generate, produce, develop, establish, initialize, set up, setup, prepare, design, form, start, begin, launch, spin up, put together
+- UPDATE: update, modify, change, edit, alter, revise, adjust, refine, amend, correct, fix, set, configure, tweak
+- DELETE: delete, remove, drop, erase, clear, purge, eliminate, destroy, discard, cancel, archive
+- QUERY: show, list, get, find, search, query, lookup, locate, display, view, see, check, what, which, where, who, count, how many, number of, status, state, info, details, describe
+
+Command: show completed tasks
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 18677ms, ~35 tokens
+DEBUG    src.nl.operation_classifier:operation_classifier.py:199 LLM response: {"operation_type": "QUERY", "confidence": 0.89, "reasoning": "\"show\" is a synonym for QUERY, asking to display existing information."}...
+INFO     src.nl.operation_classifier:operation_classifier.py:215 Classified operation: query (confidence=0.89)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:576 Stage 1 complete: Operation=query (confidence=0.89)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:582 Stage 2: Classifying entity type (operation=query)
+INFO     src.nl.entity_type_classifier:entity_type_classifier.py:198 Detected single entity type: task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:587 Stage 2 complete: EntityTypes=['task'] (confidence=0.90)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:593 Stage 3: Extracting identifier
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:194 Calling LLM for identifier extraction: show completed tasks... (entity=task, operation=query)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract the identifier from this command:
+
+"show completed tasks"
+
+Entity type: TASK
+Operation: QUERY
+
+The identifier can be phrased in MANY ways:
+- "create epic for USER AUTH" → identifier: "USER AUTH"
+- "create epic called AUTHENTICATION" → identifier: "AUTHENTICATION"
+- "I need an epic named LOGIN SYSTEM" → identifier: "LOGIN SYSTEM"
+- "add epic: PASSWORD RESET" → identifier: "PASSWORD RESET"
+- "build epic about OAUTH" → identifier: "OAUTH"
+- "make SECURITY epic" → identifier: "SECURITY"
+- "epic for the login feature" → identifier: "login feature"
+- "project 5" → identifier: 5 (type: id)
+- "task #12" → identifier: 12 (type: id)
+- "show all tasks" → identifier: null (type: none)
+
+Extract the core concept/name being referenced, regardless of phrasing.
+
+Return JSON: {"identifier": "extracted_value", "identifier_type": "name|id|none", "confidence": 0.0-1.0, "reasoning": "explanation"}
+
+Examples:
+- "create epic for user authentication system" → {"identifier": "user authentication system", "identifier_type": "name", "confidence": 0.95, "reasoning": "Clear identifier after 'for' preposition"}
+- "I want an epic about payments" → {"identifier": "payments", "identifier_type": "name", "confidence": 0.92, "reasoning": "Core concept after 'about' preposition"}
+- "build epic called api-gateway" → {"identifier": "api-gateway", "identifier_type": "name", "confidence": 0.98, "reasoning": "Explicit identifier after 'called'"}
+- "epic for the login feature" → {"identifier": "login feature", "identifier_type": "name", "confidence": 0.94, "reasoning": "Identifier after 'for the' phrase"}
+- "update task 7" → {"identifier": 7, "identifier_type": "id", "confidence": 0.99, "reasoning": "Numeric ID detected"}
+- "show all projects" → {"identifier": null, "identifier_type": "none", "confidence": 0.98, "reasoning": "Bulk query with no specific identifier"}
+
+JSON:
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 1820ms, ~38 tokens
+DEBUG    src.nl.entity_identifier_extractor:entity_identifier_extractor.py:204 LLM response: {"identifier": null, "identifier_type": "none", "confidence": 0.97, "reasoning": "General request to list completed tasks with no specific task identifier provided"}...
+INFO     src.nl.entity_identifier_extractor:entity_identifier_extractor.py:220 Extracted identifier: None (type=NoneType, confidence=0.97)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:599 Stage 3 complete: Identifier=None (confidence=0.97)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:605 Stage 4: Extracting parameters
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:182 Calling LLM for parameter extraction: show completed tasks... (operation=query, entity=task)
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:264 Running command: codex exec --full-auto --model gpt-5-codex Extract parameters (QUERY, TASK):
+- status: ACTIVE/INACTIVE/COMPLETED/PAUSED/BLOCKED
+- priority: HIGH/MEDIUM/LOW
+- dependencies: task IDs [5, 7]
+- limit: number for "top 5", "first 10"
+- query_type: hierarchical/next_steps/backlog/roadmap
+
+Input: show completed tasks
+
+JSON: {"parameters": {}, "confidence": 0.0, "reasoning": ""}
+DEBUG    src.llm.openai_codex_interface:openai_codex_interface.py:240 Codex CLI generation: 4568ms, ~57 tokens
+DEBUG    src.nl.parameter_extractor:parameter_extractor.py:192 LLM response: {"parameters":{"status":"COMPLETED","query_type":"backlog"},"confidence":0.38,"reasoning":"Interpreted “show completed tasks” as a request for items whose status is completed, framed as a backlog-styl...
+INFO     src.nl.parameter_extractor:parameter_extractor.py:216 Extracted parameters: {'status': 'COMPLETED', 'query_type': 'backlog'} (confidence=0.38)
+INFO     src.nl.nl_command_processor:nl_command_processor.py:611 Stage 4 complete: Parameters=['status', 'query_type'] (confidence=0.38)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:617 Stage 5: Building OperationContext
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:636 Using LLM-extracted query_type: backlog
+INFO     src.nl.nl_command_processor:nl_command_processor.py:668 OperationContext built: query ['task'] (confidence=0.78)
+DEBUG    src.nl.nl_command_processor:nl_command_processor.py:674 Step 6: Validating OperationContext
+INFO     nl.command_validator:command_validator.py:190 Validation passed for query task
+INFO     src.nl.nl_command_processor:nl_command_processor.py:700 Returning ParsedIntent for orchestrator execution: query task
+DEBUG    src.nl.query_cache:query_cache.py:145 Cache PUT: 'show completed tasks' (cache_size=1)
+---------------------------- Captured log teardown -----------------------------
+INFO     src.core.state:state.py:2905 StateManager closed
+DEBUG    src.plugins.registry:registry.py:194 Cleared all agent registrations
+DEBUG    src.plugins.registry:registry.py:349 Cleared all LLM registrations
+=========================== short test summary info ============================
+FAILED tests/integration/test_nl_workflows_real_llm.py::TestRealLLMQueryWorkflows::test_query_tasks_by_status_real_llm - AssertionError: assert ('completed' in 'found 2 items(s)' or 'task' in 'found 2 items(s)' or '1' in 'Found 2 items(s)')
+ +  where 'found 2 items(s)' = <built-in method lower of str object at 0x7c81665b6f70>()
+ +    where <built-in method lower of str object at 0x7c81665b6f70> = 'Found 2 items(s)'.lower
+ +  and   'found 2 items(s)' = <built-in method lower of str object at 0x7c81665b6f70>()
+ +    where <built-in method lower of str object at 0x7c81665b6f70> = 'Found 2 items(s)'.lower
+=================== 1 failed, 19 passed in 970.62s (0:16:10) ===================
