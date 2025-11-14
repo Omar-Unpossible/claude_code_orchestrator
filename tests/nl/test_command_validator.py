@@ -39,7 +39,7 @@ class TestValidateOperationEntityCombination:
         """Test valid UPDATE + PROJECT combination."""
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier="test project",
             parameters={"status": "INACTIVE"},
             confidence=0.95,
@@ -56,7 +56,7 @@ class TestValidateOperationEntityCombination:
         """Test valid CREATE + EPIC combination."""
         context = OperationContext(
             operation=OperationType.CREATE,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             identifier=None,
             parameters={"title": "User Authentication"},
             confidence=0.92,
@@ -70,7 +70,7 @@ class TestValidateOperationEntityCombination:
         """Test valid QUERY + TASK combination."""
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=None,
             parameters={},
             query_type=QueryType.SIMPLE,
@@ -92,7 +92,7 @@ class TestValidateOperationRequirements:
         with pytest.raises(ValueError, match="update operation requires an identifier"):
             context = OperationContext(
                 operation=OperationType.UPDATE,
-                entity_type=EntityType.PROJECT,
+                entity_types=[EntityType.PROJECT],
                 identifier=None,  # Missing!
                 parameters={"status": "INACTIVE"},
                 confidence=0.85
@@ -105,7 +105,7 @@ class TestValidateOperationRequirements:
         with pytest.raises(ValueError, match="delete operation requires an identifier"):
             context = OperationContext(
                 operation=OperationType.DELETE,
-                entity_type=EntityType.TASK,
+                entity_types=[EntityType.TASK],
                 identifier=None,  # Missing!
                 parameters={},
                 confidence=0.90
@@ -115,7 +115,7 @@ class TestValidateOperationRequirements:
         """Test QUERY operation allows null identifier (show all)."""
         context = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier=None,  # Valid for "show all" queries
             parameters={},
             query_type=QueryType.SIMPLE,
@@ -133,7 +133,7 @@ class TestValidateOperationParameters:
         """Test valid status parameter for PROJECT."""
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier="test project",
             parameters={"status": "INACTIVE"},
             confidence=0.95
@@ -146,7 +146,7 @@ class TestValidateOperationParameters:
         """Test invalid status parameter for PROJECT."""
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier="test project",
             parameters={"status": "INVALID_STATUS"},
             confidence=0.85
@@ -160,7 +160,7 @@ class TestValidateOperationParameters:
         """Test valid priority parameter."""
         context = OperationContext(
             operation=OperationType.CREATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=None,
             parameters={"priority": "HIGH", "title": "Implement feature X"},
             confidence=0.90
@@ -173,7 +173,7 @@ class TestValidateOperationParameters:
         """Test invalid priority parameter."""
         context = OperationContext(
             operation=OperationType.CREATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=None,
             parameters={"priority": "URGENT", "title": "Implement feature X"},
             confidence=0.85
@@ -220,7 +220,7 @@ class TestValidateEntityExists:
 
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier=1,
             parameters={"status": "INACTIVE"},
             confidence=0.95
@@ -237,7 +237,7 @@ class TestValidateEntityExists:
 
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=999,
             parameters={"status": "COMPLETED"},
             confidence=0.90
@@ -263,7 +263,7 @@ class TestValidateEntityExists:
 
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier="test project",  # Case-insensitive match
             parameters={"status": "INACTIVE"},
             confidence=0.92
@@ -280,7 +280,7 @@ class TestValidateDependencies:
         """Test task cannot depend on itself."""
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=5,
             parameters={"dependencies": [5]},  # Self-dependency!
             confidence=0.85
@@ -305,7 +305,7 @@ class TestValidateDependencies:
 
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=3,
             parameters={"dependencies": [1, 2]},
             confidence=0.92
@@ -328,7 +328,7 @@ class TestValidateIntegration:
 
         context = OperationContext(
             operation=OperationType.UPDATE,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier=1,
             parameters={"status": "INACTIVE"},
             confidence=0.95,
@@ -350,7 +350,7 @@ class TestValidateIntegration:
         with pytest.raises(ValueError, match="update operation requires an identifier"):
             context = OperationContext(
                 operation=OperationType.UPDATE,
-                entity_type=EntityType.PROJECT,
+                entity_types=[EntityType.PROJECT],
                 identifier=None,  # Missing!
                 parameters={"status": "INACTIVE"},
                 confidence=0.85
