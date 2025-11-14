@@ -1,9 +1,19 @@
-Classify operation type:
-- CREATE: make/add/new/create
-- UPDATE: mark/set/change/update (existing entity)
-- DELETE: delete/remove/cancel
-- QUERY: show/list/display/get/what
+Classify the operation type from this user command.
 
-Input: {{ user_command }}
+Operation types and their synonyms:
+- CREATE: {{ create_synonyms }}
+- UPDATE: {{ update_synonyms }}
+- DELETE: {{ delete_synonyms }}
+- QUERY: {{ query_synonyms }}
 
-JSON: {"operation_type": "", "confidence": 0.0, "reasoning": ""}
+Command: {{ user_command }}
+
+If the command uses any synonym, classify it as that operation type.
+Examples:
+- "build epic" → CREATE (build is synonym for create)
+- "show tasks" → QUERY (show is synonym for query)
+- "modify status" → UPDATE (modify is synonym for update)
+- "remove task" → DELETE (remove is synonym for delete)
+
+Return ONLY the operation type as a JSON object:
+{"operation_type": "CREATE|UPDATE|DELETE|QUERY", "confidence": 0.0-1.0, "reasoning": ""}

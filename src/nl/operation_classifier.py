@@ -35,6 +35,58 @@ from src.nl.types import OperationType, OperationResult
 
 logger = logging.getLogger(__name__)
 
+# PHASE 3 FIX C: Define operation synonyms for better recognition
+OPERATION_SYNONYMS = {
+    OperationType.CREATE: [
+        # Primary
+        "create", "add", "make", "new",
+        # Construction
+        "build", "construct", "assemble", "craft",
+        # Generation
+        "generate", "produce", "develop",
+        # Setup
+        "establish", "initialize", "set up", "setup",
+        # Preparation
+        "prepare", "design", "form",
+        # Initiation
+        "start", "begin", "launch", "spin up",
+        # Other
+        "put together"
+    ],
+    OperationType.UPDATE: [
+        # Primary
+        "update", "modify", "change", "edit",
+        # Adjustment
+        "alter", "revise", "adjust", "refine",
+        # Correction
+        "amend", "correct", "fix",
+        # Setting
+        "set", "configure", "tweak"
+    ],
+    OperationType.DELETE: [
+        # Primary
+        "delete", "remove", "drop",
+        # Destruction
+        "erase", "clear", "purge", "eliminate",
+        # Cancellation
+        "destroy", "discard", "cancel", "archive"
+    ],
+    OperationType.QUERY: [
+        # Primary
+        "show", "list", "get", "find",
+        # Search
+        "search", "query", "lookup", "locate",
+        # Display
+        "display", "view", "see", "check",
+        # Questions
+        "what", "which", "where", "who",
+        # Count
+        "count", "how many", "number of",
+        # Status
+        "status", "state", "info", "details", "describe"
+    ],
+}
+
 
 class OperationClassificationException(OrchestratorException):
     """Exception raised when operation classification fails."""
@@ -186,13 +238,27 @@ class OperationClassifier(OperationClassifierInterface):
     def _build_prompt(self, user_input: str) -> str:
         """Build prompt for LLM classification.
 
+        PHASE 3 FIX C: Includes explicit synonym mappings in prompt to improve
+        recognition of common operation variations (build, craft, show, etc.).
+
         Args:
             user_input: Raw user command
 
         Returns:
             Formatted prompt string
         """
-        return self.template.render(user_command=user_input)
+        # Format synonyms for template
+        synonym_strings = {
+            'create_synonyms': ', '.join(OPERATION_SYNONYMS[OperationType.CREATE]),
+            'update_synonyms': ', '.join(OPERATION_SYNONYMS[OperationType.UPDATE]),
+            'delete_synonyms': ', '.join(OPERATION_SYNONYMS[OperationType.DELETE]),
+            'query_synonyms': ', '.join(OPERATION_SYNONYMS[OperationType.QUERY]),
+        }
+
+        return self.template.render(
+            user_command=user_input,
+            **synonym_strings
+        )
 
     def _parse_response(self, response: str) -> OperationType:
         """Parse LLM response into OperationType.

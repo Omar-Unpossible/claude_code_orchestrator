@@ -39,6 +39,20 @@ from src.nl.types import OperationType, EntityType, ParameterResult
 
 logger = logging.getLogger(__name__)
 
+# PHASE 3 FIX B: Define required parameters for each entity type
+# All other parameters are optional and should be omitted if None
+REQUIRED_PARAMETERS = {
+    'epic': ['title'],
+    'story': ['title'],
+    'task': ['title'],
+    'milestone': ['title', 'required_epic_ids'],
+}
+# Optional parameters (can be omitted if None):
+# - status (defaults to ACTIVE)
+# - priority (defaults to MEDIUM)
+# - dependencies (defaults to [])
+# - description, epic_id, story_id, etc.
+
 
 class ParameterExtractionException(OrchestratorException):
     """Exception raised when parameter extraction fails."""
@@ -177,8 +191,8 @@ class ParameterExtractor(ParameterExtractorInterface):
             )
             logger.debug(f"LLM response: {response[:200]}...")
 
-            # Parse response
-            parameters = self._parse_response(response)
+            # Parse response (PHASE 3 FIX B: pass entity_type for None filtering)
+            parameters = self._parse_response(response, entity_type)
             confidence = self._calculate_confidence(response)
 
             # Add detected bulk and scope parameters
@@ -253,16 +267,21 @@ class ParameterExtractor(ParameterExtractorInterface):
             expected_parameters_description=expected_params_desc or "No specific parameters expected"
         )
 
-    def _parse_response(self, response: str) -> Dict[str, Any]:
+    def _parse_response(self, response: str, entity_type: Optional[EntityType] = None) -> Dict[str, Any]:
         """Parse LLM response into parameters dictionary.
+
+        PHASE 3 FIX B: Skip None values for optional parameters to avoid
+        validation errors. Optional parameters should either have a value
+        or be omitted entirely.
 
         Extracts parameters from JSON response or returns empty dict.
 
         Args:
             response: Raw LLM response string
+            entity_type: Entity type to determine required vs optional parameters
 
         Returns:
-            Dictionary of parameters
+            Dictionary of parameters (excludes optional None values)
 
         Raises:
             ParameterExtractionException: If response format is invalid
@@ -290,7 +309,23 @@ class ParameterExtractor(ParameterExtractorInterface):
                     logger.warning(f"Parameters is not a dict: {type(parameters)}, using empty dict")
                     return {}
 
-                return parameters
+                # PHASE 3 FIX B: Filter out None values for optional parameters
+                filtered_params = {}
+                entity_type_str = entity_type.value if entity_type else None
+                required_fields = REQUIRED_PARAMETERS.get(entity_type_str, [])
+
+                for field, value in parameters.items():
+                    # Skip None values for optional parameters
+                    if value is None:
+                        if field not in required_fields:
+                            logger.debug(f"Skipping optional None parameter: {field}")
+                            continue  # Skip optional None values
+                        # For required fields, None is an error - let validator catch it
+                        logger.debug(f"Keeping required None parameter: {field} (validator will reject)")
+
+                    filtered_params[field] = value
+
+                return filtered_params
             else:
                 return {}
 
