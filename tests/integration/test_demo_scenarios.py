@@ -46,7 +46,7 @@ class TestProductionDemoFlows:
 
     def test_basic_project_setup_demo(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Demo: Create epic → add story → check status → update.
@@ -69,7 +69,7 @@ class TestProductionDemoFlows:
         ctx = {'project_id': 1}
 
         logger.info("=== DEMO STEP 1: Create epic ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for user authentication",
             context=ctx
         )
@@ -81,7 +81,7 @@ class TestProductionDemoFlows:
         logger.info(f"✓ Epic created: ID={epic_id}")
 
         logger.info("=== DEMO STEP 2: Add story to epic ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add a story for password reset to epic {epic_id}",
             context=ctx
         )
@@ -93,7 +93,7 @@ class TestProductionDemoFlows:
         logger.info(f"✓ Story created: ID={story_id}")
 
         logger.info("=== DEMO STEP 3: Query story ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"show me story {story_id}",
             context=ctx
         )
@@ -102,7 +102,7 @@ class TestProductionDemoFlows:
         logger.info("✓ Story queried successfully")
 
         logger.info("=== DEMO STEP 4: Update status ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"mark story {story_id} as in progress",
             context=ctx
         )
@@ -121,7 +121,7 @@ class TestProductionDemoFlows:
 
     def test_milestone_roadmap_demo(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Demo: Create epics → milestone → check roadmap.
@@ -141,7 +141,7 @@ class TestProductionDemoFlows:
         ctx = {'project_id': 1}
 
         logger.info("=== Create Epic 1: Authentication ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for user authentication system",
             context=ctx
         )
@@ -151,7 +151,7 @@ class TestProductionDemoFlows:
         logger.info(f"✓ Epic 1 created: ID={epic1_id}")
 
         logger.info("=== Create Epic 2: Dashboard ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create epic for admin dashboard",
             context=ctx
         )
@@ -161,7 +161,7 @@ class TestProductionDemoFlows:
         logger.info(f"✓ Epic 2 created: ID={epic2_id}")
 
         logger.info("=== Create Milestone ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create milestone 'MVP Launch' requiring epics {epic1_id} and {epic2_id}",
             context=ctx
         )
@@ -171,7 +171,7 @@ class TestProductionDemoFlows:
         logger.info(f"✓ Milestone created: ID={milestone_id}")
 
         logger.info("=== Check initial milestone status ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"what's the status of milestone {milestone_id}?",
             context=ctx
         )
@@ -182,7 +182,7 @@ class TestProductionDemoFlows:
 
     def test_bulk_operation_demo(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Demo: Create multiple tasks → bulk update.
@@ -198,7 +198,7 @@ class TestProductionDemoFlows:
         task_ids = []
 
         logger.info("=== Create Task 1 ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to implement login API",
             context=ctx
         )
@@ -206,7 +206,7 @@ class TestProductionDemoFlows:
         task_ids.append(r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None)
 
         logger.info("=== Create Task 2 ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create task to add JWT token validation",
             context=ctx
         )
@@ -214,7 +214,7 @@ class TestProductionDemoFlows:
         task_ids.append(r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None)
 
         logger.info("=== Create Task 3 ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create task to write authentication tests",
             context=ctx
         )
@@ -223,7 +223,7 @@ class TestProductionDemoFlows:
 
         logger.info(f"=== Bulk update tasks {task_ids} ===")
         task_list = ', '.join(map(str, task_ids))
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"mark tasks {task_list} as in progress",
             context=ctx
         )
@@ -250,7 +250,7 @@ class TestErrorRecoveryFlows:
 
     def test_missing_reference_recovery(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """User forgets epic reference → error → corrects → success.
@@ -264,7 +264,7 @@ class TestErrorRecoveryFlows:
         ctx = {'project_id': 1}
 
         logger.info("=== Create epic first ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for authentication",
             context=ctx
         )
@@ -272,7 +272,7 @@ class TestErrorRecoveryFlows:
         epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== User mistake: Create story WITHOUT epic reference ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create story for login functionality",  # Missing epic!
             context=ctx
         )
@@ -281,7 +281,7 @@ class TestErrorRecoveryFlows:
         logger.info(f"Response to missing epic: confidence={r2.confidence}")
 
         logger.info("=== User correction: Add epic reference ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create story for login functionality in epic {epic_id}",
             context=ctx
         )
@@ -296,7 +296,7 @@ class TestErrorRecoveryFlows:
 
     def test_typo_correction_recovery(
         self,
-        real_nl_processor_with_llm
+        real_nl_orchestrator
     ):
         """User makes typo → realizes → re-types correctly.
 
@@ -309,7 +309,7 @@ class TestErrorRecoveryFlows:
         ctx = {'project_id': 1}
 
         logger.info("=== User typo: 'crate epci for auth' ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "crate epci for auth",  # Typos!
             context=ctx
         )
@@ -317,7 +317,7 @@ class TestErrorRecoveryFlows:
         logger.info(f"Typo response: confidence={r1.confidence}")
 
         logger.info("=== User correction: Correct spelling ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create epic for auth",
             context=ctx
         )
@@ -346,7 +346,7 @@ class TestFailedDemoCommandReplay:
 
     def test_known_failure_20251113_config_mismatch(
         self,
-        real_nl_processor_with_llm
+        real_nl_orchestrator
     ):
         """REAL FAILURE (2025-11-13): Model config mismatch.
 
@@ -362,7 +362,7 @@ class TestFailedDemoCommandReplay:
         ctx = {'project_id': 1}
 
         # This command should work now (auto-select model)
-        result = real_nl_processor_with_llm.process(
+        result = real_nl_orchestrator.execute_nl(
             "create epic for user authentication",
             context=ctx
         )
@@ -374,7 +374,7 @@ class TestFailedDemoCommandReplay:
 
     def test_known_failure_20251113_timeout(
         self,
-        real_nl_processor_with_llm
+        real_nl_orchestrator
     ):
         """REAL FAILURE (2025-11-13): Pytest timeout too short.
 
@@ -391,7 +391,7 @@ class TestFailedDemoCommandReplay:
 
         # This test itself has @pytest.mark.timeout(0)
         # If it completes, the fix is working
-        result = real_nl_processor_with_llm.process(
+        result = real_nl_orchestrator.execute_nl(
             "create epic for comprehensive testing infrastructure",
             context=ctx
         )
@@ -412,7 +412,7 @@ class TestComplexWorkflows:
 
     def test_full_agile_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Complete agile workflow: Epic → Stories → Tasks → Updates → Milestone.
@@ -422,7 +422,7 @@ class TestComplexWorkflows:
         ctx = {'project_id': 1}
 
         logger.info("=== 1. Create Epic ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for user management system",
             context=ctx
         )
@@ -431,7 +431,7 @@ class TestComplexWorkflows:
         logger.info(f"✓ Epic: {epic_id}")
 
         logger.info("=== 2. Add Story 1 ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story for user registration to epic {epic_id}",
             context=ctx
         )
@@ -440,7 +440,7 @@ class TestComplexWorkflows:
         logger.info(f"✓ Story 1: {story1_id}")
 
         logger.info("=== 3. Add Story 2 ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"add story for user profile editing to epic {epic_id}",
             context=ctx
         )
@@ -449,7 +449,7 @@ class TestComplexWorkflows:
         logger.info(f"✓ Story 2: {story2_id}")
 
         logger.info("=== 4. Create Task for Story 1 ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"create task to implement email validation for story {story1_id}",
             context=ctx
         )
@@ -458,7 +458,7 @@ class TestComplexWorkflows:
         logger.info(f"✓ Task: {task_id}")
 
         logger.info("=== 5. Update Story Status ===")
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             f"mark story {story1_id} as in progress",
             context=ctx
         )
@@ -466,7 +466,7 @@ class TestComplexWorkflows:
         logger.info("✓ Story status updated")
 
         logger.info("=== 6. Query Progress ===")
-        r6 = real_nl_processor_with_llm.process(
+        r6 = real_nl_orchestrator.execute_nl(
             f"show me all stories in epic {epic_id}",
             context=ctx
         )
@@ -474,7 +474,7 @@ class TestComplexWorkflows:
         logger.info("✓ Progress queried")
 
         logger.info("=== 7. Create Milestone ===")
-        r7 = real_nl_processor_with_llm.process(
+        r7 = real_nl_orchestrator.execute_nl(
             f"create milestone 'User Management V1' requiring epic {epic_id}",
             context=ctx
         )

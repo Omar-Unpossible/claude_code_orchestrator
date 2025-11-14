@@ -55,7 +55,7 @@ class TestProjectSetupWorkflows:
 
     def test_new_project_initialization(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Initialize new project → First epic → First story → First task.
@@ -84,7 +84,7 @@ class TestProjectSetupWorkflows:
         logger.info(f"=== Project created: ID={project.id} ===")
 
         logger.info("=== STEP 1: Create first epic ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for user authentication system",
             context=ctx
         )
@@ -100,7 +100,7 @@ class TestProjectSetupWorkflows:
         assert epic.task_type == 'EPIC', "Wrong task type"
 
         logger.info("=== STEP 2: Add first story ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story for user login to epic {epic_id}",
             context=ctx
         )
@@ -116,7 +116,7 @@ class TestProjectSetupWorkflows:
         assert story.task_type == 'STORY', "Wrong task type"
 
         logger.info("=== STEP 3: Create first task ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create task to implement password validation for story {story_id}",
             context=ctx
         )
@@ -145,7 +145,7 @@ class TestProjectSetupWorkflows:
 
     def test_project_configuration_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Configure project settings → Create initial structure.
@@ -171,7 +171,7 @@ class TestProjectSetupWorkflows:
         logger.info(f"=== Project: {project.name} ===")
 
         logger.info("=== Create Epic 1: Product Catalog ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for product catalog and search",
             context=ctx
         )
@@ -179,7 +179,7 @@ class TestProjectSetupWorkflows:
         epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Epic 2: Shopping Cart ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create epic for shopping cart and checkout",
             context=ctx
         )
@@ -187,7 +187,7 @@ class TestProjectSetupWorkflows:
         epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Epic 3: User Management ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create epic for user accounts and profiles",
             context=ctx
         )
@@ -195,7 +195,7 @@ class TestProjectSetupWorkflows:
         epic3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Query: List all epics ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             "show me all epics",
             context=ctx
         )
@@ -223,7 +223,7 @@ class TestSprintPlanningWorkflows:
 
     def test_sprint_planning_full_cycle(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create sprint epic → Add stories → Break into tasks → Set priorities.
@@ -249,7 +249,7 @@ class TestSprintPlanningWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== STEP 1: Create sprint epic ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for Sprint 5 - Authentication Features",
             context=ctx
         )
@@ -258,7 +258,7 @@ class TestSprintPlanningWorkflows:
         logger.info(f"✓ Sprint epic: ID={epic_id}")
 
         logger.info("=== STEP 2: Add Story 1 - User Login ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story 'User can log in with email and password' to epic {epic_id}",
             context=ctx
         )
@@ -267,7 +267,7 @@ class TestSprintPlanningWorkflows:
         logger.info(f"✓ Story 1: ID={story1_id}")
 
         logger.info("=== STEP 3: Add Story 2 - Password Reset ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"add story 'User can reset forgotten password' to epic {epic_id}",
             context=ctx
         )
@@ -276,7 +276,7 @@ class TestSprintPlanningWorkflows:
         logger.info(f"✓ Story 2: ID={story2_id}")
 
         logger.info("=== STEP 4: Add Story 3 - OAuth ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"add story 'User can log in with Google OAuth' to epic {epic_id}",
             context=ctx
         )
@@ -285,21 +285,21 @@ class TestSprintPlanningWorkflows:
         logger.info(f"✓ Story 3: ID={story3_id}")
 
         logger.info("=== STEP 5: Break Story 1 into tasks ===")
-        r5a = real_nl_processor_with_llm.process(
+        r5a = real_nl_orchestrator.execute_nl(
             f"create task 'Implement login API endpoint' for story {story1_id}",
             context=ctx
         )
         assert r5a.confidence > 0.7
         task1_id = r5a.execution_result.created_ids[0] if r5a.execution_result and r5a.execution_result.created_ids else None
 
-        r5b = real_nl_processor_with_llm.process(
+        r5b = real_nl_orchestrator.execute_nl(
             f"create task 'Add password validation logic' for story {story1_id}",
             context=ctx
         )
         assert r5b.confidence > 0.7
         task2_id = r5b.execution_result.created_ids[0] if r5b.execution_result and r5b.execution_result.created_ids else None
 
-        r5c = real_nl_processor_with_llm.process(
+        r5c = real_nl_orchestrator.execute_nl(
             f"create task 'Create login UI component' for story {story1_id}",
             context=ctx
         )
@@ -309,7 +309,7 @@ class TestSprintPlanningWorkflows:
         logger.info(f"✓ Tasks created: {task1_id}, {task2_id}, {task3_id}")
 
         logger.info("=== STEP 6: Query sprint backlog ===")
-        r6 = real_nl_processor_with_llm.process(
+        r6 = real_nl_orchestrator.execute_nl(
             f"show me all stories in epic {epic_id}",
             context=ctx
         )
@@ -326,7 +326,7 @@ class TestSprintPlanningWorkflows:
 
     def test_sprint_backlog_refinement(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Review backlog → Add missing stories → Prioritize.
@@ -351,7 +351,7 @@ class TestSprintPlanningWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== Create epic ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for API development",
             context=ctx
         )
@@ -359,14 +359,14 @@ class TestSprintPlanningWorkflows:
         epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Add initial stories ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story 'REST API endpoints' to epic {epic_id}",
             context=ctx
         )
         assert r2.confidence > 0.7
         story1_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"add story 'API authentication' to epic {epic_id}",
             context=ctx
         )
@@ -374,14 +374,14 @@ class TestSprintPlanningWorkflows:
         story2_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Query backlog ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"show me all stories in epic {epic_id}",
             context=ctx
         )
         assert r4.confidence > 0.7
 
         logger.info("=== Realize missing story, add it ===")
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             f"add story 'API documentation' to epic {epic_id}",
             context=ctx
         )
@@ -406,7 +406,7 @@ class TestDailyDevelopmentWorkflows:
 
     def test_daily_standup_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Query work status → Update task → Query next task.
@@ -431,26 +431,26 @@ class TestDailyDevelopmentWorkflows:
 
         # Setup: Create some tasks
         logger.info("=== SETUP: Create tasks ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to implement login feature",
             context=ctx
         )
         task1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create task to add unit tests",
             context=ctx
         )
         task2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create task to update documentation",
             context=ctx
         )
         task3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== STEP 1: Query what to work on ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             "show me all open tasks",
             context=ctx
         )
@@ -461,7 +461,7 @@ class TestDailyDevelopmentWorkflows:
         assert task1.status == 'pending', "New tasks should be pending"
 
         logger.info("=== STEP 2: Start working on first task ===")
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             f"mark task {task1_id} as in progress",
             context=ctx
         )
@@ -471,7 +471,7 @@ class TestDailyDevelopmentWorkflows:
         assert task1.status == 'in_progress', "Task should be in progress"
 
         logger.info("=== STEP 3: Complete task ===")
-        r6 = real_nl_processor_with_llm.process(
+        r6 = real_nl_orchestrator.execute_nl(
             f"mark task {task1_id} as completed",
             context=ctx
         )
@@ -481,7 +481,7 @@ class TestDailyDevelopmentWorkflows:
         assert task1.status == 'completed', "Task should be completed"
 
         logger.info("=== STEP 4: Query next task ===")
-        r7 = real_nl_processor_with_llm.process(
+        r7 = real_nl_orchestrator.execute_nl(
             "show me all open tasks",
             context=ctx
         )
@@ -498,7 +498,7 @@ class TestDailyDevelopmentWorkflows:
 
     def test_task_lifecycle_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create → Start → Block → Unblock → Complete.
@@ -523,7 +523,7 @@ class TestDailyDevelopmentWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== STEP 1: Create task ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to integrate payment API",
             context=ctx
         )
@@ -534,7 +534,7 @@ class TestDailyDevelopmentWorkflows:
         assert task.status == 'pending', "New task should be pending"
 
         logger.info("=== STEP 2: Start task ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"mark task {task_id} as in progress",
             context=ctx
         )
@@ -544,7 +544,7 @@ class TestDailyDevelopmentWorkflows:
         assert task.status == 'in_progress', "Task should be in progress"
 
         logger.info("=== STEP 3: Mark as blocked ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"mark task {task_id} as blocked",
             context=ctx
         )
@@ -554,7 +554,7 @@ class TestDailyDevelopmentWorkflows:
         assert task.status == 'blocked', "Task should be blocked"
 
         logger.info("=== STEP 4: Unblock and resume ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"mark task {task_id} as in progress",
             context=ctx
         )
@@ -564,7 +564,7 @@ class TestDailyDevelopmentWorkflows:
         assert task.status == 'in_progress', "Task should be in progress again"
 
         logger.info("=== STEP 5: Complete task ===")
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             f"mark task {task_id} as completed",
             context=ctx
         )
@@ -587,7 +587,7 @@ class TestReleasePlanningWorkflows:
 
     def test_release_milestone_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create epics → Create milestone → Track progress → Achieve milestone.
@@ -613,7 +613,7 @@ class TestReleasePlanningWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== STEP 1: Create Epic 1 ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for core features",
             context=ctx
         )
@@ -621,7 +621,7 @@ class TestReleasePlanningWorkflows:
         epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== STEP 2: Create Epic 2 ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create epic for testing and QA",
             context=ctx
         )
@@ -629,7 +629,7 @@ class TestReleasePlanningWorkflows:
         epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== STEP 3: Create milestone ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create milestone 'v1.0 Release' requiring epics {epic1_id} and {epic2_id}",
             context=ctx
         )
@@ -646,7 +646,7 @@ class TestReleasePlanningWorkflows:
         logger.info(f"✓ Epic {epic1_id} completed")
 
         logger.info("=== STEP 5: Check milestone (should be incomplete) ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"what's the status of milestone {milestone_id}?",
             context=ctx
         )
@@ -672,7 +672,7 @@ class TestReleasePlanningWorkflows:
 
     def test_release_roadmap_query_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create release structure → Query roadmap at various stages.
@@ -697,28 +697,28 @@ class TestReleasePlanningWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== Create Epic 1 ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for authentication",
             context=ctx
         )
         epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Epic 2 ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create epic for user profiles",
             context=ctx
         )
         epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Epic 3 ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create epic for admin dashboard",
             context=ctx
         )
         epic3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Create Milestone 1: MVP ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"create milestone 'MVP' requiring epic {epic1_id}",
             context=ctx
         )
@@ -726,7 +726,7 @@ class TestReleasePlanningWorkflows:
         milestone1_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
 
         logger.info("=== Create Milestone 2: v1.0 ===")
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             f"create milestone 'v1.0' requiring epics {epic1_id} and {epic2_id}",
             context=ctx
         )
@@ -734,7 +734,7 @@ class TestReleasePlanningWorkflows:
         milestone2_id = r5.execution_result.created_ids[0] if r5.execution_result and r5.execution_result.created_ids else None
 
         logger.info("=== Query: Show all milestones ===")
-        r6 = real_nl_processor_with_llm.process(
+        r6 = real_nl_orchestrator.execute_nl(
             "show me all milestones",
             context=ctx
         )
@@ -748,7 +748,7 @@ class TestReleasePlanningWorkflows:
         real_state_manager.update_task_status(epic1_id, 'completed')
 
         logger.info("=== Query: Milestone 1 status ===")
-        r7 = real_nl_processor_with_llm.process(
+        r7 = real_nl_orchestrator.execute_nl(
             f"what's the status of milestone {milestone1_id}?",
             context=ctx
         )
@@ -768,7 +768,7 @@ class TestDependencyManagementWorkflows:
 
     def test_sequential_task_dependencies(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create task chain A → B → C with dependencies.
@@ -795,7 +795,7 @@ class TestDependencyManagementWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== STEP 1: Create Task A (foundation) ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to set up database schema",
             context=ctx
         )
@@ -803,7 +803,7 @@ class TestDependencyManagementWorkflows:
         task_a_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== STEP 2: Create Task B (depends on A) ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"create task to write data models depending on task {task_a_id}",
             context=ctx
         )
@@ -811,7 +811,7 @@ class TestDependencyManagementWorkflows:
         task_b_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== STEP 3: Create Task C (depends on B) ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create task to implement API endpoints depending on task {task_b_id}",
             context=ctx
         )
@@ -838,7 +838,7 @@ class TestDependencyManagementWorkflows:
 
     def test_parallel_task_dependencies(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create parallel tasks → Convergence task.
@@ -862,28 +862,28 @@ class TestDependencyManagementWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== Create Task A (frontend) ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to implement frontend UI",
             context=ctx
         )
         task_a_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Task B (backend) ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create task to implement backend API",
             context=ctx
         )
         task_b_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Task C (database) ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create task to set up database",
             context=ctx
         )
         task_c_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Create Task D (integration - depends on A, B, C) ===")
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"create task to integrate all components depending on tasks {task_a_id}, {task_b_id}, {task_c_id}",
             context=ctx
         )
@@ -912,7 +912,7 @@ class TestBulkOperationsWorkflows:
 
     def test_bulk_task_creation_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Rapidly create multiple tasks → Bulk update status.
@@ -938,31 +938,31 @@ class TestBulkOperationsWorkflows:
         logger.info("=== STEP 1: Rapidly create 5 tasks ===")
         task_ids = []
 
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create task to implement feature A",
             context=ctx
         )
         task_ids.append(r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None)
 
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             "create task to implement feature B",
             context=ctx
         )
         task_ids.append(r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None)
 
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create task to implement feature C",
             context=ctx
         )
         task_ids.append(r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None)
 
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             "create task to write tests",
             context=ctx
         )
         task_ids.append(r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None)
 
-        r5 = real_nl_processor_with_llm.process(
+        r5 = real_nl_orchestrator.execute_nl(
             "create task to update documentation",
             context=ctx
         )
@@ -972,7 +972,7 @@ class TestBulkOperationsWorkflows:
 
         logger.info("=== STEP 2: Bulk update first 3 to in_progress ===")
         task_list = ', '.join(map(str, task_ids[:3]))
-        r6 = real_nl_processor_with_llm.process(
+        r6 = real_nl_orchestrator.execute_nl(
             f"mark tasks {task_list} as in progress",
             context=ctx
         )
@@ -988,7 +988,7 @@ class TestBulkOperationsWorkflows:
         real_state_manager.update_task_status(task_ids[1], 'completed')
 
         logger.info("=== STEP 4: Query remaining work ===")
-        r7 = real_nl_processor_with_llm.process(
+        r7 = real_nl_orchestrator.execute_nl(
             "show me all open tasks",
             context=ctx
         )
@@ -1006,7 +1006,7 @@ class TestBulkOperationsWorkflows:
 
     def test_bulk_delete_cleanup_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create tasks → Mark done → Bulk delete completed tasks.
@@ -1032,7 +1032,7 @@ class TestBulkOperationsWorkflows:
         logger.info("=== Create 5 tasks ===")
         task_ids = []
         for i in range(5):
-            r = real_nl_processor_with_llm.process(
+            r = real_nl_orchestrator.execute_nl(
                 f"create task to implement feature {i+1}",
                 context=ctx
             )
@@ -1044,7 +1044,7 @@ class TestBulkOperationsWorkflows:
 
         logger.info("=== Bulk delete completed tasks ===")
         completed_task_list = ', '.join(map(str, task_ids[:3]))
-        r_delete = real_nl_processor_with_llm.process(
+        r_delete = real_nl_orchestrator.execute_nl(
             f"delete tasks {completed_task_list}",
             context=ctx
         )
@@ -1071,7 +1071,7 @@ class TestQueryWorkflows:
 
     def test_comprehensive_query_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Create work structure → Various queries → Reporting.
@@ -1097,27 +1097,27 @@ class TestQueryWorkflows:
 
         logger.info("=== Setup: Create work structure ===")
         # Create epic
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for reporting features",
             context=ctx
         )
         epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         # Create story
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story for dashboard reports to epic {epic_id}",
             context=ctx
         )
         story_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         # Create tasks
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             f"create task for data aggregation for story {story_id}",
             context=ctx
         )
         task1_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
-        r4 = real_nl_processor_with_llm.process(
+        r4 = real_nl_orchestrator.execute_nl(
             f"create task for chart rendering for story {story_id}",
             context=ctx
         )
@@ -1127,35 +1127,35 @@ class TestQueryWorkflows:
         real_state_manager.update_task_status(task1_id, 'in_progress')
 
         logger.info("=== Query 1: All open tasks ===")
-        q1 = real_nl_processor_with_llm.process(
+        q1 = real_nl_orchestrator.execute_nl(
             "show me all open tasks",
             context=ctx
         )
         assert q1.confidence > 0.7
 
         logger.info("=== Query 2: In-progress tasks ===")
-        q2 = real_nl_processor_with_llm.process(
+        q2 = real_nl_orchestrator.execute_nl(
             "show me all tasks that are in progress",
             context=ctx
         )
         assert q2.confidence > 0.7
 
         logger.info("=== Query 3: Epic progress ===")
-        q3 = real_nl_processor_with_llm.process(
+        q3 = real_nl_orchestrator.execute_nl(
             f"what's the status of epic {epic_id}?",
             context=ctx
         )
         assert q3.confidence > 0.7
 
         logger.info("=== Query 4: Story details ===")
-        q4 = real_nl_processor_with_llm.process(
+        q4 = real_nl_orchestrator.execute_nl(
             f"show me story {story_id}",
             context=ctx
         )
         assert q4.confidence > 0.7
 
         logger.info("=== Query 5: All stories in epic ===")
-        q5 = real_nl_processor_with_llm.process(
+        q5 = real_nl_orchestrator.execute_nl(
             f"show me all stories in epic {epic_id}",
             context=ctx
         )
@@ -1165,7 +1165,7 @@ class TestQueryWorkflows:
 
     def test_natural_language_query_variations(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Test various natural phrasings of the same query.
@@ -1189,27 +1189,27 @@ class TestQueryWorkflows:
 
         logger.info("=== Setup: Create tasks ===")
         for i in range(3):
-            real_nl_processor_with_llm.process(
+            real_nl_orchestrator.execute_nl(
                 f"create task to implement feature {i+1}",
                 context=ctx
             )
 
         logger.info("=== Query Variation 1: 'show me all open tasks' ===")
-        q1 = real_nl_processor_with_llm.process(
+        q1 = real_nl_orchestrator.execute_nl(
             "show me all open tasks",
             context=ctx
         )
         assert q1.confidence > 0.7
 
         logger.info("=== Query Variation 2: 'what tasks are pending?' ===")
-        q2 = real_nl_processor_with_llm.process(
+        q2 = real_nl_orchestrator.execute_nl(
             "what tasks are pending?",
             context=ctx
         )
         assert q2.confidence > 0.7
 
         logger.info("=== Query Variation 3: 'list all unfinished tasks' ===")
-        q3 = real_nl_processor_with_llm.process(
+        q3 = real_nl_orchestrator.execute_nl(
             "list all unfinished tasks",
             context=ctx
         )
@@ -1229,7 +1229,7 @@ class TestInfrastructureMaintenanceWorkflows:
 
     def test_documentation_update_workflow(
         self,
-        real_nl_processor_with_llm,
+        real_nl_orchestrator,
         real_state_manager
     ):
         """Workflow: Complete epic → System suggests docs update → Create maintenance task.
@@ -1254,7 +1254,7 @@ class TestInfrastructureMaintenanceWorkflows:
         ctx = {'project_id': project.id}
 
         logger.info("=== STEP 1: Create epic with changes ===")
-        r1 = real_nl_processor_with_llm.process(
+        r1 = real_nl_orchestrator.execute_nl(
             "create epic for new authentication system",
             context=ctx
         )
@@ -1269,7 +1269,7 @@ class TestInfrastructureMaintenanceWorkflows:
             epic.has_architectural_changes = True
 
         logger.info("=== STEP 2: Add story ===")
-        r2 = real_nl_processor_with_llm.process(
+        r2 = real_nl_orchestrator.execute_nl(
             f"add story for OAuth integration to epic {epic_id}",
             context=ctx
         )
@@ -1280,7 +1280,7 @@ class TestInfrastructureMaintenanceWorkflows:
         logger.info("✓ Epic completed - maintenance would be suggested")
 
         logger.info("=== STEP 4: Create maintenance task ===")
-        r3 = real_nl_processor_with_llm.process(
+        r3 = real_nl_orchestrator.execute_nl(
             "create task to update architecture documentation",
             context=ctx
         )

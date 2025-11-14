@@ -763,7 +763,7 @@ def real_llm():
     try:
         llm = OpenAICodexLLMPlugin()
         llm.initialize({
-            'model': 'gpt-4',  # Use GPT-4 for testing
+            'model': None,  # Auto-select model based on Codex account
             'temperature': 0.1,  # Deterministic for testing
             'timeout': 60.0
         })
@@ -829,3 +829,77 @@ def real_nl_processor_with_llm(real_state_manager, real_llm):
         state_manager=real_state_manager,
         config={'nl_commands': {'enabled': True}}
     )
+
+
+@pytest.fixture
+def real_nl_orchestrator(real_state_manager, real_llm, test_config):
+    """REAL NL orchestrator with REAL LLM - for end-to-end testing.
+
+    This fixture provides the complete ADR-017 pipeline:
+    - NLCommandProcessor: Parses commands → ParsedIntent
+    - CommandExecutor: Executes ParsedIntent → ExecutionResult
+
+    Use this for tests that need command execution results (entity IDs, etc.).
+    Tests are updated to use this fixture instead of real_nl_processor_with_llm.
+
+    Returns:
+        Object with execute_nl() method for running NL commands through full pipeline
+    """
+    from src.nl.nl_command_processor import NLCommandProcessor
+    from src.nl.command_executor import CommandExecutor
+
+    # Create NL processor
+    nl_processor = NLCommandProcessor(
+        llm_plugin=real_llm,
+        state_manager=real_state_manager,
+        config={'nl_commands': {'enabled': True}}
+    )
+
+    # Create command executor
+    command_executor = CommandExecutor(state_manager=real_state_manager)
+
+    # Create wrapper class with execute_nl method
+    class NLOrchestrator:
+        def __init__(self, nl_processor, command_executor):
+            self.nl_processor = nl_processor
+            self.command_executor = command_executor
+
+        def execute_nl(self, command: str, context: dict = None):
+            """Execute NL command and return result with execution_result.
+
+            Args:
+                command: Natural language command to execute
+                context: Optional context dict with project_id, etc.
+
+            Returns:
+                Object with:
+                    - confidence: float
+                    - operation_context: OperationContext
+                    - execution_result: ExecutionResult (with created_ids)
+                    - intent: IntentType
+                    - success: bool
+            """
+            # Parse command
+            parsed_intent = self.nl_processor.process(command, context=context or {})
+
+            # Execute via command executor
+            if parsed_intent.requires_execution:
+                exec_result = self.command_executor.execute(
+                    parsed_intent.operation_context,
+                    project_id=context.get('project_id') if context else None
+                )
+            else:
+                exec_result = None
+
+            # Return unified result object
+            class NLResult:
+                def __init__(self, parsed_intent, execution_result):
+                    self.confidence = parsed_intent.confidence
+                    self.operation_context = parsed_intent.operation_context
+                    self.execution_result = execution_result
+                    self.intent = parsed_intent.intent_type
+                    self.success = execution_result.success if execution_result else False
+
+            return NLResult(parsed_intent, exec_result)
+
+    return NLOrchestrator(nl_processor, command_executor)
