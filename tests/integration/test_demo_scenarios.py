@@ -76,7 +76,7 @@ class TestProductionDemoFlows:
         assert r1.confidence > 0.7, \
             f"Step 1 FAILED (confidence {r1.confidence}): {r1.operation_context}"
 
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
         assert epic_id is not None, "Epic ID not extracted!"
         logger.info(f"✓ Epic created: ID={epic_id}")
 
@@ -88,7 +88,7 @@ class TestProductionDemoFlows:
         assert r2.confidence > 0.7, \
             f"Step 2 FAILED (confidence {r2.confidence}): {r2.operation_context}"
 
-        story_id = r2.operation_context.entities.get('story_id')
+        story_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         assert story_id is not None, "Story ID not extracted!"
         logger.info(f"✓ Story created: ID={story_id}")
 
@@ -146,7 +146,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r1.confidence > 0.7, f"Epic 1 creation failed: {r1.confidence}"
-        epic1_id = r1.operation_context.entities.get('epic_id')
+        epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
         assert epic1_id is not None
         logger.info(f"✓ Epic 1 created: ID={epic1_id}")
 
@@ -156,7 +156,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r2.confidence > 0.7, f"Epic 2 creation failed: {r2.confidence}"
-        epic2_id = r2.operation_context.entities.get('epic_id')
+        epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         assert epic2_id is not None
         logger.info(f"✓ Epic 2 created: ID={epic2_id}")
 
@@ -166,7 +166,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r3.confidence > 0.7, f"Milestone creation failed: {r3.confidence}"
-        milestone_id = r3.operation_context.entities.get('milestone_id')
+        milestone_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
         assert milestone_id is not None
         logger.info(f"✓ Milestone created: ID={milestone_id}")
 
@@ -203,7 +203,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        task_ids.append(r1.operation_context.entities.get('task_id'))
+        task_ids.append(r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None)
 
         logger.info("=== Create Task 2 ===")
         r2 = real_nl_processor_with_llm.process(
@@ -211,7 +211,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        task_ids.append(r2.operation_context.entities.get('task_id'))
+        task_ids.append(r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None)
 
         logger.info("=== Create Task 3 ===")
         r3 = real_nl_processor_with_llm.process(
@@ -219,7 +219,7 @@ class TestProductionDemoFlows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        task_ids.append(r3.operation_context.entities.get('task_id'))
+        task_ids.append(r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None)
 
         logger.info(f"=== Bulk update tasks {task_ids} ===")
         task_list = ', '.join(map(str, task_ids))
@@ -269,7 +269,7 @@ class TestErrorRecoveryFlows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== User mistake: Create story WITHOUT epic reference ===")
         r2 = real_nl_processor_with_llm.process(
@@ -286,7 +286,7 @@ class TestErrorRecoveryFlows:
             context=ctx
         )
         assert r3.confidence > 0.7, "Correction should work!"
-        story_id = r3.operation_context.entities.get('story_id')
+        story_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
         assert story_id is not None
 
         logger.info("=== Verify story created correctly ===")
@@ -322,7 +322,7 @@ class TestErrorRecoveryFlows:
             context=ctx
         )
         assert r2.confidence > 0.7, "Correct spelling should work!"
-        epic_id = r2.operation_context.entities.get('epic_id')
+        epic_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         assert epic_id is not None
         logger.info("✓ Typo recovery successful")
 
@@ -427,7 +427,7 @@ class TestComplexWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
         logger.info(f"✓ Epic: {epic_id}")
 
         logger.info("=== 2. Add Story 1 ===")
@@ -436,7 +436,7 @@ class TestComplexWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        story1_id = r2.operation_context.entities.get('story_id')
+        story1_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         logger.info(f"✓ Story 1: {story1_id}")
 
         logger.info("=== 3. Add Story 2 ===")
@@ -445,7 +445,7 @@ class TestComplexWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        story2_id = r3.operation_context.entities.get('story_id')
+        story2_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
         logger.info(f"✓ Story 2: {story2_id}")
 
         logger.info("=== 4. Create Task for Story 1 ===")
@@ -454,7 +454,7 @@ class TestComplexWorkflows:
             context=ctx
         )
         assert r4.confidence > 0.7
-        task_id = r4.operation_context.entities.get('task_id')
+        task_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
         logger.info(f"✓ Task: {task_id}")
 
         logger.info("=== 5. Update Story Status ===")
@@ -479,7 +479,7 @@ class TestComplexWorkflows:
             context=ctx
         )
         assert r7.confidence > 0.7
-        milestone_id = r7.operation_context.entities.get('milestone_id')
+        milestone_id = r7.execution_result.created_ids[0] if r7.execution_result and r7.execution_result.created_ids else None
         logger.info(f"✓ Milestone: {milestone_id}")
 
         logger.info("=== FULL WORKFLOW COMPLETE ===")

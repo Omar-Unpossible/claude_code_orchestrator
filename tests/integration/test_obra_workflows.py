@@ -89,7 +89,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7, f"Epic creation failed: {r1.confidence}"
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
         assert epic_id is not None, "Epic ID not extracted"
         logger.info(f"✓ Epic created: ID={epic_id}")
 
@@ -105,7 +105,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7, f"Story creation failed: {r2.confidence}"
-        story_id = r2.operation_context.entities.get('story_id')
+        story_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         assert story_id is not None, "Story ID not extracted"
         logger.info(f"✓ Story created: ID={story_id}")
 
@@ -121,7 +121,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7, f"Task creation failed: {r3.confidence}"
-        task_id = r3.operation_context.entities.get('task_id')
+        task_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
         assert task_id is not None, "Task ID not extracted"
         logger.info(f"✓ Task created: ID={task_id}")
 
@@ -176,7 +176,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic1_id = r1.operation_context.entities.get('epic_id')
+        epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Epic 2: Shopping Cart ===")
         r2 = real_nl_processor_with_llm.process(
@@ -184,7 +184,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        epic2_id = r2.operation_context.entities.get('epic_id')
+        epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Epic 3: User Management ===")
         r3 = real_nl_processor_with_llm.process(
@@ -192,7 +192,7 @@ class TestProjectSetupWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        epic3_id = r3.operation_context.entities.get('epic_id')
+        epic3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Query: List all epics ===")
         r4 = real_nl_processor_with_llm.process(
@@ -254,7 +254,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
         logger.info(f"✓ Sprint epic: ID={epic_id}")
 
         logger.info("=== STEP 2: Add Story 1 - User Login ===")
@@ -263,7 +263,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        story1_id = r2.operation_context.entities.get('story_id')
+        story1_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
         logger.info(f"✓ Story 1: ID={story1_id}")
 
         logger.info("=== STEP 3: Add Story 2 - Password Reset ===")
@@ -272,7 +272,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        story2_id = r3.operation_context.entities.get('story_id')
+        story2_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
         logger.info(f"✓ Story 2: ID={story2_id}")
 
         logger.info("=== STEP 4: Add Story 3 - OAuth ===")
@@ -281,7 +281,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r4.confidence > 0.7
-        story3_id = r4.operation_context.entities.get('story_id')
+        story3_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
         logger.info(f"✓ Story 3: ID={story3_id}")
 
         logger.info("=== STEP 5: Break Story 1 into tasks ===")
@@ -290,21 +290,21 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r5a.confidence > 0.7
-        task1_id = r5a.operation_context.entities.get('task_id')
+        task1_id = r5a.execution_result.created_ids[0] if r5a.execution_result and r5a.execution_result.created_ids else None
 
         r5b = real_nl_processor_with_llm.process(
             f"create task 'Add password validation logic' for story {story1_id}",
             context=ctx
         )
         assert r5b.confidence > 0.7
-        task2_id = r5b.operation_context.entities.get('task_id')
+        task2_id = r5b.execution_result.created_ids[0] if r5b.execution_result and r5b.execution_result.created_ids else None
 
         r5c = real_nl_processor_with_llm.process(
             f"create task 'Create login UI component' for story {story1_id}",
             context=ctx
         )
         assert r5c.confidence > 0.7
-        task3_id = r5c.operation_context.entities.get('task_id')
+        task3_id = r5c.execution_result.created_ids[0] if r5c.execution_result and r5c.execution_result.created_ids else None
 
         logger.info(f"✓ Tasks created: {task1_id}, {task2_id}, {task3_id}")
 
@@ -356,7 +356,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Add initial stories ===")
         r2 = real_nl_processor_with_llm.process(
@@ -364,14 +364,14 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        story1_id = r2.operation_context.entities.get('story_id')
+        story1_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         r3 = real_nl_processor_with_llm.process(
             f"add story 'API authentication' to epic {epic_id}",
             context=ctx
         )
         assert r3.confidence > 0.7
-        story2_id = r3.operation_context.entities.get('story_id')
+        story2_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Query backlog ===")
         r4 = real_nl_processor_with_llm.process(
@@ -386,7 +386,7 @@ class TestSprintPlanningWorkflows:
             context=ctx
         )
         assert r5.confidence > 0.7
-        story3_id = r5.operation_context.entities.get('story_id')
+        story3_id = r5.execution_result.created_ids[0] if r5.execution_result and r5.execution_result.created_ids else None
 
         logger.info("=== Verify final state ===")
         stories = real_state_manager.get_epic_stories(epic_id)
@@ -435,19 +435,19 @@ class TestDailyDevelopmentWorkflows:
             "create task to implement login feature",
             context=ctx
         )
-        task1_id = r1.operation_context.entities.get('task_id')
+        task1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         r2 = real_nl_processor_with_llm.process(
             "create task to add unit tests",
             context=ctx
         )
-        task2_id = r2.operation_context.entities.get('task_id')
+        task2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         r3 = real_nl_processor_with_llm.process(
             "create task to update documentation",
             context=ctx
         )
-        task3_id = r3.operation_context.entities.get('task_id')
+        task3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== STEP 1: Query what to work on ===")
         r4 = real_nl_processor_with_llm.process(
@@ -528,7 +528,7 @@ class TestDailyDevelopmentWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        task_id = r1.operation_context.entities.get('task_id')
+        task_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         task = real_state_manager.get_task(task_id)
         assert task.status == 'pending', "New task should be pending"
@@ -618,7 +618,7 @@ class TestReleasePlanningWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic1_id = r1.operation_context.entities.get('epic_id')
+        epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== STEP 2: Create Epic 2 ===")
         r2 = real_nl_processor_with_llm.process(
@@ -626,7 +626,7 @@ class TestReleasePlanningWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        epic2_id = r2.operation_context.entities.get('epic_id')
+        epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== STEP 3: Create milestone ===")
         r3 = real_nl_processor_with_llm.process(
@@ -634,7 +634,7 @@ class TestReleasePlanningWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        milestone_id = r3.operation_context.entities.get('milestone_id')
+        milestone_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         # Verify milestone created
         milestone = real_state_manager.get_milestone(milestone_id)
@@ -701,21 +701,21 @@ class TestReleasePlanningWorkflows:
             "create epic for authentication",
             context=ctx
         )
-        epic1_id = r1.operation_context.entities.get('epic_id')
+        epic1_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Epic 2 ===")
         r2 = real_nl_processor_with_llm.process(
             "create epic for user profiles",
             context=ctx
         )
-        epic2_id = r2.operation_context.entities.get('epic_id')
+        epic2_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Epic 3 ===")
         r3 = real_nl_processor_with_llm.process(
             "create epic for admin dashboard",
             context=ctx
         )
-        epic3_id = r3.operation_context.entities.get('epic_id')
+        epic3_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Create Milestone 1: MVP ===")
         r4 = real_nl_processor_with_llm.process(
@@ -723,7 +723,7 @@ class TestReleasePlanningWorkflows:
             context=ctx
         )
         assert r4.confidence > 0.7
-        milestone1_id = r4.operation_context.entities.get('milestone_id')
+        milestone1_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
 
         logger.info("=== Create Milestone 2: v1.0 ===")
         r5 = real_nl_processor_with_llm.process(
@@ -731,7 +731,7 @@ class TestReleasePlanningWorkflows:
             context=ctx
         )
         assert r5.confidence > 0.7
-        milestone2_id = r5.operation_context.entities.get('milestone_id')
+        milestone2_id = r5.execution_result.created_ids[0] if r5.execution_result and r5.execution_result.created_ids else None
 
         logger.info("=== Query: Show all milestones ===")
         r6 = real_nl_processor_with_llm.process(
@@ -800,7 +800,7 @@ class TestDependencyManagementWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        task_a_id = r1.operation_context.entities.get('task_id')
+        task_a_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== STEP 2: Create Task B (depends on A) ===")
         r2 = real_nl_processor_with_llm.process(
@@ -808,7 +808,7 @@ class TestDependencyManagementWorkflows:
             context=ctx
         )
         assert r2.confidence > 0.7
-        task_b_id = r2.operation_context.entities.get('task_id')
+        task_b_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== STEP 3: Create Task C (depends on B) ===")
         r3 = real_nl_processor_with_llm.process(
@@ -816,7 +816,7 @@ class TestDependencyManagementWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        task_c_id = r3.operation_context.entities.get('task_id')
+        task_c_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Verify dependency chain ===")
         task_b = real_state_manager.get_task(task_b_id)
@@ -866,21 +866,21 @@ class TestDependencyManagementWorkflows:
             "create task to implement frontend UI",
             context=ctx
         )
-        task_a_id = r1.operation_context.entities.get('task_id')
+        task_a_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         logger.info("=== Create Task B (backend) ===")
         r2 = real_nl_processor_with_llm.process(
             "create task to implement backend API",
             context=ctx
         )
-        task_b_id = r2.operation_context.entities.get('task_id')
+        task_b_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== Create Task C (database) ===")
         r3 = real_nl_processor_with_llm.process(
             "create task to set up database",
             context=ctx
         )
-        task_c_id = r3.operation_context.entities.get('task_id')
+        task_c_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         logger.info("=== Create Task D (integration - depends on A, B, C) ===")
         r4 = real_nl_processor_with_llm.process(
@@ -888,7 +888,7 @@ class TestDependencyManagementWorkflows:
             context=ctx
         )
         assert r4.confidence > 0.7
-        task_d_id = r4.operation_context.entities.get('task_id')
+        task_d_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
 
         logger.info("=== Complete parallel tasks ===")
         real_state_manager.update_task_status(task_a_id, 'completed')
@@ -942,31 +942,31 @@ class TestBulkOperationsWorkflows:
             "create task to implement feature A",
             context=ctx
         )
-        task_ids.append(r1.operation_context.entities.get('task_id'))
+        task_ids.append(r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None)
 
         r2 = real_nl_processor_with_llm.process(
             "create task to implement feature B",
             context=ctx
         )
-        task_ids.append(r2.operation_context.entities.get('task_id'))
+        task_ids.append(r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None)
 
         r3 = real_nl_processor_with_llm.process(
             "create task to implement feature C",
             context=ctx
         )
-        task_ids.append(r3.operation_context.entities.get('task_id'))
+        task_ids.append(r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None)
 
         r4 = real_nl_processor_with_llm.process(
             "create task to write tests",
             context=ctx
         )
-        task_ids.append(r4.operation_context.entities.get('task_id'))
+        task_ids.append(r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None)
 
         r5 = real_nl_processor_with_llm.process(
             "create task to update documentation",
             context=ctx
         )
-        task_ids.append(r5.operation_context.entities.get('task_id'))
+        task_ids.append(r5.execution_result.created_ids[0] if r5.execution_result and r5.execution_result.created_ids else None)
 
         logger.info(f"✓ Created 5 tasks: {task_ids}")
 
@@ -1036,7 +1036,7 @@ class TestBulkOperationsWorkflows:
                 f"create task to implement feature {i+1}",
                 context=ctx
             )
-            task_ids.append(r.operation_context.entities.get('task_id'))
+            task_ids.append(r.execution_result.created_ids[0] if r.execution_result and r.execution_result.created_ids else None)
 
         logger.info("=== Complete first 3 tasks ===")
         for task_id in task_ids[:3]:
@@ -1101,27 +1101,27 @@ class TestQueryWorkflows:
             "create epic for reporting features",
             context=ctx
         )
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         # Create story
         r2 = real_nl_processor_with_llm.process(
             f"add story for dashboard reports to epic {epic_id}",
             context=ctx
         )
-        story_id = r2.operation_context.entities.get('story_id')
+        story_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         # Create tasks
         r3 = real_nl_processor_with_llm.process(
             f"create task for data aggregation for story {story_id}",
             context=ctx
         )
-        task1_id = r3.operation_context.entities.get('task_id')
+        task1_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         r4 = real_nl_processor_with_llm.process(
             f"create task for chart rendering for story {story_id}",
             context=ctx
         )
-        task2_id = r4.operation_context.entities.get('task_id')
+        task2_id = r4.execution_result.created_ids[0] if r4.execution_result and r4.execution_result.created_ids else None
 
         # Update some statuses
         real_state_manager.update_task_status(task1_id, 'in_progress')
@@ -1259,7 +1259,7 @@ class TestInfrastructureMaintenanceWorkflows:
             context=ctx
         )
         assert r1.confidence > 0.7
-        epic_id = r1.operation_context.entities.get('epic_id')
+        epic_id = r1.execution_result.created_ids[0] if r1.execution_result and r1.execution_result.created_ids else None
 
         # Note: In real workflow, this would be flagged by user or system
         # For test purposes, we can manually flag it
@@ -1273,7 +1273,7 @@ class TestInfrastructureMaintenanceWorkflows:
             f"add story for OAuth integration to epic {epic_id}",
             context=ctx
         )
-        story_id = r2.operation_context.entities.get('story_id')
+        story_id = r2.execution_result.created_ids[0] if r2.execution_result and r2.execution_result.created_ids else None
 
         logger.info("=== STEP 3: Complete epic (would trigger maintenance) ===")
         real_state_manager.update_task_status(epic_id, 'completed')
@@ -1285,7 +1285,7 @@ class TestInfrastructureMaintenanceWorkflows:
             context=ctx
         )
         assert r3.confidence > 0.7
-        maintenance_task_id = r3.operation_context.entities.get('task_id')
+        maintenance_task_id = r3.execution_result.created_ids[0] if r3.execution_result and r3.execution_result.created_ids else None
 
         # Verify maintenance task created
         maintenance_task = real_state_manager.get_task(maintenance_task_id)
