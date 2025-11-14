@@ -65,13 +65,14 @@ class TestEntityTypeClassifierPROJECT:
             "reasoning": "Status change operation on named entity suggests project-level update"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Mark the manual tetris test as INACTIVE",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.PROJECT
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.PROJECT
+        assert confidence >= 0.9
 
     def test_project_query_explicit(self, classifier, mock_llm):
         """Test: 'Show me all projects' + QUERY → PROJECT"""
@@ -81,13 +82,14 @@ class TestEntityTypeClassifierPROJECT:
             "reasoning": "Explicit 'projects' plural indicates PROJECT entity type"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Show me all projects",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.PROJECT
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.PROJECT
+        assert confidence >= 0.9
 
     def test_project_create_explicit(self, classifier, mock_llm):
         """Test: 'Create project called Tetris' + CREATE → PROJECT"""
@@ -97,13 +99,14 @@ class TestEntityTypeClassifierPROJECT:
             "reasoning": "Explicit 'project' entity type mentioned"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Create project called Tetris",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.PROJECT
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.PROJECT
+        assert confidence >= 0.9
 
     def test_project_update_by_id(self, classifier, mock_llm):
         """Test: 'Set project 1 status to COMPLETED' + UPDATE → PROJECT"""
@@ -113,13 +116,14 @@ class TestEntityTypeClassifierPROJECT:
             "reasoning": "Explicit 'project 1' reference with status change"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Set project 1 status to COMPLETED",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.PROJECT
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.PROJECT
+        assert confidence >= 0.9
 
     def test_project_delete(self, classifier, mock_llm):
         """Test: 'Delete project Tetris' + DELETE → PROJECT"""
@@ -129,13 +133,14 @@ class TestEntityTypeClassifierPROJECT:
             "reasoning": "Explicit 'project' reference in delete operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Delete project Tetris",
             operation=OperationType.DELETE
         )
 
-        assert result.entity_type == EntityType.PROJECT
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.PROJECT
+        assert confidence >= 0.9
 
 
 class TestEntityTypeClassifierEPIC:
@@ -149,13 +154,14 @@ class TestEntityTypeClassifierEPIC:
             "reasoning": "Explicit 'epic' entity type mentioned"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Create epic for auth",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.EPIC
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
+        assert confidence >= 0.9
 
     def test_epic_update_status(self, classifier, mock_llm):
         """Test: 'Change epic 2 to PAUSED' + UPDATE → EPIC"""
@@ -165,13 +171,14 @@ class TestEntityTypeClassifierEPIC:
             "reasoning": "Explicit 'epic 2' reference with status change"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Change epic 2 to PAUSED",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.EPIC
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
+        assert confidence >= 0.9
 
     def test_epic_delete_by_id(self, classifier, mock_llm):
         """Test: 'Remove epic 3' + DELETE → EPIC"""
@@ -181,13 +188,14 @@ class TestEntityTypeClassifierEPIC:
             "reasoning": "Explicit 'epic 3' reference in delete operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Remove epic 3",
             operation=OperationType.DELETE
         )
 
-        assert result.entity_type == EntityType.EPIC
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
+        assert confidence >= 0.9
 
     def test_epic_query_list(self, classifier, mock_llm):
         """Test: 'List all epics' + QUERY → EPIC"""
@@ -197,13 +205,14 @@ class TestEntityTypeClassifierEPIC:
             "reasoning": "Explicit 'epics' plural indicates EPIC entity type"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "List all epics",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.EPIC
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
+        assert confidence >= 0.9
 
     def test_epic_create_inferred_large_system(self, classifier, mock_llm):
         """Test: 'Create auth system' + CREATE → EPIC (inferred from complexity)"""
@@ -213,13 +222,14 @@ class TestEntityTypeClassifierEPIC:
             "reasoning": "Large system feature suggests EPIC complexity"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Create auth system",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.EPIC
-        assert result.confidence >= 0.85
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
+        assert confidence >= 0.85
 
 
 class TestEntityTypeClassifierSTORY:
@@ -233,13 +243,14 @@ class TestEntityTypeClassifierSTORY:
             "reasoning": "Explicit 'story' entity type mentioned"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Add story for user signup",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.STORY
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.STORY
+        assert confidence >= 0.9
 
     def test_story_create_user_feature(self, classifier, mock_llm):
         """Test: 'Add login page to auth epic' + CREATE → STORY (user-facing)"""
@@ -249,13 +260,14 @@ class TestEntityTypeClassifierSTORY:
             "reasoning": "User-facing page feature suggests STORY (user deliverable)"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Add login page to auth epic",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.STORY
-        assert result.confidence >= 0.85
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.STORY
+        assert confidence >= 0.85
 
     def test_story_update_by_id(self, classifier, mock_llm):
         """Test: 'Rename story 3 to User Login' + UPDATE → STORY"""
@@ -265,13 +277,14 @@ class TestEntityTypeClassifierSTORY:
             "reasoning": "Explicit 'story 3' reference in update operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Rename story 3 to User Login",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.STORY
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.STORY
+        assert confidence >= 0.9
 
     def test_story_query_for_epic(self, classifier, mock_llm):
         """Test: 'Show stories for epic 1' + QUERY → STORY"""
@@ -281,13 +294,14 @@ class TestEntityTypeClassifierSTORY:
             "reasoning": "Explicit 'stories' plural indicates STORY entity type"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Show stories for epic 1",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.STORY
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.STORY
+        assert confidence >= 0.9
 
     def test_story_delete(self, classifier, mock_llm):
         """Test: 'Delete story #5' + DELETE → STORY"""
@@ -297,13 +311,14 @@ class TestEntityTypeClassifierSTORY:
             "reasoning": "Explicit 'story' reference with ID in delete operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Delete story #5",
             operation=OperationType.DELETE
         )
 
-        assert result.entity_type == EntityType.STORY
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.STORY
+        assert confidence >= 0.9
 
 
 class TestEntityTypeClassifierTASK:
@@ -317,13 +332,14 @@ class TestEntityTypeClassifierTASK:
             "reasoning": "Explicit 'tasks' plural indicates TASK entity type"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Show tasks for project 1",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.TASK
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.TASK
+        assert confidence >= 0.9
 
     def test_task_create_technical_work(self, classifier, mock_llm):
         """Test: 'Implement validation for signup form' + CREATE → TASK"""
@@ -333,13 +349,14 @@ class TestEntityTypeClassifierTASK:
             "reasoning": "Technical implementation work suggests TASK"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Implement validation for signup form",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.TASK
-        assert result.confidence >= 0.80
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.TASK
+        assert confidence >= 0.80
 
     def test_task_update_priority(self, classifier, mock_llm):
         """Test: 'Update task 5 priority to HIGH' + UPDATE → TASK"""
@@ -349,13 +366,14 @@ class TestEntityTypeClassifierTASK:
             "reasoning": "Explicit 'task 5' reference in update operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Update task 5 priority to HIGH",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.TASK
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.TASK
+        assert confidence >= 0.9
 
     def test_task_delete_by_id(self, classifier, mock_llm):
         """Test: 'Delete task 5' + DELETE → TASK"""
@@ -365,13 +383,14 @@ class TestEntityTypeClassifierTASK:
             "reasoning": "Explicit 'task 5' reference in delete operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Delete task 5",
             operation=OperationType.DELETE
         )
 
-        assert result.entity_type == EntityType.TASK
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.TASK
+        assert confidence >= 0.9
 
     def test_task_query_next_steps(self, classifier, mock_llm):
         """Test: 'What's next for the tetris game development' + QUERY → TASK"""
@@ -381,13 +400,14 @@ class TestEntityTypeClassifierTASK:
             "reasoning": "Next steps query typically refers to pending tasks"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "What's next for the tetris game development",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.TASK
-        assert result.confidence >= 0.80
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.TASK
+        assert confidence >= 0.80
 
 
 class TestEntityTypeClassifierMILESTONE:
@@ -401,13 +421,14 @@ class TestEntityTypeClassifierMILESTONE:
             "reasoning": "Explicit 'milestone' with version/release context"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Create milestone for v1.0 release",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.MILESTONE
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.MILESTONE
+        assert confidence >= 0.9
 
     def test_milestone_update_by_id(self, classifier, mock_llm):
         """Test: 'Update milestone 2 date' + UPDATE → MILESTONE"""
@@ -417,13 +438,14 @@ class TestEntityTypeClassifierMILESTONE:
             "reasoning": "Explicit 'milestone 2' reference in update operation"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Update milestone 2 date",
             operation=OperationType.UPDATE
         )
 
-        assert result.entity_type == EntityType.MILESTONE
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.MILESTONE
+        assert confidence >= 0.9
 
     def test_milestone_delete(self, classifier, mock_llm):
         """Test: 'Cancel milestone 2' + DELETE → MILESTONE"""
@@ -433,13 +455,14 @@ class TestEntityTypeClassifierMILESTONE:
             "reasoning": "Cancel operation on milestone indicates deletion"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Cancel milestone 2",
             operation=OperationType.DELETE
         )
 
-        assert result.entity_type == EntityType.MILESTONE
-        assert result.confidence >= 0.85
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.MILESTONE
+        assert confidence >= 0.85
 
     def test_milestone_query_roadmap(self, classifier, mock_llm):
         """Test: 'Show milestones' + QUERY → MILESTONE"""
@@ -449,13 +472,14 @@ class TestEntityTypeClassifierMILESTONE:
             "reasoning": "Explicit 'milestones' plural indicates MILESTONE entity type"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Show milestones",
             operation=OperationType.QUERY
         )
 
-        assert result.entity_type == EntityType.MILESTONE
-        assert result.confidence >= 0.9
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.MILESTONE
+        assert confidence >= 0.9
 
     def test_milestone_create_beta_launch(self, classifier, mock_llm):
         """Test: 'Add milestone for beta launch' + CREATE → MILESTONE"""
@@ -465,13 +489,14 @@ class TestEntityTypeClassifierMILESTONE:
             "reasoning": "Milestone with launch/release context"
         })
 
-        result = classifier.classify(
+        entity_types, confidence = classifier.classify(
             "Add milestone for beta launch",
             operation=OperationType.CREATE
         )
 
-        assert result.entity_type == EntityType.MILESTONE
-        assert result.confidence >= 0.85
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.MILESTONE
+        assert confidence >= 0.85
 
 
 class TestEntityTypeClassifierEdgeCases:
@@ -492,16 +517,17 @@ class TestEntityTypeClassifierEdgeCases:
         mock_llm.generate.side_effect = Exception("LLM connection failed")
 
         with pytest.raises(EntityTypeClassificationException, match="Failed to classify"):
-            classifier.classify("Create an epic", operation=OperationType.CREATE)
+            entity_types, confidence = classifier.classify("Create an epic", operation=OperationType.CREATE)
 
     def test_invalid_json_response_with_fallback(self, classifier, mock_llm):
         """Test fallback parsing when JSON is invalid."""
         # Non-JSON response with entity type in text
         mock_llm.generate.return_value = "The entity type is EPIC with high confidence"
 
-        result = classifier.classify("Create an epic", operation=OperationType.CREATE)
+        entity_types, confidence = classifier.classify("Create an epic", operation=OperationType.CREATE)
 
-        assert result.entity_type == EntityType.EPIC
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
 
     def test_missing_entity_type_in_response(self, classifier, mock_llm):
         """Test error when response has no entity type."""

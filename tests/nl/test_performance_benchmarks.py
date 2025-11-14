@@ -134,10 +134,11 @@ class TestComponentLatency:
         operation = OperationType.CREATE
 
         start = time.time()
-        result = perf_components['entity_type_classifier'].classify(user_input, operation)
+        entity_types, confidence = perf_components['entity_type_classifier'].classify(user_input, operation)
         latency = (time.time() - start) * 1000
 
-        assert result.entity_type == EntityType.EPIC
+        assert len(entity_types) == 1
+        assert entity_types[0] == EntityType.EPIC
         print(f"\nEntityTypeClassifier latency: {latency:.2f}ms (target: <150ms)")
         assert latency < 150  # Target: <150ms
 
@@ -177,7 +178,7 @@ class TestComponentLatency:
         """Test: CommandValidator latency <50ms."""
         context = OperationContext(
             operation=OperationType.CREATE,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=None,
             parameters={"title": "Test Task"},
             confidence=0.95,
@@ -241,24 +242,24 @@ class TestEndToEndLatency:
         operation_result = perf_components['operation_classifier'].classify(user_input)
 
         # Stage 3: Entity Type Classification
-        entity_type_result = perf_components['entity_type_classifier'].classify(
+        entity_types, entity_confidence = perf_components['entity_type_classifier'].classify(
             user_input, operation_result.operation_type
         )
 
         # Stage 4: Entity Identifier Extraction
         identifier_result = perf_components['entity_identifier_extractor'].extract(
-            user_input, entity_type_result.entity_type, operation_result.operation_type
+            user_input, entity_types[0], operation_result.operation_type
         )
 
         # Stage 5: Parameter Extraction
         parameter_result = perf_components['parameter_extractor'].extract(
-            user_input, operation_result.operation_type, entity_type_result.entity_type
+            user_input, operation_result.operation_type, entity_types[0]
         )
 
         # Build OperationContext
         context = OperationContext(
             operation=operation_result.operation_type,
-            entity_type=entity_type_result.entity_type,
+            entity_types=entity_types,
             identifier=identifier_result.identifier,
             parameters=parameter_result.parameters,
             confidence=0.92,
@@ -304,19 +305,19 @@ class TestEndToEndLatency:
             # Run full pipeline (abbreviated for brevity)
             intent_result = perf_components['intent_classifier'].classify(user_input)
             operation_result = perf_components['operation_classifier'].classify(user_input)
-            entity_type_result = perf_components['entity_type_classifier'].classify(
+            entity_types, entity_confidence = perf_components['entity_type_classifier'].classify(
                 user_input, operation_result.operation_type
             )
             identifier_result = perf_components['entity_identifier_extractor'].extract(
-                user_input, entity_type_result.entity_type, operation_result.operation_type
+                user_input, entity_types[0], operation_result.operation_type
             )
             parameter_result = perf_components['parameter_extractor'].extract(
-                user_input, operation_result.operation_type, entity_type_result.entity_type
+                user_input, operation_result.operation_type, entity_types[0]
             )
 
             context = OperationContext(
                 operation=operation_result.operation_type,
-                entity_type=entity_type_result.entity_type,
+                entity_types=entity_types,
                 identifier=identifier_result.identifier,
                 parameters=parameter_result.parameters,
                 confidence=0.92,
@@ -373,13 +374,13 @@ class TestThroughput:
             try:
                 intent_result = perf_components['intent_classifier'].classify(user_input)
                 operation_result = perf_components['operation_classifier'].classify(user_input)
-                entity_type_result = perf_components['entity_type_classifier'].classify(
+                entity_types, entity_confidence = perf_components['entity_type_classifier'].classify(
                     user_input, operation_result.operation_type
                 )
 
                 context = OperationContext(
                     operation=operation_result.operation_type,
-                    entity_type=entity_type_result.entity_type,
+                    entity_types=entity_types,
                     identifier=None,
                     parameters={"title": "test"},
                     confidence=0.92,
@@ -434,7 +435,7 @@ class TestMemoryUsage:
 
             context = OperationContext(
                 operation=operation_result.operation_type,
-                entity_type=EntityType.TASK,
+                entity_types=[EntityType.TASK],
                 identifier=None,
                 parameters={"title": f"memory test {i}"},
                 confidence=0.92,
@@ -514,14 +515,14 @@ class TestComparativePerformance:
         start = time.time()
         intent_result = perf_components['intent_classifier'].classify(user_input)
         operation_result = perf_components['operation_classifier'].classify(user_input)
-        entity_type_result = perf_components['entity_type_classifier'].classify(
+        entity_types, entity_confidence = perf_components['entity_type_classifier'].classify(
             user_input, operation_result.operation_type
         )
         identifier_result = perf_components['entity_identifier_extractor'].extract(
-            user_input, entity_type_result.entity_type, operation_result.operation_type
+            user_input, entity_types[0], operation_result.operation_type
         )
         parameter_result = perf_components['parameter_extractor'].extract(
-            user_input, operation_result.operation_type, entity_type_result.entity_type
+            user_input, operation_result.operation_type, entity_types[0]
         )
         new_pipeline_latency = (time.time() - start) * 1000
 

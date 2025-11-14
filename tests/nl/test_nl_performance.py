@@ -145,7 +145,7 @@ def test_fast_path_integration_list_projects(processor):
     with patch.object(processor, 'fast_path_matcher') as mock_matcher:
         mock_result = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.PROJECT,
+            entity_types=[EntityType.PROJECT],
             identifier=None,
             parameters={},
             confidence=1.0,
@@ -169,7 +169,7 @@ def test_fast_path_integration_show_tasks(processor):
     with patch.object(processor, 'fast_path_matcher') as mock_matcher:
         mock_result = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.TASK,
+            entity_types=[EntityType.TASK],
             identifier=None,
             parameters={},
             confidence=1.0,
@@ -188,7 +188,7 @@ def test_fast_path_integration_get_epic_by_id(processor):
     with patch.object(processor, 'fast_path_matcher') as mock_matcher:
         mock_result = OperationContext(
             operation=OperationType.QUERY,
-            entity_type=EntityType.EPIC,
+            entity_types=[EntityType.EPIC],
             identifier=5,
             parameters={},
             confidence=1.0,
@@ -289,7 +289,7 @@ def test_cache_integration_hit(processor):
     query = "show tasks"
     cached_result = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={},
         confidence=1.0,
@@ -319,7 +319,7 @@ def test_cache_integration_ttl_expiration(processor, fast_time):
     query = "list projects"
     result_obj = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.PROJECT,
+        entity_types=[EntityType.PROJECT],
         identifier=None,
         parameters={},
         confidence=1.0,
@@ -351,7 +351,7 @@ def test_cache_integration_different_contexts(processor):
     # Cache with different contexts
     result1 = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'project_id': 1},
         confidence=1.0,
@@ -360,7 +360,7 @@ def test_cache_integration_different_contexts(processor):
 
     result2 = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'project_id': 2},
         confidence=1.0,
@@ -663,7 +663,7 @@ def test_combined_fast_path_miss_llm_cache(processor):
     # Simulate LLM processing and caching
     llm_result = OperationContext(
         operation=OperationType.QUERY,
-        entity_type=EntityType.TASK,
+        entity_types=[EntityType.TASK],
         identifier=None,
         parameters={'timeframe': 'last week'},
         confidence=0.9,
