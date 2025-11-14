@@ -763,7 +763,7 @@ def real_llm():
     try:
         llm = OpenAICodexLLMPlugin()
         llm.initialize({
-            'model': None,  # Auto-select model based on Codex account
+            'model': 'gpt-5-codex',  # Explicitly use gpt-5-codex (ChatGPT account model)
             'temperature': 0.1,  # Deterministic for testing
             'timeout': 60.0
         })
