@@ -183,6 +183,29 @@ class TestValidateOperationParameters:
         assert len(errors) > 0
         assert any("Invalid priority" in err for err in errors)
 
+    def test_optional_parameters_with_none(self, validator):
+        """Phase 4: None values for optional parameters should be valid.
+
+        Tests that the parameter validator accepts None for optional fields
+        (priority, status) without raising validation errors.
+
+        Expected impact: -8% failure rate
+        """
+        context = OperationContext(
+            operation=OperationType.CREATE,
+            entity_types=[EntityType.TASK],
+            identifier=None,
+            parameters={
+                'title': 'Test Task',
+                'priority': None,  # Extractor returned None
+                'status': None,    # Extractor returned None
+            },
+            confidence=0.85
+        )
+
+        errors = validator._validate_operation_parameters(context)
+        assert len(errors) == 0, f"Should accept None for optional fields, got errors: {errors}"
+
 
 class TestValidateEntityExists:
     """Test entity exists check for UPDATE/DELETE operations."""

@@ -317,6 +317,8 @@ class CommandValidator:
     def _validate_operation_parameters(self, context: OperationContext) -> List[str]:
         """Validate parameters for operation type (status values, priority, etc.).
 
+        Phase 4: Handles None values for optional parameters gracefully.
+
         Args:
             context: OperationContext with operation, entity_type, parameters
 
@@ -326,26 +328,34 @@ class CommandValidator:
         errors = []
         params = context.parameters
 
-        # Validate status parameter
+        # Validate status parameter (optional field)
         if 'status' in params:
-            status = params['status'].upper() if isinstance(params['status'], str) else params['status']
-            valid_statuses = self.VALID_STATUS_VALUES.get(context.entity_type, [])
+            status_value = params['status']
+            if status_value is None:
+                pass  # OK - optional field not provided
+            else:
+                status = status_value.upper() if isinstance(status_value, str) else status_value
+                valid_statuses = self.VALID_STATUS_VALUES.get(context.entity_type, [])
 
-            if valid_statuses and status not in valid_statuses:
-                errors.append(
-                    f"Invalid status '{params['status']}' for {context.entity_type.value}. "
-                    f"Valid values: {', '.join(valid_statuses)}"
-                )
+                if valid_statuses and status not in valid_statuses:
+                    errors.append(
+                        f"Invalid status '{params['status']}' for {context.entity_type.value}. "
+                        f"Valid values: {', '.join(valid_statuses)}"
+                    )
 
-        # Validate priority parameter
+        # Validate priority parameter (optional field)
         if 'priority' in params:
-            priority = params['priority'].upper() if isinstance(params['priority'], str) else params['priority']
+            priority_value = params['priority']
+            if priority_value is None:
+                pass  # OK - optional field not provided
+            else:
+                priority = priority_value.upper() if isinstance(priority_value, str) else priority_value
 
-            if priority not in self.VALID_PRIORITY_VALUES:
-                errors.append(
-                    f"Invalid priority '{params['priority']}'. "
-                    f"Valid values: {', '.join(self.VALID_PRIORITY_VALUES)}"
-                )
+                if priority not in self.VALID_PRIORITY_VALUES:
+                    errors.append(
+                        f"Invalid priority '{params['priority']}'. "
+                        f"Valid values: {', '.join(self.VALID_PRIORITY_VALUES)}"
+                    )
 
         # Validate dependencies parameter (must be list of integers)
         if 'dependencies' in params:
