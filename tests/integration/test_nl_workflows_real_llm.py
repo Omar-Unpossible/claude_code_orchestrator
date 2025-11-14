@@ -421,8 +421,8 @@ class TestRealLLMEdgeCases:
 @pytest.mark.acceptance
 class TestRealLLMConfirmationWorkflows:
     """Confirmation workflows - ACCEPTANCE TESTS"""
-    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
 
+    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
     def test_delete_with_confirmation_real_llm(self, real_orchestrator):
         """ACCEPTANCE: Delete operations request confirmation"""
         project = real_orchestrator.state_manager.create_project(
@@ -441,9 +441,9 @@ class TestRealLLMConfirmationWorkflows:
         )
 
         # Should ask for confirmation or delete with warning
-    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
         assert result['success'] or 'confirm' in result['message'].lower()
 
+    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
     def test_bulk_operation_confirmation_real_llm(self, real_orchestrator):
         """ACCEPTANCE: Bulk operations request confirmation"""
         project = real_orchestrator.state_manager.create_project(
@@ -488,10 +488,10 @@ class TestRealLLMMultiEntityOperations:
         )
 
         # May succeed (creating one task) or ask for clarification
-    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
         assert result is not None
         assert 'message' in result  # At least one task created
 
+    @pytest.mark.skip(reason="DELETE operations require agent setup and confirmation handling - tested in demo scenarios")
     def test_delete_all_epics_real_llm(self, real_orchestrator):
         """ACCEPTANCE: User can delete all entities of a type"""
         project = real_orchestrator.state_manager.create_project(
