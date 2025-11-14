@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Integrated NL Testing Infrastructure** (Phase 2 - Real LLM Validation):
+  - **Real LLM Fixtures** (`tests/conftest.py`, lines 750-831):
+    - `real_llm()` - OpenAI Codex GPT-4 integration for testing
+    - `real_orchestrator()` - Full orchestration stack with real LLM
+    - `real_nl_processor_with_llm()` - Real NL processing pipeline
+    - All fixtures gracefully skip if API unavailable (CI-friendly)
+  - **20 Acceptance Tests** (`tests/integration/test_nl_workflows_real_llm.py`, 480 lines):
+    - Project workflows (list, query stats)
+    - CREATE operations (epic, story, task) - validates parsing
+    - UPDATE operations (status, title) - validates parsing
+    - DELETE operations (single, bulk, with confirmation)
+    - Query workflows (filter by status, count, epic stories)
+    - Edge cases (invalid IDs, missing params, ambiguous commands)
+    - Multi-entity operations
+  - **14 Component Tests** (`tests/integration/test_nl_workflows_real_components.py`, 328 lines):
+    - Real StateManager + Real NLProcessor + Mock LLM
+    - Validates component integration before expensive real LLM tests
+  - **Pytest Markers**:
+    - `@pytest.mark.real_llm` - Tests using real LLM (OpenAI Codex)
+    - `@pytest.mark.acceptance` - Acceptance tests (must pass for "done")
+    - `@pytest.mark.requires_openai` - Requires OpenAI API key
+
 ### Fixed
+- **LLM Caching Bug - Unhashable Type 'list'** (`src/llm/local_interface.py`, lines 258-267):
+  - **Issue**: TypeError when LLM kwargs contain unhashable types (lists)
+  - **Fix**: Added try-except to skip cache for unhashable kwargs
+  - **Impact**: Fixed 4+ failing tests that passed lists in LLM parameters
+  - Gracefully falls back to uncached generation with debug logging
+
 - **NL Query System - Missing task_type Parameter**:
   - Fixed `StateManager.list_tasks()` missing `task_type` parameter causing NL hierarchical queries to fail
   - Added `task_type: Optional[TaskType] = None` parameter to `StateManager.list_tasks()` (src/core/state.py:644)
@@ -19,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `src/core/state.py` (1 method signature + 3 lines)
     - `tests/test_state_manager_task_operations.py` (154 lines, 7 new tests)
   - **Tests**: All 17 tests passing in test_state_manager_task_operations.py
+
+### Changed
+- **Testing Strategy - Switched to OpenAI Codex**:
+  - Changed default test LLM from Ollama/Qwen to OpenAI Codex GPT-4
+  - Updated all test fixtures to use `real_llm` instead of `real_ollama_llm`
+  - Updated pytest markers: `requires_ollama` → `requires_openai`
+  - **Rationale**: More reliable API, consistent responses, better CI/CD integration
+
+- **Test Validation Approach - Parsing Over Execution**:
+  - Refactored CREATE/UPDATE tests to validate NL parsing correctness (not full execution)
+  - Tests validate: intent classification, operation detection, entity extraction, confidence scores
+  - **Why**: Acceptance tests don't need Claude Code agent configured
+  - **Result**: Tests run faster, more reliable, easier to maintain
 
 ## [1.7.4] - 2025-11-13
 
