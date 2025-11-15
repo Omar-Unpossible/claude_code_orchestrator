@@ -17,11 +17,14 @@ class BulkOperationException(Exception):
 class BulkCommandExecutor:
     """Executes bulk operations with transaction safety and confirmation."""
 
+    # Dependency order: delete children before parents
+    # SUBTASK → TASK → STORY → EPIC → PROJECT
     DEPENDENCY_ORDER = [
         EntityType.SUBTASK,
         EntityType.TASK,
         EntityType.STORY,
-        EntityType.EPIC
+        EntityType.EPIC,
+        EntityType.PROJECT  # Delete projects LAST (after all contents deleted)
     ]
 
     def __init__(self, state_manager: StateManager):
@@ -82,8 +85,19 @@ class BulkCommandExecutor:
         return results
 
     def _delete_all_of_type(self, project_id: int, entity_type: EntityType) -> int:
-        """Delete all entities of given type in project."""
-        if entity_type == EntityType.TASK:
+        """Delete all entities of given type in project.
+
+        Args:
+            project_id: Project ID (ignored for PROJECT entity type)
+            entity_type: Entity type to delete
+
+        Returns:
+            Number of entities deleted
+        """
+        if entity_type == EntityType.PROJECT:
+            # Special case: delete ALL projects (ignore project_id)
+            return self.state_manager.delete_all_projects(soft=True)
+        elif entity_type == EntityType.TASK:
             return self.state_manager.delete_all_tasks(project_id)
         elif entity_type == EntityType.STORY:
             return self.state_manager.delete_all_stories(project_id)
@@ -101,11 +115,23 @@ class BulkCommandExecutor:
     def _get_entity_counts(
         self, project_id: int, entity_types: List[EntityType]
     ) -> Dict[str, int]:
-        """Get count of entities before deletion."""
+        """Get count of entities before deletion.
+
+        Args:
+            project_id: Project ID (ignored for PROJECT entity type)
+            entity_types: Entity types to count
+
+        Returns:
+            Dict mapping entity type names to counts
+        """
         counts = {}
 
         for entity_type in entity_types:
-            if entity_type == EntityType.TASK:
+            if entity_type == EntityType.PROJECT:
+                # Special case: count ALL projects (ignore project_id)
+                projects = self.state_manager.list_projects()
+                counts['projects'] = len(projects)
+            elif entity_type == EntityType.TASK:
                 tasks = self.state_manager.list_tasks(project_id)
                 counts['tasks'] = len(tasks)
             elif entity_type == EntityType.STORY:

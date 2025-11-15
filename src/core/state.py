@@ -371,6 +371,57 @@ class StateManager:
                     details=str(e)
                 ) from e
 
+    def delete_all_projects(self, soft: bool = True) -> int:
+        """Delete all projects.
+
+        Args:
+            soft: If True, soft delete (set is_deleted=True)
+
+        Returns:
+            Number of projects deleted
+
+        Example:
+            >>> count = state_manager.delete_all_projects()
+            >>> print(f"Deleted {count} projects")
+        """
+        with self._lock:
+            try:
+                with self.transaction():
+                    session = self._get_session()
+
+                    # Get all non-deleted projects
+                    if soft:
+                        projects = session.query(ProjectState).filter(
+                            ProjectState.is_deleted == False  # noqa: E712
+                        ).all()
+
+                        # Soft delete each project
+                        for project in projects:
+                            project.is_deleted = True
+
+                        count = len(projects)
+                        logger.info(f"Soft deleted {count} projects")
+                    else:
+                        # Hard delete - count first
+                        count = session.query(ProjectState).filter(
+                            ProjectState.is_deleted == False  # noqa: E712
+                        ).count()
+
+                        # Delete all
+                        session.query(ProjectState).filter(
+                            ProjectState.is_deleted == False  # noqa: E712
+                        ).delete()
+
+                        logger.info(f"Hard deleted {count} projects")
+
+                    return count
+
+            except SQLAlchemyError as e:
+                raise DatabaseException(
+                    operation='delete_all_projects',
+                    details=str(e)
+                ) from e
+
     # Task Management
 
     def create_task(

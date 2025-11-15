@@ -144,6 +144,24 @@ class IntentToTaskConverter:
             )
 
         # Create task via StateManager
+        # Special handling for PROJECT operations: use first available project or create temp
+        from src.nl.types import EntityType
+        if EntityType.PROJECT in parsed_intent.entity_types and project_id is None:
+            # Get first available project, or create a temporary one
+            projects = self.state_manager.list_projects()
+            if projects:
+                project_id = projects[0].id
+                logger.info(f"Using project_id={project_id} for PROJECT entity operation")
+            else:
+                # No projects exist - create a temporary one
+                logger.info("Creating temporary project for PROJECT entity operation")
+                temp_project = self.state_manager.create_project(
+                    project_name="__TEMP_FOR_BULK_DELETE__",
+                    project_description="Temporary project for bulk delete operation",
+                    working_directory="/tmp/obra_temp"
+                )
+                project_id = temp_project.id
+
         try:
             task = self.state_manager.create_task(project_id, task_data)
         except Exception as e:
@@ -180,7 +198,7 @@ class IntentToTaskConverter:
 
         Args:
             parsed_intent: Parsed intent to validate
-            project_id: Project ID to validate
+            project_id: Project ID to validate (can be None for PROJECT entity operations)
 
         Raises:
             IntentConversionException: If validation fails
@@ -192,21 +210,29 @@ class IntentToTaskConverter:
                 recovery="Pass OperationContext from NL parser"
             )
 
-        if not isinstance(project_id, int) or project_id <= 0:
-            raise IntentConversionException(
-                "project_id must be a positive integer",
-                context={'project_id': project_id},
-                recovery="Provide valid project ID"
-            )
+        # Import here to avoid circular imports
+        from src.nl.types import EntityType
 
-        # Verify project exists
-        project = self.state_manager.get_project(project_id)
-        if project is None:
-            raise IntentConversionException(
-                f"Project {project_id} does not exist",
-                context={'project_id': project_id},
-                recovery="Create project first or use valid project ID"
-            )
+        # For PROJECT entity operations, project_id can be None (operating on all projects)
+        operates_on_projects = EntityType.PROJECT in parsed_intent.entity_types
+
+        if not operates_on_projects:
+            # For non-PROJECT entities, require valid project_id
+            if not isinstance(project_id, int) or project_id <= 0:
+                raise IntentConversionException(
+                    "project_id must be a positive integer",
+                    context={'project_id': project_id},
+                    recovery="Provide valid project ID"
+                )
+
+            # Verify project exists
+            project = self.state_manager.get_project(project_id)
+            if project is None:
+                raise IntentConversionException(
+                    f"Project {project_id} does not exist",
+                    context={'project_id': project_id},
+                    recovery="Create project first or use valid project ID"
+                )
 
     def _map_create_operation(
         self,

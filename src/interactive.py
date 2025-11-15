@@ -728,19 +728,21 @@ class InteractiveMode:
                     # COMMAND intent - route to orchestrator for execution
 
                     # Import here to avoid circular imports
-                    from src.nl.types import OperationType
+                    from src.nl.types import OperationType, EntityType
 
                     # Check if operation requires a current project
                     operation_context = parsed_intent.operation_context
                     operation = operation_context.operation if operation_context else None
+                    entity_types = operation_context.entity_types if operation_context else []
 
                     # Only CREATE/UPDATE/DELETE operations require a current project
                     # QUERY operations can work without a project (e.g., "list projects")
-                    requires_project = operation in [
-                        OperationType.CREATE,
-                        OperationType.UPDATE,
-                        OperationType.DELETE
-                    ]
+                    # EXCEPTION: Operations on PROJECT entities don't need a current project
+                    # (you're creating/deleting/updating projects themselves)
+                    requires_project = (
+                        operation in [OperationType.CREATE, OperationType.UPDATE, OperationType.DELETE]
+                        and EntityType.PROJECT not in entity_types
+                    )
 
                     if requires_project and not self.current_project:
                         print("\n⚠ No project selected. Use /project list to see projects or /project create to create one\n")
