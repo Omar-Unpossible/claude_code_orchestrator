@@ -36,9 +36,8 @@ Use the conversation history to resolve ambiguous references:
 
 ## Output Format
 
-Respond with ONLY valid JSON (no markdown, no explanation):
+Respond with ONLY valid JSON (no markdown code fences, no explanation text before or after):
 
-```json
 {
   "intent": "COMMAND" | "QUESTION" | "CLARIFICATION_NEEDED",
   "confidence": 0.0-1.0,
@@ -49,14 +48,12 @@ Respond with ONLY valid JSON (no markdown, no explanation):
     "question_type": "how_to|what_is|show_info" (if QUESTION)
   }
 }
-```
 
 ## Examples
 
 ### Example 1: Clear Command
 Input: "Create an epic called User Authentication"
 Output:
-```json
 {
   "intent": "COMMAND",
   "confidence": 0.95,
@@ -66,12 +63,10 @@ Output:
     "entity_type": "epic"
   }
 }
-```
 
 ### Example 2: Clear Question
 Input: "How do I create an epic?"
 Output:
-```json
 {
   "intent": "QUESTION",
   "confidence": 0.93,
@@ -81,24 +76,20 @@ Output:
     "entity_type": "epic"
   }
 }
-```
 
 ### Example 3: Needs Clarification
 Input: "Maybe add something"
 Output:
-```json
 {
   "intent": "CLARIFICATION_NEEDED",
   "confidence": 0.45,
   "reasoning": "Vague action 'maybe add', unclear target 'something', lacks details",
   "detected_entities": {}
 }
-```
 
 ### Example 4: Display/Query Command (IMPORTANT!)
 Input: "Show me all epics"
 Output:
-```json
 {
   "intent": "COMMAND",
   "confidence": 0.92,
@@ -108,12 +99,10 @@ Output:
     "entity_type": "epic"
   }
 }
-```
 
 ### Example 5: Tell/Display Command (IMPORTANT!)
 Input: "Tell me the current project and plan"
 Output:
-```json
 {
   "intent": "COMMAND",
   "confidence": 0.93,
@@ -123,12 +112,10 @@ Output:
     "entity_type": "project"
   }
 }
-```
 
 ### Example 6: Guidance Question (NOT a command!)
 Input: "How do I create an epic?"
 Output:
-```json
 {
   "intent": "QUESTION",
   "confidence": 0.90,
@@ -138,12 +125,10 @@ Output:
     "entity_type": "epic"
   }
 }
-```
 
 ### Example 7: Process Question (NOT a command!)
 Input: "What's the best way to structure my tasks?"
 Output:
-```json
 {
   "intent": "QUESTION",
   "confidence": 0.88,
@@ -153,7 +138,6 @@ Output:
     "entity_type": "task"
   }
 }
-```
 
 ## User Message to Classify
 

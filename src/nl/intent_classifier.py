@@ -200,8 +200,9 @@ class IntentClassifier:
             response = self.llm_plugin.generate(
                 prompt,
                 temperature=0.1,  # Very low for classification
-                max_tokens=100,  # Reduced from 500 (JSON output is small)
-                stop=["\n```", "}\n", "}\r\n"]  # Stop after JSON closes
+                max_tokens=200  # Increased to allow complete JSON (was 100, stop sequences removed)
+                # Note: Removed stop sequences - they were causing premature truncation
+                # The prompt now instructs LLM to output plain JSON without markdown
             )
         except Exception as e:
             raise IntentClassificationException(
@@ -290,11 +291,24 @@ class IntentClassifier:
         # Try to find JSON object in response
         try:
             # Find first '{' and last '}'
+            if '{' not in response:
+                logger.error(f"No opening brace found in LLM response (length={len(response)})")
+                logger.debug(f"LLM response content: {response[:500]}")  # Log first 500 chars
+                raise ValueError("LLM response does not contain JSON object (no opening brace)")
+
+            if '}' not in response:
+                logger.error(f"No closing brace found in LLM response (length={len(response)})")
+                logger.error(f"LLM response content: {response[:500]}")  # Log first 500 chars to ERROR so we can see it
+                raise ValueError("LLM response does not contain JSON object (no closing brace)")
+
             start = response.index('{')
             end = response.rindex('}') + 1
             json_str = response[start:end]
+            logger.debug(f"Extracted JSON string: {json_str[:200]}")  # Log first 200 chars
             data = json.loads(json_str)
         except (ValueError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to parse LLM response as JSON: {e}")
+            logger.debug(f"Full LLM response: {response}")
             raise ValueError(f"Invalid JSON in LLM response: {e}")
 
         # Validate required fields

@@ -376,9 +376,13 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
         if 'top_p' in kwargs:
             payload['options']['top_p'] = kwargs['top_p']  # type: ignore[index]
         if 'stop' in kwargs:
+            logger.info(f"Using stop sequences: {kwargs['stop']}")
             payload['options']['stop'] = kwargs['stop']  # type: ignore[index]
         if 'system' in kwargs:
             payload['system'] = kwargs['system']
+
+        # Log payload for debugging
+        logger.debug(f"LLM request payload: model={payload['model']}, temp={payload['options'].get('temperature')}, max_tokens={payload['options'].get('num_predict')}, stop={payload['options'].get('stop', 'none')}")
 
         # Make request with retry logic
         response_text = self._make_request_with_retry(
@@ -533,6 +537,12 @@ class LocalLLMInterface(LLMPlugin):  # pylint: disable=too-many-instance-attribu
                     )
 
                 response_text = data['response']
+
+                # Log response details for debugging
+                logger.info(f"LLM response length: {len(response_text)} chars")
+                logger.info(f"LLM done_reason: {data.get('done_reason', 'unknown')}")
+                if len(response_text) < 300:
+                    logger.warning(f"Short LLM response ({len(response_text)} chars): {response_text}")
 
                 if not response_text or not isinstance(response_text, str):
                     raise LLMResponseException(
