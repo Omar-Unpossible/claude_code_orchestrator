@@ -14,9 +14,27 @@ Example:
 """
 
 from src.orchestration.session.orchestrator_session_manager import OrchestratorSessionManager
-from src.orchestration.session.checkpoint_verifier import CheckpointVerifier
+from src.orchestration.session.checkpoint_verifier import (
+    CheckpointVerifier,
+    CheckpointVerificationError,
+    CheckpointCorruptedError
+)
+from src.orchestration.session.decision_record_generator import (
+    DecisionRecordGenerator,
+    DecisionRecord
+)
+from src.orchestration.session.progress_reporter import (
+    ProgressReporter,
+    ProgressReport
+)
 
 __all__ = [
     'OrchestratorSessionManager',
     'CheckpointVerifier',
+    'CheckpointVerificationError',
+    'CheckpointCorruptedError',
+    'DecisionRecordGenerator',
+    'DecisionRecord',
+    'ProgressReporter',
+    'ProgressReport',
 ]
