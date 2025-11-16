@@ -295,6 +295,92 @@ export ORCHESTRATOR_LLM_TYPE=ollama
 **Read CHANGELOG.md**: Recent changes and version history
 **Read ADRs**: Architecture decision rationale
 
+## Advanced StateManager Patterns
+
+### Atomic Operations
+```python
+# CORRECT: Single transaction
+with state.transaction():
+    task = state.create_task(project_id=1, title="...")
+    state.update_task(task_id=task.task_id, status=TaskStatus.IN_PROGRESS)
+
+# WRONG: Multiple commits (race conditions)
+task = state.create_task(...)  # commit 1
+state.update_task(...)  # commit 2
+```
+
+### Bulk Operations
+```python
+# Efficient: Batch updates
+tasks = state.get_tasks(project_id=1)
+updates = [{'task_id': t.task_id, 'status': TaskStatus.COMPLETED} for t in tasks]
+state.bulk_update_tasks(updates)
+
+# Inefficient: Loop commits
+for task in tasks:
+    state.update_task(task.task_id, status=TaskStatus.COMPLETED)
+```
+
+### Query Optimization
+```python
+# CORRECT: Single query with filters
+active_tasks = state.get_tasks(
+    project_id=1,
+    status=TaskStatus.IN_PROGRESS,
+    order_by='created_at DESC'
+)
+
+# WRONG: Multiple queries
+all_tasks = state.get_tasks(project_id=1)
+active_tasks = [t for t in all_tasks if t.status == TaskStatus.IN_PROGRESS]
+```
+
+## Common Errors Quick Fix
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `StateManager not initialized` | Used `Config()` not `Config.load()` | `config = Config.load('config.yaml')` |
+| `Agent not found in registry` | Typo in config.agent.type | Check `@register_agent()` decorator name |
+| `Session lock conflict` | Reused session across iterations | Fresh session per iteration |
+| `WSL2 kernel panic` | Test resource limits exceeded | Follow TEST_GUIDELINES.md limits |
+| `LLM connection timeout` | Network/Ollama down | `orchestrator.reconnect_llm()` |
+| `Profile not found` | Profile doesn't exist | Validate: `if profile in ProfileManager.list_profiles()` |
+| `AttributeError: 'NoneType'` | LLM unavailable | Check `orchestrator.check_llm_available()` first |
+| `ValidationError: quality too low` | Response incomplete/malformed | Review prompt clarity, check agent logs |
+| `ConfidenceScoreError: below threshold` | Uncertain response | Trigger breakpoint, get human input |
+
+## Debug Checklist
+
+### When Task Fails
+- [ ] Check LLM connection: `orchestrator.check_llm_available()`
+- [ ] Review logs: `tail -f ~/obra-runtime/logs/production.jsonl`
+- [ ] Verify StateManager state: `state.get_task(task_id)`
+- [ ] Check validation pipeline stages: ResponseValidator → QualityController → ConfidenceScorer
+- [ ] Inspect agent output: Look for parse errors, incomplete responses
+- [ ] Review prompt: Too vague? Missing context?
+
+### When Tests Fail
+- [ ] Resource limits OK? (0.5s sleep, 5 threads, 20KB)
+- [ ] Fixtures loaded? (test_config, fast_time)
+- [ ] Thread cleanup? (join with timeout)
+- [ ] Integration vs unit? (88% unit coverage missed 6 bugs)
+- [ ] Mocks realistic? (Match production behavior)
+- [ ] Test isolation? (No shared state between tests)
+
+### When LLM Connection Fails
+- [ ] Ollama running? `curl http://10.0.75.1:11434/api/tags`
+- [ ] Model loaded? Check Ollama logs
+- [ ] Network route? `ping 10.0.75.1`
+- [ ] Config correct? `config.get('llm.api_url')`
+- [ ] Timeout adequate? Increase for large responses
+
+### When Git Operations Fail
+- [ ] Working directory clean? `git status`
+- [ ] GitManager initialized? Check orchestrator setup
+- [ ] Permissions OK? Write access to repo
+- [ ] Branch exists? `git branch -a`
+- [ ] Remote configured? `git remote -v`
+
 ---
 
 **Keep this file open during development for quick reference!**

@@ -19,6 +19,147 @@ Read in order:
 4. `CHANGELOG.md` - Recent changes
 5. `docs/testing/TEST_GUIDELINES.md` - ⚠️ CRITICAL before writing tests
 
+## Skills Architecture (v2.0)
+
+**Progressive Disclosure**: Skills load on-demand when Claude determines relevance.
+
+### When Skills Load
+- **ALWAYS**: Metadata (description, triggers) in startup context
+- **ON-DEMAND**: Full content when user task matches triggers
+- **NEVER**: Skills not relevant to current task
+
+### How to Invoke Skills
+- Natural language mentions trigger keywords (e.g., "shell commands" → shell-enhancements)
+- Explicit reference: "See shell-enhancements Skill"
+- Claude auto-loads based on task analysis
+
+### Available Skills
+- `shell-enhancements` - 35+ WSL2 commands for workflows
+- `development-tools` - LLM-optimized CLI tools (tokei, rg, fd, bat, jq)
+- `testing-guidelines` - Pytest patterns, WSL2 crash prevention
+- `agile-workflow` - Epic/Story/Milestone commands
+- `interactive-commands` - Interactive mode reference
+
+**See**: `.claude/skills/README.md` for complete list
+
+## Context Management (ADR-018)
+
+### Session Refresh Triggers
+MUST start new session IF:
+- Context >80% capacity (red zone monitoring)
+- Task type changed significantly
+- Previous task complete and new task unrelated
+- Confusion signals detected (repeated clarifications)
+
+### Context Zones
+- **Green** (<60%): Normal operation
+- **Yellow** (60-85%): Monitor usage, compact if needed
+- **Red** (>85%): Trigger self-handoff or manual refresh
+
+### Context Compaction
+WHEN context >60% full:
+- Remove outdated tool results
+- Summarize completed subtasks
+- NEVER remove active task context
+- Use CompactionStrategy from ADR-018
+
+### Monitoring
+- Track token usage per task
+- Log handoff events in production logger
+- Alert on red zone entry
+
+## Rewind & Checkpoints
+
+### When to Create Checkpoints
+MUST checkpoint BEFORE:
+- Major refactoring (>500 lines changed)
+- Architectural changes (new components/patterns)
+- Dependency updates (breaking changes risk)
+- Risky operations (schema migrations, bulk updates)
+
+ALWAYS checkpoint AFTER:
+- Successful milestone achievement
+- Working feature implementation
+- Passing test suite restoration
+
+### How to Use Rewind
+1. Double-tap ESC → Activate Rewind UI
+2. Select checkpoint from timeline
+3. Claude restores conversation + file states
+4. Review diffs before accepting
+5. Continue or try alternative approach
+
+### Checkpoint Best Practices
+- Create checkpoints at logical boundaries
+- Name descriptively (not "checkpoint1")
+- Review checkpoint list before major changes
+- Use for experiment/rollback workflows
+
+## MCP Server Integration
+
+### Setup
+Configure in `.mcp.json` (project root):
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": {"ALLOWED_DIRECTORIES": "/path/to/project"}
+    }
+  }
+}
+```
+
+### Usage
+- MCP tools available automatically when server configured
+- Claude invokes when needed (PR creation, issue search, file ops)
+- Results count toward context budget
+- Typical token cost: 100-500 per MCP operation
+
+### Common Servers
+- `@modelcontextprotocol/server-github` - GitHub operations
+- `@modelcontextprotocol/server-filesystem` - Safe file access
+- `@modelcontextprotocol/server-postgres` - Database queries
+- Custom servers via MCP protocol
+
+## Subagent Delegation
+
+### When to Create Subagents
+CREATE subagent IF:
+- Specialized task domain (testing, docs, deployment)
+- Different tool permissions needed (restricted access)
+- Isolated context beneficial (avoid pollution)
+- Parallel work possible (multiple PRs, test suites)
+
+DO NOT create IF:
+- Main orchestrator can handle
+- Overhead exceeds benefit
+- Context sharing critical
+
+### Configuration Pattern
+`.claude/agents/{name}/config.json`:
+```json
+{
+  "name": "test-agent",
+  "model": "claude-haiku-4-5-20250919",
+  "system_prompt": ".claude/agents/test-agent/system.md",
+  "tools": ["bash", "edit_file"],
+  "context": ["tests/", ".claude/skills/testing/"]
+}
+```
+
+### Best Practices
+- Use cheaper models (Haiku) for routine tasks
+- Restrict tools to minimum needed
+- Provide focused context
+- Coordinate via orchestrator
+
 ## Core Architecture Rules
 
 ### Rule 1: StateManager is Single Source of Truth
@@ -181,20 +322,12 @@ M2 testing caused WSL2 crashes from 75s sleeps, 25+ threads, 100KB+ allocations.
 
 ## Interactive Mode (v1.5.0 UX)
 
-### Command Syntax
-- **Natural text** (no `/`) → Defaults to orchestrator
-- **System commands** → Require `/` prefix
+**Natural text** (no `/`) defaults to orchestrator.
+**System commands** require `/` prefix.
 
-### Available Commands
-```
-/help                    Show help
-/status                  Current task status
-/pause, /resume, /stop   Execution control
-/to-impl <msg>          Message to Claude Code implementer
-/override-decision      Override orchestrator choice
-```
+**See Skill**: `interactive-commands` for complete reference
 
-**See**: `.claude/PROJECT.md` for complete command reference
+**Key Commands**: `/help`, `/status`, `/pause`, `/resume`, `/to-impl <msg>`
 
 ## Natural Language Interface (v1.3.0 - ADR-014)
 

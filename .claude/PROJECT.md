@@ -141,18 +141,11 @@ export DATABASE_URL=sqlite:///obra.db
 ### Running Obra
 
 ```bash
-# Initialize (first time only)
-python -m src.cli init
-
-# Create project
+python -m src.cli init  # Initialize (first time)
 python -m src.cli project create "My Project" --profile python_project
-
-# Create and execute task
 python -m src.cli task create "Implement feature X" --project 1
 python -m src.cli task execute 1
-
-# Interactive mode with command injection
-python -m src.cli interactive
+python -m src.cli interactive  # Interactive mode
 
 # MUST use helper script
 ./scripts/startup/obra.sh
@@ -239,40 +232,26 @@ rg "StateManager" docs/ -t md
 
 ## Interactive Mode Commands (v1.5.0 UX)
 
-When running `python -m src.cli interactive`:
+**See Skill**: `interactive-commands` for complete command reference
 
-```bash
-# Natural language (no slash) - defaults to orchestrator
-"Create a new feature for user authentication"
-"What's the current task status?"
+**Usage**: `python -m src.cli interactive`
 
-# System commands (require / prefix)
-/help                           # Show help message
-/status                         # Show current task status
-/pause                          # Pause execution
-/resume                         # Resume execution
-/stop                           # Stop gracefully
-/to-impl <message>             # Send message to implementer (Claude Code)
-/override-decision <choice>    # Override orchestrator's decision
-```
+**Quick Reference**: Natural language (no `/`) goes to orchestrator. System commands use `/` prefix.
 
 ## Agile Workflow (v1.3.0)
 
+Epic/Story/Milestone management for Agile/Scrum workflows.
+
+**See Skill**: `agile-workflow` for complete command reference
+
+**Quick Commands**:
 ```bash
-# Epic management (large features)
-python -m src.cli epic create "User Authentication System" --project 1
-python -m src.cli epic list --project 1
-python -m src.cli epic execute 1
-
-# Story management (user deliverables)
-python -m src.cli story create "Email/password login" --epic 1 --project 1
-python -m src.cli story list --epic 1
-
-# Milestone tracking
-python -m src.cli milestone create "Auth Complete" --project 1
-python -m src.cli milestone check 1
-python -m src.cli milestone achieve 1
+python -m src.cli epic create "Title" --project 1
+python -m src.cli story create "Title" --epic 1 --project 1
+python -m src.cli milestone create "Title" --project 1
 ```
+
+**Full Guide**: Invoke `agile-workflow` Skill
 
 ## Shell Enhancements for LLM-Led Development
 
@@ -343,23 +322,14 @@ task.documentation_status    # String
 ### Key Configuration Patterns
 
 ```python
-# CORRECT: Load config from file
+# Config and StateManager access
 config = Config.load('config.yaml')
-
-# CORRECT: Access StateManager through dependency injection
 orchestrator = Orchestrator(config=config)
 state = orchestrator.state_manager
+task = state.create_task(project_id=1, title="...", description="...")
 
-# CORRECT: Use named arguments for StateManager methods
-task = state.create_task(
-    project_id=1,
-    title="Implement feature",
-    description="Detailed description"
-)
-
-# CORRECT: Check profile before loading (M9)
-available_profiles = ProfileManager.list_profiles()
-if profile_name in available_profiles:
+# Profile validation
+if profile_name in ProfileManager.list_profiles():
     profile = ProfileManager.load_profile(profile_name)
 ```
 
