@@ -68,6 +68,25 @@ WHEN context >60% full:
 - Log handoff events in production logger
 - Alert on red zone entry
 
+### Continuation Prompts
+
+MUST create continuation/startup prompt WHEN:
+- **Story complete** in multi-Story Epic
+- **Context >60% full** (yellow/red zone)
+- **Session ending** before work complete
+- **Major phase complete** requiring fresh start
+
+Prompt MUST include:
+- **Context**: What's done, what's next
+- **Links**: Relevant docs, ADRs, code
+- **Steps**: Clear directives for continuation
+- **Validation**: How to verify previous work
+
+**Location**: `docs/development/.continuation_prompts/<WORK_ID>_<state>.md`
+**Template**: `docs/development/.continuation_prompts/TEMPLATE_continuation.md`
+
+**Why**: Seamless handoffs, context preservation, zero ramp-up time
+
 ## Rewind & Checkpoints
 
 ### When to Create Checkpoints
@@ -203,6 +222,26 @@ DO NOT create IF:
 - **Conservative**: Prefer false positives on confidence
 - **Checkpoint**: Before risky operations
 - **Auto-save**: State saved frequently
+
+### Rule 8: Implementation Planning Requirements
+
+MUST create implementation plan documents BEFORE starting:
+- **Epics** (3-15 sessions, large features)
+- **Complex Stories** (>2 hours estimated)
+- **Architectural changes** (new components/patterns)
+- **Multi-phase work** (>3 distinct phases)
+
+MUST generate BOTH:
+1. **Natural Language Plan**: Context, approach, rationale, phases, examples
+2. **Machine-Optimized Plan**: Directive commands, validation steps, error handling
+
+**Locations**:
+- Plans: `docs/development/<EPIC_ID>_IMPLEMENTATION_PLAN.md`
+- Machine specs: `docs/development/<EPIC_ID>_MACHINE_SPEC.md`
+
+**Templates**: See `docs/development/.templates/` for structures
+
+**Why**: Enables shared understanding, autonomous LLM execution, seamless handoffs
 
 ## Key Components Quick Reference
 
@@ -384,6 +423,27 @@ Details: .claude/PROJECT.md (Architecture section)
 - Performance improvements, breaking changes
 - Format: Semantic versioning (MAJOR.MINOR.PATCH)
 - Add under `[Unreleased]` section before committing
+
+## Git Commit Discipline
+
+MUST commit AFTER:
+- **Each Story** in Epic
+- **Each Phase** in multi-phase work
+- **Validation passing** for changes
+- **Before handoff** (with continuation prompt)
+
+**Commit Format**:
+- Epic: `feat(<epic-id>): Complete Epic - <title>`
+- Story: `feat(<epic-id>): Story <N> - <title>`
+- Phase: `feat(<work-id>): Phase <N> - <title>`
+- Fix: `fix(<context>): <description>`
+
+NEVER commit:
+- Failing tests
+- Unvalidated changes
+- WIP without clear marker
+
+**Why**: Clean history, easy rollback, clear progress, code review
 
 ## Quick Reference - Daily Commands
 

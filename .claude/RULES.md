@@ -76,6 +76,22 @@ Quick reference for essential patterns and anti-patterns in the Obra codebase.
     - Add under `[Unreleased]` section
     - Use semantic versioning
 
+11. **Create dual implementation plans**
+    - Natural language: Context and approach
+    - Machine-optimized: Executable directives
+    - Location: `docs/development/`
+
+12. **Generate continuation prompts at boundaries**
+    - After each Story in Epic
+    - When context >60% full
+    - Before session handoff
+    - Template: `.continuation_prompts/TEMPLATE_continuation.md`
+
+13. **Commit after meaningful work units**
+    - Each Story complete
+    - Each Phase complete
+    - Use semantic commit messages
+
 ### ❌ DON'T
 
 1. **Never bypass StateManager**
@@ -132,7 +148,9 @@ Quick reference for essential patterns and anti-patterns in the Obra codebase.
 
 9. **Never save docs to project root or /tmp**
    - Always use `docs/` subfolders
-   - Check `docs/archive/README.md` for existing content
+   - Plans: `docs/development/`
+   - Prompts: `docs/development/.continuation_prompts/`
+   - Check templates before creating
 
 10. **Never panic if LLM unavailable**
     - Obra loads gracefully
