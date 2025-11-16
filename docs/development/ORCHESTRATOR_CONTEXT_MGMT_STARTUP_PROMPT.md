@@ -992,6 +992,10 @@ logger.info(
 
 ## Final Checklist
 
+**⚠️ Before ANY of the below - Check Your Context Window**:
+- [ ] Context usage < 80% (if ≥80%, generate continuation prompt NOW)
+- [ ] If generating continuation: All work committed, handoff message provided
+
 Before declaring implementation complete:
 
 **Code Quality**:
@@ -1053,6 +1057,9 @@ cat docs/development/ORCHESTRATOR_CONTEXT_MGMT_IMPLEMENTATION_PLAN_MACHINE.json
 # Create feature branch
 git checkout -b obra/adr-018-context-management
 
+# Create continuation prompts directory
+mkdir -p docs/development/.continuation_prompts
+
 # Begin T1.1: Design config/models.yaml Schema
 # Create file: config/models.yaml.example
 ```
@@ -1061,8 +1068,15 @@ git checkout -b obra/adr-018-context-management
 - Follow the sequential order (P1 → P2 → P3 → P4)
 - Verify each verification gate before proceeding
 - Provide JSON response after each task
+- **⚠️ CRITICAL: Monitor YOUR context window - generate continuation at 80%**
 - Ask questions if anything is unclear
 - Document significant decisions in Decision Records (ADR format)
+
+**Context Management Reminder**:
+- After each task, check your context usage
+- Estimated: 3-5 tasks per session before hitting 80%
+- When at 80%: Generate continuation prompt, commit, handoff
+- User will copy/paste continuation prompt location to resume
 
 **You have everything you need to begin. Good luck!**
 
