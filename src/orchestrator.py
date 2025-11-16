@@ -126,10 +126,13 @@ class Orchestrator:
         self.intent_to_task_converter = None  # Converts OperationContext → Task
         self.nl_query_helper = None  # Handles read-only query operations
 
-        # ADR-019: Session continuity components (Phase 1)
+        # ADR-019: Session continuity components (Phase 1-3)
         self.session_manager = None  # OrchestratorSessionManager for self-handoff
         self.checkpoint_verifier = None  # CheckpointVerifier for integrity checks
         self.orchestrator_context_manager = None  # From ADR-018
+        self.decision_record_generator = None  # Phase 2: DecisionRecordGenerator for ADR-format records
+        self.progress_reporter = None  # Phase 2: ProgressReporter for structured progress tracking
+        self.session_metrics_collector = None  # Phase 3: SessionMetricsCollector for analytics
 
         # Runtime state
         self.current_project: Optional[ProjectState] = None
@@ -1029,6 +1032,11 @@ class Orchestrator:
                 self._initialize_monitoring()
                 self._initialize_session_continuity()  # ADR-019
 
+                # Connect DecisionEngine to DecisionRecordGenerator (ADR-019 Phase 2)
+                if self.decision_engine and self.decision_record_generator:
+                    self.decision_engine.decision_record_generator = self.decision_record_generator
+                    logger.debug("Connected DecisionEngine to DecisionRecordGenerator")
+
                 self._state = OrchestratorState.INITIALIZED
                 logger.info("Orchestrator initialized successfully")
 
@@ -1282,15 +1290,22 @@ class Orchestrator:
             logger.info("File monitoring started")
 
     def _initialize_session_continuity(self) -> None:
-        """Initialize session continuity components (ADR-019).
+        """Initialize session continuity components (ADR-019 Phase 1-3).
 
         Initializes:
-        - CheckpointVerifier: Pre/post checkpoint validation
-        - OrchestratorSessionManager: LLM lifecycle and self-handoff
+        - Phase 1: CheckpointVerifier, OrchestratorSessionManager
+        - Phase 2: DecisionRecordGenerator, ProgressReporter
+        - Phase 3: SessionMetricsCollector
         - Integration with ADR-018 OrchestratorContextManager (if available)
         """
         try:
-            from src.orchestration.session import CheckpointVerifier, OrchestratorSessionManager
+            from src.orchestration.session import (
+                CheckpointVerifier,
+                OrchestratorSessionManager,
+                DecisionRecordGenerator,
+                ProgressReporter,
+                SessionMetricsCollector
+            )
 
             # Check if ADR-018 components available
             # OrchestratorContextManager and CheckpointManager from ADR-018
@@ -1298,7 +1313,7 @@ class Orchestrator:
                 logger.info("ADR-018 OrchestratorContextManager not available - session continuity disabled")
                 return
 
-            # Initialize CheckpointVerifier
+            # Phase 1: Initialize CheckpointVerifier
             # Note: GitManager may not be initialized yet, will need lazy init
             git_manager = getattr(self, 'git_manager', None)
             if not git_manager:
@@ -1311,31 +1326,57 @@ class Orchestrator:
                 state_manager=self.state_manager
             )
 
-            # Initialize OrchestratorSessionManager
+            # Phase 1: Initialize OrchestratorSessionManager
             # Requires: llm_interface, checkpoint_manager (ADR-018), orchestrator_context_manager (ADR-018)
             checkpoint_manager = getattr(self, 'checkpoint_manager', None)
             if not checkpoint_manager:
                 logger.info("ADR-018 CheckpointManager not available - session manager disabled")
                 return
 
+            # Phase 2: Initialize DecisionRecordGenerator
+            self.decision_record_generator = DecisionRecordGenerator(
+                config=self.config,
+                state_manager=self.state_manager
+            )
+
+            # Phase 2: Initialize ProgressReporter
+            production_logger = getattr(self, 'production_logger', None)
+            self.progress_reporter = ProgressReporter(
+                config=self.config,
+                production_logger=production_logger
+            )
+
+            # Phase 3: Initialize SessionMetricsCollector
+            self.session_metrics_collector = SessionMetricsCollector(
+                config=self.config
+            )
+
+            # Phase 1: Initialize OrchestratorSessionManager (after Phase 3 components)
             self.session_manager = OrchestratorSessionManager(
                 config=self.config,
                 llm_interface=self.llm_interface,
                 checkpoint_manager=checkpoint_manager,
                 context_manager=self.orchestrator_context_manager,
-                checkpoint_verifier=self.checkpoint_verifier
+                checkpoint_verifier=self.checkpoint_verifier,
+                session_metrics_collector=self.session_metrics_collector
             )
 
-            logger.info("Session continuity components initialized (ADR-019)")
+            logger.info("Session continuity components initialized (ADR-019 Phase 1-3)")
 
         except ImportError as e:
             logger.info(f"Session continuity not available: {e}")
             self.session_manager = None
             self.checkpoint_verifier = None
+            self.decision_record_generator = None
+            self.progress_reporter = None
+            self.session_metrics_collector = None
         except Exception as e:
             logger.warning(f"Failed to initialize session continuity: {e}")
             self.session_manager = None
             self.checkpoint_verifier = None
+            self.decision_record_generator = None
+            self.progress_reporter = None
+            self.session_metrics_collector = None
 
     def _check_and_handle_self_handoff(self) -> None:
         """Check if Orchestrator context exceeds threshold and trigger self-handoff.
@@ -2009,6 +2050,33 @@ class Orchestrator:
                 logger.info(f"Executing NL command via orchestrator: task_id={task.id}")
                 execution_result = self.execute_task(task.id, interactive=interactive)
 
+                # ADR-019 Phase 2: Report progress after NL command execution
+                if self.progress_reporter and hasattr(self, 'session_manager') and self.session_manager:
+                    try:
+                        session_id = getattr(self.session_manager, 'current_session_id', None)
+                        if session_id:
+                            report = self.progress_reporter.generate_progress_report(
+                                session_id=session_id,
+                                operation='nl_command',
+                                status='success' if execution_result.get('success', False) else 'failure',
+                                task=task,
+                                result=execution_result,
+                                context_mgr=self.orchestrator_context_manager
+                            )
+                            self.progress_reporter.log_progress(report)
+                    except Exception as e:
+                        logger.warning(f"Failed to report NL command progress: {e}")
+
+                # ADR-019 Phase 3: Collect metrics after NL command
+                if self.session_metrics_collector:
+                    try:
+                        self.session_metrics_collector.record_operation(
+                            operation_type='nl_command',
+                            context_mgr=self.orchestrator_context_manager
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to collect NL command metrics: {e}")
+
                 # Format response
                 return {
                     'success': execution_result.get('success', False),
@@ -2343,6 +2411,37 @@ class Orchestrator:
                     f"TASK END: task_id={task_id}, status={result['status']}, "
                     f"iterations={result.get('iterations', 0)}, max_iterations={max_iterations}"
                 )
+
+                # ADR-019 Phase 2: Report progress after task execution
+                if self.progress_reporter and hasattr(self, 'session_manager') and self.session_manager:
+                    try:
+                        session_id = getattr(self.session_manager, 'current_session_id', None) or temp_session_id
+                        if session_id:
+                            report = self.progress_reporter.generate_progress_report(
+                                session_id=session_id,
+                                operation='task_execution',
+                                status='success' if result.get('status') == 'completed' else 'failure',
+                                task=self.current_task,
+                                result=result,
+                                context_mgr=self.orchestrator_context_manager
+                            )
+                            self.progress_reporter.log_progress(report)
+                    except Exception as e:
+                        logger.warning(f"Failed to report progress: {e}")
+
+                # ADR-019 Phase 3: Collect metrics after task execution
+                if self.session_metrics_collector:
+                    try:
+                        # Get decision action from result if available
+                        decision = result.get('action')  # May not always be present
+                        self.session_metrics_collector.record_operation(
+                            operation_type='task_execution',
+                            context_mgr=self.orchestrator_context_manager,
+                            decision=decision
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to collect metrics: {e}")
+
                 return result
 
             except TaskStoppedException as e:

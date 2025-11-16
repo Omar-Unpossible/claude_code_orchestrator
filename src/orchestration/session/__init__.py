@@ -27,6 +27,7 @@ from src.orchestration.session.progress_reporter import (
     ProgressReporter,
     ProgressReport
 )
+from src.orchestration.session.session_metrics_collector import SessionMetricsCollector
 
 __all__ = [
     'OrchestratorSessionManager',
@@ -37,4 +38,5 @@ __all__ = [
     'DecisionRecord',
     'ProgressReporter',
     'ProgressReport',
+    'SessionMetricsCollector',
 ]

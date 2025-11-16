@@ -65,7 +65,8 @@ class OrchestratorSessionManager:
         llm_interface: Any,  # Type: LocalLLMInterface (future: will have disconnect/connect)
         checkpoint_manager: Any,  # Type: CheckpointManager from ADR-018
         context_manager: Any,  # Type: OrchestratorContextManager from ADR-018
-        checkpoint_verifier: Any  # Type: CheckpointVerifier
+        checkpoint_verifier: Any,  # Type: CheckpointVerifier
+        session_metrics_collector: Any = None  # Type: SessionMetricsCollector (ADR-019 Phase 3)
     ):
         """Initialize Orchestrator session manager.
 
@@ -75,6 +76,7 @@ class OrchestratorSessionManager:
             checkpoint_manager: Checkpoint manager from ADR-018
             context_manager: Context manager from ADR-018
             checkpoint_verifier: Checkpoint integrity verifier
+            session_metrics_collector: Optional session metrics collector (ADR-019 Phase 3)
 
         Raises:
             ValueError: If required config missing
@@ -84,6 +86,7 @@ class OrchestratorSessionManager:
         self.checkpoint_manager = checkpoint_manager
         self.context_manager = context_manager
         self.checkpoint_verifier = checkpoint_verifier
+        self.session_metrics_collector = session_metrics_collector
 
         # Session state
         self.current_session_id = str(uuid.uuid4())
@@ -176,6 +179,23 @@ class OrchestratorSessionManager:
                     }
                 )
                 logger.info(f"Checkpoint created: {checkpoint_id}")
+
+            # ADR-019 Phase 3: Generate session summary before handoff
+            if self.session_metrics_collector and self.session_metrics_collector.enabled:
+                try:
+                    # Record handoff event
+                    context_usage = self.context_manager.get_usage_percentage()
+                    self.session_metrics_collector.record_handoff(checkpoint_id, context_usage)
+
+                    # Generate and log summary
+                    if self.session_metrics_collector.summary_on_handoff:
+                        summary = self.session_metrics_collector.generate_session_summary()
+                        logger.info(f"Session summary before handoff:\n{summary}")
+
+                    # Reset metrics for new session
+                    self.session_metrics_collector.reset_session()
+                except Exception as e:
+                    logger.warning(f"Failed to generate session summary: {e}")
 
             # Step 3: Disconnect current LLM
             self._disconnect_llm()

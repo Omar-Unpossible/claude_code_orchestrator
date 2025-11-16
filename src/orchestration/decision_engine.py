@@ -135,7 +135,8 @@ class DecisionEngine:
         self,
         state_manager: StateManager,
         breakpoint_manager: BreakpointManager,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        decision_record_generator: Any = None  # Optional DecisionRecordGenerator (ADR-019 Phase 2)
     ):
         """Initialize decision engine.
 
@@ -143,10 +144,12 @@ class DecisionEngine:
             state_manager: StateManager instance
             breakpoint_manager: BreakpointManager instance
             config: Optional configuration dictionary
+            decision_record_generator: Optional DecisionRecordGenerator for ADR-format records (ADR-019 Phase 2)
         """
         self.state_manager = state_manager
         self.breakpoint_manager = breakpoint_manager
         self.config = config or {}
+        self.decision_record_generator = decision_record_generator
         self._lock = RLock()
 
         # Load thresholds from config
@@ -634,7 +637,7 @@ class DecisionEngine:
         action: Action,
         context: Dict[str, Any]
     ) -> None:
-        """Record decision in history.
+        """Record decision in history and generate decision record if significant.
 
         Args:
             action: Action that was decided
@@ -645,3 +648,12 @@ class DecisionEngine:
         # Keep history limited to last 1000 decisions
         if len(self._decision_history) > 1000:
             self._decision_history = self._decision_history[-1000:]
+
+        # ADR-019 Phase 2: Generate decision record if significant
+        if self.decision_record_generator and self.decision_record_generator.is_significant(action):
+            try:
+                dr = self.decision_record_generator.generate_decision_record(action, context)
+                self.decision_record_generator.save_decision_record(dr)
+                logger.debug(f"Generated decision record: {dr.dr_id}")
+            except Exception as e:
+                logger.warning(f"Failed to generate decision record: {e}")
