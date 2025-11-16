@@ -126,6 +126,11 @@ class Orchestrator:
         self.intent_to_task_converter = None  # Converts OperationContext → Task
         self.nl_query_helper = None  # Handles read-only query operations
 
+        # ADR-019: Session continuity components (Phase 1)
+        self.session_manager = None  # OrchestratorSessionManager for self-handoff
+        self.checkpoint_verifier = None  # CheckpointVerifier for integrity checks
+        self.orchestrator_context_manager = None  # From ADR-018
+
         # Runtime state
         self.current_project: Optional[ProjectState] = None
         self.current_task: Optional[Task] = None
@@ -1022,6 +1027,7 @@ class Orchestrator:
                 self._initialize_orchestration()
                 self._initialize_complexity_estimator()
                 self._initialize_monitoring()
+                self._initialize_session_continuity()  # ADR-019
 
                 self._state = OrchestratorState.INITIALIZED
                 logger.info("Orchestrator initialized successfully")
@@ -1274,6 +1280,127 @@ class Orchestrator:
             )
             self.file_watcher.start_watching()
             logger.info("File monitoring started")
+
+    def _initialize_session_continuity(self) -> None:
+        """Initialize session continuity components (ADR-019).
+
+        Initializes:
+        - CheckpointVerifier: Pre/post checkpoint validation
+        - OrchestratorSessionManager: LLM lifecycle and self-handoff
+        - Integration with ADR-018 OrchestratorContextManager (if available)
+        """
+        try:
+            from src.orchestration.session import CheckpointVerifier, OrchestratorSessionManager
+
+            # Check if ADR-018 components available
+            # OrchestratorContextManager and CheckpointManager from ADR-018
+            if not hasattr(self, 'orchestrator_context_manager'):
+                logger.info("ADR-018 OrchestratorContextManager not available - session continuity disabled")
+                return
+
+            # Initialize CheckpointVerifier
+            # Note: GitManager may not be initialized yet, will need lazy init
+            git_manager = getattr(self, 'git_manager', None)
+            if not git_manager:
+                # Create placeholder - CheckpointVerifier will handle None gracefully
+                logger.warning("GitManager not available - git verification disabled")
+
+            self.checkpoint_verifier = CheckpointVerifier(
+                config=self.config,
+                git_manager=git_manager,
+                state_manager=self.state_manager
+            )
+
+            # Initialize OrchestratorSessionManager
+            # Requires: llm_interface, checkpoint_manager (ADR-018), orchestrator_context_manager (ADR-018)
+            checkpoint_manager = getattr(self, 'checkpoint_manager', None)
+            if not checkpoint_manager:
+                logger.info("ADR-018 CheckpointManager not available - session manager disabled")
+                return
+
+            self.session_manager = OrchestratorSessionManager(
+                config=self.config,
+                llm_interface=self.llm_interface,
+                checkpoint_manager=checkpoint_manager,
+                context_manager=self.orchestrator_context_manager,
+                checkpoint_verifier=self.checkpoint_verifier
+            )
+
+            logger.info("Session continuity components initialized (ADR-019)")
+
+        except ImportError as e:
+            logger.info(f"Session continuity not available: {e}")
+            self.session_manager = None
+            self.checkpoint_verifier = None
+        except Exception as e:
+            logger.warning(f"Failed to initialize session continuity: {e}")
+            self.session_manager = None
+            self.checkpoint_verifier = None
+
+    def _check_and_handle_self_handoff(self) -> None:
+        """Check if Orchestrator context exceeds threshold and trigger self-handoff.
+
+        Called before task/NL command execution to ensure Orchestrator LLM
+        has sufficient context capacity.
+
+        Raises:
+            OrchestratorException: If handoff fails
+        """
+        # Check if session manager available (ADR-019)
+        if not self.session_manager:
+            return
+
+        # Check if context manager available (ADR-018)
+        if not hasattr(self, 'orchestrator_context_manager') or not self.orchestrator_context_manager:
+            return
+
+        # Get current context zone
+        try:
+            zone = self.orchestrator_context_manager.get_zone()
+            usage_pct = self.orchestrator_context_manager.get_usage_percentage()
+
+            # Check if handoff needed (red zone = >85%)
+            trigger_zone = self.config.get(
+                'orchestrator.session_continuity.self_handoff.trigger_zone', 'red'
+            )
+
+            if zone == trigger_zone:
+                logger.warning(
+                    f"Orchestrator context at {usage_pct:.1%} ({zone} zone) - "
+                    f"triggering self-handoff"
+                )
+
+                # Notify user
+                self._print_orch(
+                    f"⚠ Context full ({usage_pct:.1%}) - restarting with checkpoint..."
+                )
+
+                # Trigger self-handoff
+                checkpoint_id = self.session_manager.restart_orchestrator_with_checkpoint()
+
+                # Log success
+                logger.info(f"Self-handoff complete: checkpoint={checkpoint_id}")
+                self._print_orch(
+                    f"✓ Orchestrator restarted with checkpoint {checkpoint_id}"
+                )
+
+                # Log to production logger
+                if self.production_logger:
+                    self.production_logger.log_event(
+                        event='orchestrator_handoff',
+                        data={
+                            'checkpoint_id': checkpoint_id,
+                            'context_usage': usage_pct,
+                            'zone': zone,
+                            'session_id': self.session_manager.get_current_session_id(),
+                            'handoff_count': self.session_manager.get_handoff_count()
+                        }
+                    )
+
+        except Exception as e:
+            # Log error but don't block execution
+            logger.error(f"Self-handoff failed: {e}", exc_info=True)
+            self._print_orch(f"⚠ Self-handoff failed: {e} - continuing without handoff")
 
     # =========================================================================
     # LLM RECONNECTION & CONFIGURATION
@@ -1743,6 +1870,9 @@ class Orchestrator:
         # Import here to avoid circular imports
         from src.nl.types import ParsedIntent, OperationType
 
+        # ADR-019: Check for Orchestrator self-handoff (context >85%)
+        self._check_and_handle_self_handoff()
+
         # 1. Validate ParsedIntent structure
         if not isinstance(parsed_intent, ParsedIntent):
             raise ValueError(f"Expected ParsedIntent, got {type(parsed_intent)}")
@@ -1970,6 +2100,9 @@ class Orchestrator:
                     context={'llm_interface': str(self.llm_interface)},
                     recovery="Call orchestrator.reconnect_llm() to connect to LLM service"
                 )
+
+            # ADR-019: Check for Orchestrator self-handoff (context >85%)
+            self._check_and_handle_self_handoff()
 
             # BUG-PHASE4-002 FIX: Create temporary session for standalone execution
             # Check if we're already in an epic session
