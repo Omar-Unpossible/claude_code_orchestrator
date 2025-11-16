@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-019: Orchestrator Session Continuity (Phase 1)** - Core Session Management:
+  - **OrchestratorSessionManager**: LLM lifecycle management and self-handoff
+    - Automatic restart when Orchestrator context exceeds 85% (red zone)
+    - Disconnect/reconnect with retry logic (3 attempts, exponential backoff)
+    - Checkpoint context loading and injection into fresh LLM instance
+    - Session tracking (UUID session IDs, handoff counter, max handoff limit)
+  - **CheckpointVerifier**: Pre/post checkpoint integrity validation
+    - Pre-checkpoint checks: git clean, tests passing, coverage ≥90%, task boundary
+    - Post-resume checks: files exist, branch matches, checkpoint age <168h
+    - Configurable checks (enable/disable individually)
+    - Quick test runner (pytest --quiet --maxfail=1, 30s timeout)
+  - **Orchestrator Integration**:
+    - Self-handoff triggers in execute_task() and execute_nl_command()
+    - User notifications: "⚠ Context full - restarting with checkpoint..."
+    - Production logging: orchestrator_handoff events
+    - Graceful degradation (works without ADR-018 components)
+  - **Files**: `src/orchestration/session/orchestrator_session_manager.py`, `src/orchestration/session/checkpoint_verifier.py`, `src/orchestrator.py`
+  - **Status**: Phase 1 complete (Weeks 1-2), Phase 2 pending (Decision Records, Progress Reporting)
+  - **Next**: Unit tests (≥90% coverage), then Phase 2 implementation
+
 ## [1.8.1] - 2025-11-15
 
 ### Fixed
