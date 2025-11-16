@@ -118,11 +118,12 @@ class DeliverableAssessor:
 
         logger.debug("DeliverableAssessor initialized")
 
-    def assess_deliverables(self, task: Task) -> DeliverableAssessment:
+    def assess_deliverables(self, task: Task, file_watcher=None) -> DeliverableAssessment:
         """Assess deliverables created during task execution.
 
         Args:
             task: Task instance to assess
+            file_watcher: Optional FileWatcher instance (overrides self.file_watcher)
 
         Returns:
             DeliverableAssessment with outcome, files, and quality score
@@ -135,7 +136,7 @@ class DeliverableAssessor:
         logger.info(f"Assessing deliverables for task {task.id}")
 
         # Get files created/modified since task started
-        new_files = self._get_task_files(task)
+        new_files = self._get_task_files(task, file_watcher=file_watcher)
 
         if not new_files:
             return DeliverableAssessment(
@@ -199,27 +200,46 @@ class DeliverableAssessor:
             estimated_completeness=completeness
         )
 
-    def _get_task_files(self, task: Task) -> List[str]:
+    def _get_task_files(self, task: Task, file_watcher=None) -> List[str]:
         """Get files created/modified during task execution.
 
         Args:
             task: Task instance
+            file_watcher: Optional FileWatcher instance (overrides self.file_watcher)
 
         Returns:
             List of file paths created/modified since task started
         """
-        if not self.file_watcher:
+        # Use provided file_watcher or fall back to self.file_watcher
+        watcher = file_watcher if file_watcher is not None else self.file_watcher
+
+        if not watcher:
             logger.warning("FileWatcher not available, cannot detect files")
             return []
 
         try:
-            # Get changes since task creation
-            changes = self.file_watcher.get_changes_since(task.created_at)
-            files = [change['path'] for change in changes if change.get('path')]
-            logger.debug(f"FileWatcher detected {len(files)} files for task {task.id}")
+            # Get recent changes from FileWatcher
+            # Note: For now, we get all recent changes since we don't have reliable session start time
+            # TODO: Pass session_start_time from orchestrator for accurate filtering
+            all_changes = watcher.get_recent_changes(limit=100)
+            logger.info(f"Retrieved {len(all_changes)} changes from FileWatcher for task {task.id}")
+
+            # Extract unique file paths
+            files = []
+            for change in all_changes:
+                # Handle both 'file_path' and 'path' keys
+                file_path = change.get('file_path') or change.get('path')
+                if file_path and file_path not in files:
+                    # Only include 'created' and 'modified' changes, skip 'deleted'
+                    change_type = change.get('change_type', 'unknown')
+                    if change_type in ('created', 'modified'):
+                        files.append(file_path)
+                        logger.debug(f"Added {change_type} file: {file_path}")
+
+            logger.info(f"FileWatcher detected {len(files)} deliverable files for task {task.id}")
             return files
         except Exception as e:
-            logger.error(f"Failed to get file changes: {e}")
+            logger.error(f"Failed to get file changes: {e}", exc_info=True)
             return []
 
     def _is_valid_syntax(self, file_path: str) -> bool:

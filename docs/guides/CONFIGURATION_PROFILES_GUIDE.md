@@ -474,6 +474,137 @@ Start
 | **Task Dependencies** | ❌ Disabled | ❌ Disabled | ❌ Disabled | ❌ Disabled | ✅ Enabled | ✅ Enabled |
 | **Best For** | Prototypes | Python libs | Web apps | ML/AI | Microservices | Production |
 
+---
+
+## Max_Turns Configuration (v1.8.1 Updates)
+
+**Important Changes in v1.8.1**: Default max_turns values have been significantly increased based on production testing.
+
+### New Defaults (v1.8.1)
+
+```yaml
+max_turns:
+  # Fallback value if adaptive calculation fails
+  default: 50  # Increased from 10 (5× increase)
+
+  # Task-type specific overrides
+  by_task_type:
+    validation: 5
+    code_generation: 12
+    refactoring: 15
+    debugging: 20
+    error_analysis: 8
+    planning: 5
+    documentation: 3
+    testing: 8
+
+  # NEW: Obra task type specific limits
+  by_obra_task_type:
+    TASK: 30        # Simple technical tasks
+    STORY: 50       # User stories (default)
+    EPIC: 100       # Large epics (batch execution)
+    SUBTASK: 20     # Granular subtasks
+
+  # Safety bounds
+  min: 3          # Never less than 3 turns
+  max: 150        # Increased from 30 (5× increase)
+
+  # Retry behavior when max_turns limit hit
+  auto_retry: true
+  max_retries: 1           # Number of retry attempts
+  retry_multiplier: 3      # Increased from 2 (50% increase)
+```
+
+### How Max_Turns is Calculated
+
+**Priority Order** (highest to lowest):
+1. **obra_task_type** - Based on TaskType enum (TASK, STORY, EPIC, SUBTASK)
+2. **task_type** - Based on specific work type (validation, code_generation, etc.)
+3. **adaptive** - Based on estimated complexity (if enabled)
+4. **default** - Fallback value (50)
+
+**Example Calculation**:
+```python
+# Story with code_generation task_type
+Task type: STORY
+Work type: code_generation
+Result: max_turns = 50  # Uses STORY from by_obra_task_type (higher priority)
+
+# Task with debugging work type
+Task type: TASK
+Work type: debugging
+Result: max_turns = 30  # Uses TASK from by_obra_task_type
+```
+
+### Retry Behavior
+
+When a task hits the max_turns limit:
+
+1. **First Attempt**: Uses calculated max_turns (e.g., 50 for STORY)
+2. **Retry Attempt**: Multiplies by retry_multiplier (e.g., 50 × 3 = 150)
+3. **Safety Limit**: Never exceeds max (150)
+
+**Example Flow**:
+```
+Story task execution:
+- Attempt 1: max_turns = 50
+- If exceeded: Retry with max_turns = 150 (50 × 3)
+- If still exceeded: Deliverable assessment runs
+- Outcome: SUCCESS_WITH_LIMITS or PARTIAL (not FAILED if deliverables exist)
+```
+
+### Deliverable-Based Success (v1.8.1)
+
+**New Feature**: When max_turns is exhausted, Obra assesses deliverables before marking task as FAILED.
+
+**Assessment Criteria**:
+- Files created/modified during task execution
+- Syntax validation (Python, JSON, YAML)
+- Quality heuristics (file size, content patterns)
+- Overall quality score (0.0-1.0)
+
+**Possible Outcomes**:
+- **SUCCESS_WITH_LIMITS** (quality ≥ 0.7): Working code delivered, hit turn limit
+- **PARTIAL** (quality ≥ 0.5): Incomplete but valuable work
+- **FAILED** (quality < 0.5 or no files): Legitimate failure
+
+**Example**:
+```bash
+# Task hits max_turns=150 but creates 7 valid Python files
+# Old behavior: FAILED
+# New behavior: SUCCESS_WITH_LIMITS (quality_score=0.82)
+```
+
+### Migration Guide for Custom Profiles
+
+If you have **custom max_turns settings** in your profiles:
+
+**Action Required**: Review and potentially increase your limits
+
+**Recommended Increases**:
+- **default**: Increase by 5× (e.g., 10 → 50)
+- **max**: Increase by 5× (e.g., 30 → 150)
+- **retry_multiplier**: Increase to 3 (from 2)
+
+**Example Migration**:
+```yaml
+# Before (v1.8.0)
+max_turns:
+  default: 12
+  max: 30
+  retry_multiplier: 2
+
+# After (v1.8.1)
+max_turns:
+  default: 60      # 12 × 5
+  max: 150         # 30 × 5
+  retry_multiplier: 3
+```
+
+**Backward Compatibility**: All changes are backward compatible. Existing configurations will continue to work, but may benefit from increased limits.
+
+---
+
 ## Advanced Usage
 
 ### Combining Profiles with Overrides

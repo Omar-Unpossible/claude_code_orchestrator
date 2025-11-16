@@ -2152,8 +2152,10 @@ class Orchestrator:
                                 )
 
                                 # NEW (v1.8.1): Assess deliverables to check for partial success
+                                # BUG FIX: Pass file_watcher explicitly to avoid initialization order issues
                                 deliverable_assessment = self.deliverable_assessor.assess_deliverables(
-                                    self.current_task
+                                    self.current_task,
+                                    file_watcher=self.file_watcher
                                 )
 
                                 if deliverable_assessment.outcome in [TaskOutcome.SUCCESS_WITH_LIMITS, TaskOutcome.PARTIAL]:
