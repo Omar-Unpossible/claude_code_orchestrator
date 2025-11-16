@@ -435,9 +435,9 @@ class Config:
     def _validate_max_turns(self) -> None:
         """Validate max_turns configuration.
 
-        Rules:
+        Rules (updated v1.8.1 for Issue #1):
         - min >= 3 (minimum for meaningful iteration)
-        - max <= 30 (prevent infinite loops)
+        - max <= 200 (prevent infinite loops, increased from 30 for complex stories)
         - default between min and max
         - retry_multiplier >= 1.0
 
@@ -467,7 +467,7 @@ class Config:
                     got=str(min_turns)
                 )
 
-        # Validate max
+        # Validate max (v1.8.1: increased from 30 to 200 for complex stories)
         max_value = max_turns.get('max')
         if max_value is not None:
             if not isinstance(max_value, int):
@@ -476,10 +476,10 @@ class Config:
                     expected='integer',
                     got=type(max_value).__name__
                 )
-            if max_value > 30:
+            if max_value > 200:
                 raise ConfigValidationException(
                     config_key=f'{max_turns_path}.max',
-                    expected='integer <= 30',
+                    expected='integer <= 200',
                     got=str(max_value)
                 )
 

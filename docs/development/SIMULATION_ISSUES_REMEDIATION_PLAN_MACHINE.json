@@ -1,0 +1,842 @@
+{
+  "plan_metadata": {
+    "version": "1.0",
+    "date": "2025-11-15",
+    "based_on": "OBRA_SIMULATION_RESULTS_2025-11-15.md",
+    "target_version": "v1.8.1",
+    "estimated_duration_hours": 3.5,
+    "complexity": "medium",
+    "risk_level": "low"
+  },
+  "issues": [
+    {
+      "issue_id": "ISSUE-001",
+      "title": "Max_Turns Configuration Too Low",
+      "severity": "P0-CRITICAL",
+      "components": [
+        "src/agents/claude_code_local.py",
+        "config/config.yaml",
+        "src/orchestrator.py"
+      ],
+      "root_cause": "Fixed max_turns (10) insufficient for complex stories",
+      "impact": "Tasks marked failed despite delivering working code",
+      "solution_type": "configuration_change",
+      "estimated_time_minutes": 40
+    },
+    {
+      "issue_id": "ISSUE-002",
+      "title": "False Failure Detection",
+      "severity": "P0-CRITICAL",
+      "components": [
+        "src/orchestrator.py",
+        "src/orchestration/decision_engine.py",
+        "src/core/models.py"
+      ],
+      "root_cause": "Max_turns exception causes immediate failure without deliverable assessment",
+      "impact": "Working deliverables discarded, no partial success recognition",
+      "solution_type": "architectural_change",
+      "estimated_time_minutes": 100
+    },
+    {
+      "issue_id": "ISSUE-003",
+      "title": "Production Logging Gaps",
+      "severity": "P1-HIGH",
+      "components": [
+        "src/cli.py",
+        "src/monitoring/production_logger.py",
+        "src/orchestrator.py"
+      ],
+      "root_cause": "ProductionLogger only initialized for NL command flow",
+      "impact": "CLI workflows not monitored, no debugging data",
+      "solution_type": "integration_change",
+      "estimated_time_minutes": 90
+    }
+  ],
+  "implementation_phases": [
+    {
+      "phase_id": "PHASE-1",
+      "title": "Critical Fixes (P0)",
+      "priority": 1,
+      "estimated_duration_minutes": 140,
+      "issues": ["ISSUE-001", "ISSUE-002"],
+      "blocking": true
+    },
+    {
+      "phase_id": "PHASE-2",
+      "title": "High Priority (P1)",
+      "priority": 2,
+      "estimated_duration_minutes": 90,
+      "issues": ["ISSUE-003"],
+      "blocking": false
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "TASK-001-1",
+      "issue_id": "ISSUE-001",
+      "title": "Update default max_turns configuration",
+      "type": "config_change",
+      "files": ["config/config.yaml"],
+      "estimated_minutes": 5,
+      "priority": 1,
+      "dependencies": [],
+      "changes": [
+        {
+          "file": "config/config.yaml",
+          "type": "update",
+          "path": "agent.config.max_turns",
+          "old_value": 10,
+          "new_value": 50
+        },
+        {
+          "file": "config/config.yaml",
+          "type": "update",
+          "path": "agent.config.max_turns_multiplier",
+          "old_value": 2,
+          "new_value": 3
+        },
+        {
+          "file": "config/config.yaml",
+          "type": "add",
+          "path": "agent.config.max_turns_by_task_type",
+          "value": {
+            "TASK": 30,
+            "STORY": 50,
+            "EPIC": 100,
+            "SUBTASK": 20
+          }
+        }
+      ],
+      "validation": {
+        "type": "config_load",
+        "expected": "Config loads successfully with new values"
+      }
+    },
+    {
+      "task_id": "TASK-001-2",
+      "issue_id": "ISSUE-001",
+      "title": "Add task-type specific turn limits",
+      "type": "code_change",
+      "files": ["src/agents/claude_code_local.py"],
+      "estimated_minutes": 10,
+      "priority": 2,
+      "dependencies": ["TASK-001-1"],
+      "changes": [
+        {
+          "file": "src/agents/claude_code_local.py",
+          "type": "modify",
+          "method": "send_prompt",
+          "description": "Add task_type lookup for max_turns",
+          "pseudocode": [
+            "Get task_type from context",
+            "Check config.agent.config.max_turns_by_task_type[task_type]",
+            "Fallback to default max_turns if not found",
+            "Use task-type specific limit"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "unit_test",
+        "test_file": "tests/test_claude_code_local.py",
+        "test_cases": [
+          "test_max_turns_task_type_story",
+          "test_max_turns_task_type_epic",
+          "test_max_turns_fallback_default"
+        ]
+      }
+    },
+    {
+      "task_id": "TASK-001-3",
+      "issue_id": "ISSUE-001",
+      "title": "Update retry logic with new multiplier",
+      "type": "code_change",
+      "files": ["src/orchestrator.py"],
+      "estimated_minutes": 10,
+      "priority": 3,
+      "dependencies": ["TASK-001-2"],
+      "changes": [
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "_execute_single_task",
+          "description": "Use new max_turns_multiplier (3x)",
+          "pseudocode": [
+            "On max_turns exception",
+            "Calculate new_max_turns = original * multiplier (3)",
+            "Log turn limit increase",
+            "Retry with new limit"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "test_file": "tests/integration/test_max_turns_retry.py",
+        "expected": "Task retries with 150 turns (50 * 3)"
+      }
+    },
+    {
+      "task_id": "TASK-001-4",
+      "issue_id": "ISSUE-001",
+      "title": "Add turn budget to agent context",
+      "type": "code_change",
+      "files": ["src/orchestrator.py"],
+      "estimated_minutes": 5,
+      "priority": 4,
+      "dependencies": ["TASK-001-2"],
+      "changes": [
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "_execute_single_task",
+          "description": "Add max_turns and estimated_turns to agent_context",
+          "pseudocode": [
+            "agent_context['max_turns'] = max_turns",
+            "agent_context['task_type'] = task.task_type",
+            "Pass enhanced context to agent"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "unit_test",
+        "test_file": "tests/test_orchestrator.py",
+        "test_cases": ["test_agent_context_includes_turn_budget"]
+      }
+    },
+    {
+      "task_id": "TASK-001-5",
+      "issue_id": "ISSUE-001",
+      "title": "Test max_turns configuration changes",
+      "type": "test",
+      "files": ["tests/integration/test_max_turns_config.py"],
+      "estimated_minutes": 10,
+      "priority": 5,
+      "dependencies": ["TASK-001-1", "TASK-001-2", "TASK-001-3", "TASK-001-4"],
+      "test_scenarios": [
+        {
+          "name": "story_completes_with_new_limits",
+          "description": "Story #9 completes successfully with 50 turn limit",
+          "expected_outcome": "Task completes without max_turns exception"
+        },
+        {
+          "name": "task_type_limits_applied",
+          "description": "SUBTASK uses 20 turns, STORY uses 50 turns",
+          "expected_outcome": "Correct limits applied per task type"
+        },
+        {
+          "name": "backward_compatibility",
+          "description": "Old configs without max_turns_by_task_type still work",
+          "expected_outcome": "Falls back to default max_turns"
+        }
+      ]
+    },
+    {
+      "task_id": "TASK-002-1",
+      "issue_id": "ISSUE-002",
+      "title": "Add TaskOutcome enum with partial success states",
+      "type": "code_change",
+      "files": ["src/core/models.py"],
+      "estimated_minutes": 5,
+      "priority": 6,
+      "dependencies": [],
+      "changes": [
+        {
+          "file": "src/core/models.py",
+          "type": "add",
+          "class": "TaskOutcome",
+          "base_class": "str, Enum",
+          "members": {
+            "SUCCESS": "success",
+            "SUCCESS_WITH_LIMITS": "success_limits",
+            "PARTIAL": "partial",
+            "FAILED": "failed",
+            "BLOCKED": "blocked"
+          }
+        }
+      ],
+      "validation": {
+        "type": "unit_test",
+        "test_file": "tests/test_models.py",
+        "test_cases": ["test_task_outcome_enum_values"]
+      }
+    },
+    {
+      "task_id": "TASK-002-2",
+      "issue_id": "ISSUE-002",
+      "title": "Create DeliverableAssessor class",
+      "type": "code_change",
+      "files": ["src/orchestration/deliverable_assessor.py"],
+      "estimated_minutes": 30,
+      "priority": 7,
+      "dependencies": ["TASK-002-1"],
+      "changes": [
+        {
+          "file": "src/orchestration/deliverable_assessor.py",
+          "type": "create",
+          "class": "DeliverableAssessor",
+          "methods": [
+            {
+              "name": "assess_deliverables",
+              "params": ["task: Task"],
+              "returns": "DeliverableAssessment",
+              "description": "Assess quality of deliverables created during task execution"
+            },
+            {
+              "name": "_is_valid_syntax",
+              "params": ["file_path: str"],
+              "returns": "bool",
+              "description": "Check if file has valid syntax (Python, JSON, YAML, etc)"
+            },
+            {
+              "name": "_assess_file_quality",
+              "params": ["files: List[str]"],
+              "returns": "float",
+              "description": "Lightweight quality assessment of created files"
+            }
+          ],
+          "dependencies": {
+            "file_watcher": "FileWatcher",
+            "quality_controller": "QualityController"
+          }
+        },
+        {
+          "file": "src/orchestration/deliverable_assessor.py",
+          "type": "create",
+          "dataclass": "DeliverableAssessment",
+          "fields": {
+            "outcome": "TaskOutcome",
+            "files": "List[str]",
+            "quality_score": "float",
+            "reason": "str",
+            "syntax_valid": "bool = True",
+            "estimated_completeness": "float = 1.0"
+          }
+        }
+      ],
+      "validation": {
+        "type": "unit_test",
+        "test_file": "tests/test_deliverable_assessor.py",
+        "test_cases": [
+          "test_assess_deliverables_success",
+          "test_assess_deliverables_no_files",
+          "test_syntax_validation_python",
+          "test_syntax_validation_json",
+          "test_quality_scoring"
+        ]
+      }
+    },
+    {
+      "task_id": "TASK-002-3",
+      "issue_id": "ISSUE-002",
+      "title": "Integrate DeliverableAssessor into Orchestrator",
+      "type": "code_change",
+      "files": ["src/orchestrator.py"],
+      "estimated_minutes": 20,
+      "priority": 8,
+      "dependencies": ["TASK-002-2"],
+      "changes": [
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "__init__",
+          "description": "Initialize DeliverableAssessor",
+          "pseudocode": [
+            "self.deliverable_assessor = DeliverableAssessor(self.file_watcher, self.quality_controller)"
+          ]
+        },
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "_execute_single_task",
+          "description": "Use DeliverableAssessor on max_turns exception",
+          "pseudocode": [
+            "try: execute task",
+            "except AgentException as e:",
+            "  if 'max_turns' in str(e):",
+            "    assessment = self.deliverable_assessor.assess_deliverables(task)",
+            "    if assessment.outcome in [SUCCESS_WITH_LIMITS, PARTIAL]:",
+            "      update_task with partial success",
+            "      return success result with warning",
+            "    else:",
+            "      raise (legitimate failure)"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "test_file": "tests/integration/test_deliverable_assessment.py",
+        "expected": "Max_turns exception triggers deliverable assessment"
+      }
+    },
+    {
+      "task_id": "TASK-002-4",
+      "issue_id": "ISSUE-002",
+      "title": "Update CLI output formatting for partial success",
+      "type": "code_change",
+      "files": ["src/cli.py"],
+      "estimated_minutes": 15,
+      "priority": 9,
+      "dependencies": ["TASK-002-3"],
+      "changes": [
+        {
+          "file": "src/cli.py",
+          "type": "modify",
+          "command": "task_execute",
+          "description": "Add color-coded output for each TaskOutcome state",
+          "output_formats": {
+            "SUCCESS": "✓ Task completed successfully (green)",
+            "SUCCESS_WITH_LIMITS": "⚠ Task completed with warnings (yellow) + deliverable summary",
+            "PARTIAL": "⚠ Task partially completed (yellow) + review recommendation",
+            "FAILED": "✗ Task failed (red)",
+            "BLOCKED": "⏸ Task blocked (yellow)"
+          }
+        }
+      ],
+      "validation": {
+        "type": "manual_test",
+        "description": "Run task_execute and verify output formatting",
+        "test_cases": [
+          "Successful task shows green checkmark",
+          "Max_turns task shows yellow warning with files created",
+          "Failed task shows red X"
+        ]
+      }
+    },
+    {
+      "task_id": "TASK-002-5",
+      "issue_id": "ISSUE-002",
+      "title": "Add tests for DeliverableAssessor",
+      "type": "test",
+      "files": ["tests/test_deliverable_assessor.py"],
+      "estimated_minutes": 20,
+      "priority": 10,
+      "dependencies": ["TASK-002-2"],
+      "test_cases": [
+        {
+          "name": "test_assess_deliverables_success_with_limits",
+          "description": "7 valid Python files created → SUCCESS_WITH_LIMITS",
+          "setup": "Mock FileWatcher with 7 files, valid syntax",
+          "expected": "outcome=SUCCESS_WITH_LIMITS, quality_score≥0.7"
+        },
+        {
+          "name": "test_assess_deliverables_no_files",
+          "description": "No files created → FAILED",
+          "setup": "Mock FileWatcher with empty list",
+          "expected": "outcome=FAILED, quality_score=0.0"
+        },
+        {
+          "name": "test_syntax_validation_python_valid",
+          "description": "Valid Python file passes syntax check",
+          "setup": "Create temp .py file with valid code",
+          "expected": "_is_valid_syntax returns True"
+        },
+        {
+          "name": "test_syntax_validation_python_invalid",
+          "description": "Invalid Python file fails syntax check",
+          "setup": "Create temp .py file with syntax error",
+          "expected": "_is_valid_syntax returns False"
+        },
+        {
+          "name": "test_quality_scoring_high",
+          "description": "Python file with docstrings, type hints → high score",
+          "setup": "Create temp .py with docstrings and type hints",
+          "expected": "quality_score ≥ 0.8"
+        }
+      ]
+    },
+    {
+      "task_id": "TASK-002-6",
+      "issue_id": "ISSUE-002",
+      "title": "Update StateManager for new TaskOutcome values",
+      "type": "code_change",
+      "files": ["src/core/state.py"],
+      "estimated_minutes": 10,
+      "priority": 11,
+      "dependencies": ["TASK-002-1"],
+      "changes": [
+        {
+          "file": "src/core/state.py",
+          "type": "modify",
+          "method": "update_task",
+          "description": "Accept new TaskOutcome enum values",
+          "validation": "Verify outcome column accepts all 5 enum values"
+        }
+      ],
+      "migration": {
+        "required": false,
+        "reason": "outcome column is VARCHAR, already accepts any string"
+      }
+    },
+    {
+      "task_id": "TASK-003-1",
+      "issue_id": "ISSUE-003",
+      "title": "Add global ProductionLogger pattern",
+      "type": "code_change",
+      "files": ["src/monitoring/production_logger.py"],
+      "estimated_minutes": 15,
+      "priority": 12,
+      "dependencies": [],
+      "changes": [
+        {
+          "file": "src/monitoring/production_logger.py",
+          "type": "add",
+          "function": "get_production_logger",
+          "returns": "Optional[ProductionLogger]",
+          "description": "Get global production logger instance"
+        },
+        {
+          "file": "src/monitoring/production_logger.py",
+          "type": "add",
+          "function": "initialize_production_logger",
+          "params": ["config: Config"],
+          "returns": "ProductionLogger",
+          "description": "Initialize global production logger"
+        },
+        {
+          "file": "src/monitoring/production_logger.py",
+          "type": "add",
+          "global_variable": "_production_logger_instance",
+          "type_hint": "Optional[ProductionLogger]",
+          "initial_value": null
+        }
+      ],
+      "validation": {
+        "type": "unit_test",
+        "test_file": "tests/test_production_logger.py",
+        "test_cases": [
+          "test_initialize_production_logger",
+          "test_get_production_logger_before_init",
+          "test_get_production_logger_after_init"
+        ]
+      }
+    },
+    {
+      "task_id": "TASK-003-2",
+      "issue_id": "ISSUE-003",
+      "title": "Update CLI main group to initialize logger",
+      "type": "code_change",
+      "files": ["src/cli.py"],
+      "estimated_minutes": 10,
+      "priority": 13,
+      "dependencies": ["TASK-003-1"],
+      "changes": [
+        {
+          "file": "src/cli.py",
+          "type": "modify",
+          "function": "cli",
+          "decorator": "@click.group() @click.pass_context",
+          "description": "Initialize ProductionLogger and pass in context",
+          "pseudocode": [
+            "config = Config.load()",
+            "prod_logger = initialize_production_logger(config)",
+            "ctx.obj = {'config': config, 'production_logger': prod_logger}"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "description": "CLI commands have access to production_logger in context"
+      }
+    },
+    {
+      "task_id": "TASK-003-3",
+      "issue_id": "ISSUE-003",
+      "title": "Add logging to task_execute command",
+      "type": "code_change",
+      "files": ["src/cli.py"],
+      "estimated_minutes": 15,
+      "priority": 14,
+      "dependencies": ["TASK-003-2"],
+      "changes": [
+        {
+          "file": "src/cli.py",
+          "type": "modify",
+          "command": "task_execute",
+          "description": "Log execution start, result, and errors",
+          "events_logged": [
+            "execution_start (task_id)",
+            "execution_result (task_id, outcome, quality_score, duration_ms)",
+            "error (if exception)"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "test_file": "tests/integration/test_cli_logging.py",
+        "expected": "task_execute logs appear in production.jsonl"
+      }
+    },
+    {
+      "task_id": "TASK-003-4",
+      "issue_id": "ISSUE-003",
+      "title": "Add logging to entity creation commands",
+      "type": "code_change",
+      "files": ["src/cli.py"],
+      "estimated_minutes": 20,
+      "priority": 15,
+      "dependencies": ["TASK-003-2"],
+      "changes": [
+        {
+          "file": "src/cli.py",
+          "type": "modify",
+          "commands": ["project_create", "epic_create", "story_create", "task_create"],
+          "description": "Log user_input and execution_result for entity creation",
+          "events_logged": [
+            "user_input (command + args)",
+            "execution_result (outcome=success, entities_affected)"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "test_file": "tests/integration/test_cli_logging.py",
+        "expected": "Entity creation logs appear in production.jsonl"
+      }
+    },
+    {
+      "task_id": "TASK-003-5",
+      "issue_id": "ISSUE-003",
+      "title": "Integrate ProductionLogger into Orchestrator",
+      "type": "code_change",
+      "files": ["src/orchestrator.py"],
+      "estimated_minutes": 15,
+      "priority": 16,
+      "dependencies": ["TASK-003-1"],
+      "changes": [
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "__init__",
+          "description": "Get global ProductionLogger instance",
+          "pseudocode": [
+            "self.production_logger = get_production_logger()",
+            "if self.production_logger:",
+            "  logger.info('Orchestrator using production logger')"
+          ]
+        },
+        {
+          "file": "src/orchestrator.py",
+          "type": "modify",
+          "method": "execute_task",
+          "description": "Log task execution events",
+          "events_logged": [
+            "execution_start (task_id)",
+            "execution_result (task_id, outcome, quality_score, confidence, duration_ms)",
+            "error (if exception)"
+          ]
+        }
+      ],
+      "validation": {
+        "type": "integration_test",
+        "description": "Orchestrator.execute_task logs events to production.jsonl"
+      }
+    },
+    {
+      "task_id": "TASK-003-6",
+      "issue_id": "ISSUE-003",
+      "title": "Test production logging coverage",
+      "type": "test",
+      "files": ["tests/integration/test_production_logging_coverage.py"],
+      "estimated_minutes": 15,
+      "priority": 17,
+      "dependencies": ["TASK-003-3", "TASK-003-4", "TASK-003-5"],
+      "test_scenarios": [
+        {
+          "name": "cli_project_create_logs",
+          "description": "obra project create logs user_input and execution_result",
+          "commands": ["obra project create 'Test Project'"],
+          "expected_events": ["user_input", "execution_result"]
+        },
+        {
+          "name": "cli_task_execute_logs",
+          "description": "obra task execute logs all execution events",
+          "commands": ["obra task execute 1"],
+          "expected_events": ["execution_start", "execution_result"]
+        },
+        {
+          "name": "production_log_schema_match",
+          "description": "CLI events match NL command event schema",
+          "validation": "Events have required fields: timestamp, event_type, session_id"
+        }
+      ]
+    }
+  ],
+  "validation_tests": {
+    "unit_tests": [
+      {
+        "file": "tests/test_deliverable_assessor.py",
+        "coverage_target": 0.9,
+        "critical": true
+      },
+      {
+        "file": "tests/test_production_logger.py",
+        "coverage_target": 0.85,
+        "critical": false
+      },
+      {
+        "file": "tests/test_models.py",
+        "coverage_target": 0.95,
+        "critical": false
+      }
+    ],
+    "integration_tests": [
+      {
+        "file": "tests/integration/test_max_turns_config.py",
+        "scenarios": 3,
+        "critical": true,
+        "description": "Validates Issue #1 fixes"
+      },
+      {
+        "file": "tests/integration/test_deliverable_assessment.py",
+        "scenarios": 5,
+        "critical": true,
+        "description": "Validates Issue #2 fixes"
+      },
+      {
+        "file": "tests/integration/test_cli_logging.py",
+        "scenarios": 4,
+        "critical": true,
+        "description": "Validates Issue #3 fixes"
+      }
+    ],
+    "regression_tests": [
+      {
+        "description": "NL command logging still works",
+        "test": "Run interactive mode, verify events logged"
+      },
+      {
+        "description": "Backward compatibility with old configs",
+        "test": "Load config without max_turns_by_task_type, verify default used"
+      },
+      {
+        "description": "No performance degradation",
+        "test": "Benchmark task execution, verify < 5% overhead"
+      }
+    ],
+    "validation_test": {
+      "description": "Full simulation retest",
+      "test_file": "docs/testing/OBRA_SIMULATION_TEST.md",
+      "expected_outcome": "All P0 criteria met, no false failures, production logs populated"
+    }
+  },
+  "documentation_updates": [
+    {
+      "file": "CHANGELOG.md",
+      "section": "v1.8.1",
+      "changes": [
+        "Fixed max_turns configuration too low for complex stories",
+        "Added deliverable-based success assessment",
+        "Enabled production logging for CLI workflows",
+        "Added partial success states (SUCCESS_WITH_LIMITS, PARTIAL)"
+      ]
+    },
+    {
+      "file": "config/config.yaml",
+      "changes": [
+        "Update max_turns default to 50",
+        "Add max_turns_by_task_type section with comments"
+      ]
+    },
+    {
+      "file": "docs/guides/CONFIGURATION_PROFILES_GUIDE.md",
+      "changes": [
+        "Document new max_turns settings",
+        "Document task-type specific limits"
+      ]
+    },
+    {
+      "file": "docs/guides/PRODUCTION_MONITORING_GUIDE.md",
+      "changes": [
+        "Update to reflect CLI logging support",
+        "Add examples of CLI event logs"
+      ]
+    },
+    {
+      "file": "docs/testing/TEST_GUIDELINES.md",
+      "changes": [
+        "Document new partial success states",
+        "Update expected outcomes for tests"
+      ]
+    }
+  ],
+  "success_criteria": {
+    "code_quality": {
+      "type_hints": true,
+      "docstrings": true,
+      "unit_test_coverage": 0.9,
+      "linting": "no pylint/mypy errors"
+    },
+    "functional": [
+      {
+        "criterion": "Story #9 completes with SUCCESS_WITH_LIMITS (not FAILED)",
+        "critical": true
+      },
+      {
+        "criterion": "Production logs show task execution events",
+        "critical": true
+      },
+      {
+        "criterion": "Deliverable assessment detects 7 files created",
+        "critical": true
+      },
+      {
+        "criterion": "Quality score ≥ 0.7 for Story #9 deliverables",
+        "critical": true
+      }
+    ],
+    "performance": {
+      "latency_increase_max": "5%",
+      "logging_overhead_max_ms": 50,
+      "deliverable_assessment_max_seconds": 1
+    },
+    "user_experience": [
+      "CLI output clearly shows partial success vs failure",
+      "Production logs provide actionable debugging data",
+      "Error messages are clear and actionable"
+    ]
+  },
+  "rollback_procedures": [
+    {
+      "issue_id": "ISSUE-001",
+      "steps": [
+        "Revert config/config.yaml: max_turns=10, multiplier=2",
+        "Remove max_turns_by_task_type section",
+        "Revert code changes in claude_code_local.py and orchestrator.py"
+      ]
+    },
+    {
+      "issue_id": "ISSUE-002",
+      "steps": [
+        "Revert orchestrator.py exception handling to original",
+        "Remove deliverable_assessor.py file",
+        "Revert models.py TaskOutcome enum",
+        "Remove tests"
+      ]
+    },
+    {
+      "issue_id": "ISSUE-003",
+      "steps": [
+        "Revert production_logger.py global pattern changes",
+        "Remove logging calls from cli.py",
+        "Revert orchestrator.py logger integration",
+        "Production logging falls back to NL-only mode"
+      ]
+    }
+  ],
+  "risk_assessment": {
+    "low_risk": [
+      "Config file updates (easily reverted)",
+      "Adding new classes (no existing code broken)",
+      "CLI output improvements (cosmetic)"
+    ],
+    "medium_risk": [
+      "Exception handling in Orchestrator (affects execution flow)",
+      "Global ProductionLogger pattern (affects all entry points)"
+    ],
+    "mitigation": [
+      "Comprehensive unit tests for new components",
+      "Integration tests for changed workflows",
+      "Backward compatibility checks",
+      "Clear rollback procedures documented"
+    ]
+  }
+}

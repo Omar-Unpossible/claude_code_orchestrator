@@ -84,9 +84,10 @@ class MaxTurnsCalculator:
     }
 
     # Safety bounds (from guide)
-    MIN_TURNS = 3   # Never less than 3
-    MAX_TURNS = 30  # Never more than 30
-    DEFAULT_TURNS = 10  # Fallback
+    # UPDATED (v1.8.1): Increased to support complex stories with retry multiplier headroom
+    MIN_TURNS = 3    # Never less than 3
+    MAX_TURNS = 150  # Never more than 150 (was 30, increased for complex epics with retries)
+    DEFAULT_TURNS = 50  # Fallback (was 10, increased for typical stories)
 
     def __init__(self, config: Optional[Dict] = None):
         """Initialize calculator with optional config overrides.
@@ -94,6 +95,7 @@ class MaxTurnsCalculator:
         Args:
             config: Optional configuration dict with overrides:
                 - max_turns_by_type: Dict mapping task types to max_turns
+                - by_obra_task_type: Dict mapping Obra TaskType (TASK/STORY/EPIC/SUBTASK) to max_turns (v1.8.1)
                 - min: Minimum max_turns value (default 3)
                 - max: Maximum max_turns value (default 30)
                 - default: Default max_turns when unknown (default 10)
@@ -101,6 +103,7 @@ class MaxTurnsCalculator:
         Example:
             >>> config = {
             ...     'max_turns_by_type': {'debugging': 25},
+            ...     'by_obra_task_type': {'STORY': 50, 'EPIC': 100},
             ...     'min': 5,
             ...     'max': 25,
             ...     'default': 12
@@ -114,13 +117,17 @@ class MaxTurnsCalculator:
             'max_turns_by_type',
             self.TASK_TYPE_DEFAULTS
         )
+        # NEW (v1.8.1): Obra task type specific defaults (TASK, STORY, EPIC, SUBTASK)
+        self.obra_task_type_defaults = self.config.get('by_obra_task_type', {})
+
         self.min_turns = self.config.get('min', self.MIN_TURNS)
         self.max_turns = self.config.get('max', self.MAX_TURNS)
         self.default_turns = self.config.get('default', self.DEFAULT_TURNS)
 
         logger.debug(
             f"MaxTurnsCalculator initialized: "
-            f"min={self.min_turns}, max={self.max_turns}, default={self.default_turns}"
+            f"min={self.min_turns}, max={self.max_turns}, default={self.default_turns}, "
+            f"obra_task_types={len(self.obra_task_type_defaults)}"
         )
 
     def calculate(self, task: Dict) -> int:
@@ -165,7 +172,24 @@ class MaxTurnsCalculator:
         """
         task_id = task.get('id', 'unknown')
 
-        # Check for task type override first
+        # NEW (v1.8.1): Check for Obra task type override first (highest priority)
+        # Obra TaskType enum: TASK, STORY, EPIC, SUBTASK
+        obra_task_type = task.get('obra_task_type') or task.get('task_type_enum')
+        if obra_task_type:
+            # Convert TaskType enum to string if needed
+            obra_task_type_str = str(obra_task_type)
+            if '.' in obra_task_type_str:
+                # Extract enum value from "TaskType.STORY" → "STORY"
+                obra_task_type_str = obra_task_type_str.split('.')[-1]
+
+            if obra_task_type_str in self.obra_task_type_defaults:
+                turns = self.obra_task_type_defaults[obra_task_type_str]
+                logger.debug(
+                    f"Task {task_id}: Using Obra task type default for '{obra_task_type_str}': {turns} turns"
+                )
+                return self._bound(turns)
+
+        # Check for traditional task type override (second priority)
         task_type = task.get('task_type')
         if task_type and task_type in self.task_type_defaults:
             turns = self.task_type_defaults[task_type]

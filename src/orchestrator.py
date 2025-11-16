@@ -24,7 +24,7 @@ from threading import RLock
 
 from src.core.config import Config
 from src.core.state import StateManager
-from src.core.models import Task, ProjectState, TaskStatus, TaskType
+from src.core.models import Task, ProjectState, TaskStatus, TaskType, TaskOutcome
 from src.core.exceptions import OrchestratorException, TaskStoppedException
 
 # Component imports
@@ -43,9 +43,11 @@ from src.orchestration.quality_controller import QualityController
 from src.orchestration.complexity_estimator import TaskComplexityEstimator
 from src.orchestration.max_turns_calculator import MaxTurnsCalculator  # Phase 4, Task 4.2
 from src.orchestration.complexity_estimate import ComplexityEstimate
+from src.orchestration.deliverable_assessor import DeliverableAssessor  # v1.8.1
 from src.utils.token_counter import TokenCounter
 from src.utils.context_manager import ContextManager
 from src.utils.confidence_scorer import ConfidenceScorer
+from src.monitoring.production_logger import get_production_logger
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +150,12 @@ class Orchestrator:
         self.latest_quality_score: float = 0.0
         self.latest_confidence: float = 0.0
         self.max_turns: int = 10
+
+        # Production logger (Issue #3 - v1.8.1)
+        # Get global instance initialized by CLI or interactive mode
+        self.production_logger = get_production_logger()
+        if self.production_logger:
+            logger.debug("Orchestrator using global ProductionLogger instance")
 
         logger.info("Orchestrator created")
 
@@ -1185,6 +1193,13 @@ class Orchestrator:
             self.state_manager
         )
 
+        # v1.8.1: Initialize DeliverableAssessor for partial success detection
+        self.deliverable_assessor = DeliverableAssessor(
+            file_watcher=self.file_watcher,
+            quality_controller=self.quality_controller
+        )
+        logger.info("DeliverableAssessor initialized")
+
         # ADR-017: Initialize Natural Language components (Story 5)
         self._initialize_nl_components()
 
@@ -1221,6 +1236,17 @@ class Orchestrator:
 
     def _initialize_complexity_estimator(self) -> None:
         """Initialize TaskComplexityEstimator if enabled."""
+        # Phase 4, Task 4.2: Initialize MaxTurnsCalculator (independent of complexity estimation)
+        # BUG FIX (v1.8.1 Issue #4): Must initialize BEFORE early return
+        try:
+            max_turns_config = self.config.get('orchestration.max_turns', {})
+            self.max_turns_calculator = MaxTurnsCalculator(config=max_turns_config)
+            logger.info("MaxTurnsCalculator initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize max_turns calculator: {e}")
+            self.max_turns_calculator = None
+
+        # Complexity estimation (optional)
         if not self._enable_complexity_estimation:
             logger.info("Complexity estimation disabled")
             return
@@ -1236,15 +1262,6 @@ class Orchestrator:
         except Exception as e:
             logger.warning(f"Failed to initialize complexity estimator: {e}")
             self.complexity_estimator = None
-
-        # Phase 4, Task 4.2: Initialize MaxTurnsCalculator
-        try:
-            max_turns_config = self.config.get('orchestration.max_turns', {})
-            self.max_turns_calculator = MaxTurnsCalculator(config=max_turns_config)
-            logger.info("MaxTurnsCalculator initialized")
-        except Exception as e:
-            logger.warning(f"Failed to initialize max_turns calculator: {e}")
-            self.max_turns_calculator = None
 
     def _initialize_monitoring(self) -> None:
         """Initialize monitoring components."""
@@ -2053,14 +2070,19 @@ class Orchestrator:
                     task_dict['estimated_files'] = len(complexity_estimate.files_to_create) + len(complexity_estimate.files_to_modify)
                     task_dict['estimated_loc'] = sum(f.get('estimated_loc', 0) for f in complexity_estimate.files_to_create + complexity_estimate.files_to_modify)
 
+                # NEW (v1.8.1): Add Obra TaskType for task-type specific max_turns
+                if hasattr(self.current_task, 'task_type'):
+                    task_dict['obra_task_type'] = self.current_task.task_type
+
                 max_turns = 10  # Default fallback
                 max_turns_reason = "default"
                 if self.max_turns_calculator:
                     max_turns = self.max_turns_calculator.calculate(task_dict)
                     max_turns_reason = "calculated"
+                    obra_task_type_str = str(task_dict.get('obra_task_type', 'N/A'))
                     logger.info(
                         f"MAX_TURNS: task_id={task_id}, max_turns={max_turns}, "
-                        f"reason={max_turns_reason}, "
+                        f"reason={max_turns_reason}, obra_task_type={obra_task_type_str}, "
                         f"estimated_files={task_dict.get('estimated_files', 0)}, "
                         f"estimated_loc={task_dict.get('estimated_loc', 0):,}"
                     )
@@ -2122,13 +2144,58 @@ class Orchestrator:
                                 # Continue to next iteration of retry loop
                                 continue
                             else:
-                                # Max retries reached
-                                logger.error(
+                                # Max retries reached - assess deliverables before failing (v1.8.1)
+                                logger.warning(
                                     f"MAX_TURNS EXHAUSTED: task_id={task_id}, "
                                     f"attempts={max_retries + 1}, final_max_turns={max_turns}, "
-                                    f"last_turns_used={num_turns}"
+                                    f"last_turns_used={num_turns} - assessing deliverables..."
                                 )
-                                raise
+
+                                # NEW (v1.8.1): Assess deliverables to check for partial success
+                                deliverable_assessment = self.deliverable_assessor.assess_deliverables(
+                                    self.current_task
+                                )
+
+                                if deliverable_assessment.outcome in [TaskOutcome.SUCCESS_WITH_LIMITS, TaskOutcome.PARTIAL]:
+                                    # Has deliverables - treat as partial success
+                                    logger.info(
+                                        f"Task {task_id} delivered value despite max_turns: "
+                                        f"{deliverable_assessment.reason}"
+                                    )
+
+                                    # Update task with partial success outcome
+                                    self.state_manager.update_task_status(
+                                        task_id=task_id,
+                                        status=TaskStatus.COMPLETED,
+                                        metadata={
+                                            'outcome': deliverable_assessment.outcome.value,
+                                            'quality_score': deliverable_assessment.quality_score,
+                                            'deliverable_files': deliverable_assessment.files,
+                                            'estimated_completeness': deliverable_assessment.estimated_completeness
+                                        }
+                                    )
+
+                                    # Return success with warning
+                                    result = {
+                                        'status': 'completed',
+                                        'outcome': deliverable_assessment.outcome.value,
+                                        'files': deliverable_assessment.files,
+                                        'quality_score': deliverable_assessment.quality_score,
+                                        'estimated_completeness': deliverable_assessment.estimated_completeness,
+                                        'warning': f'Task completed but exceeded turn limit ({max_turns} turns)',
+                                        'reason': deliverable_assessment.reason,
+                                        'iterations': retry_count + 1
+                                    }
+                                    logger.info(f"TASK END: task_id={task_id}, status={result['status']}, outcome={result['outcome']}")
+                                    break  # Exit retry loop with partial success
+
+                                else:
+                                    # No deliverables - legitimate failure
+                                    logger.error(
+                                        f"Task {task_id} exceeded max_turns with no deliverables: "
+                                        f"{deliverable_assessment.reason}"
+                                    )
+                                    raise
                         else:
                             # Not error_max_turns, or auto_retry disabled - don't retry
                             raise

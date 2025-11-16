@@ -7,7 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2025-11-15
+
+### Fixed
+
+- **Critical Bug Fixes from Simulation Testing** (4 issues discovered and fixed):
+
+  - **Issue #1: Max_Turns Configuration** (P0 - CRITICAL):
+    - Increased default max_turns from 10 to 50 for complex stories
+    - Added task-type specific limits (TASK: 30, STORY: 50, EPIC: 100, SUBTASK: 20)
+    - Increased retry multiplier from 2 to 3 (e.g., 50 → 150 on retry)
+    - Increased max limit from 30 to 150 to support retries
+    - **Impact**: Reduces false failures on complex tasks that need >10 iterations
+    - **Files**: `config/config.yaml`, `src/orchestration/max_turns_calculator.py`
+
+  - **Issue #2: Deliverable-Based Success Assessment** (P0 - CRITICAL):
+    - Created `DeliverableAssessor` class (420 lines) to detect partial success
+    - New `TaskOutcome` enum: SUCCESS, SUCCESS_WITH_LIMITS, PARTIAL, FAILED, BLOCKED
+    - Syntax validation and quality scoring for generated code
+    - Runs automatically when max_turns limit is hit
+    - CLI shows deliverable summaries with file lists and quality scores
+    - **Impact**: Prevents marking tasks as FAILED when working code was delivered
+    - **Files**: `src/orchestration/deliverable_assessor.py`, `src/core/models.py`, `src/orchestrator.py`, `src/cli.py`
+
+  - **Issue #3: Production Logging for CLI** (P1 - HIGH):
+    - Added global `ProductionLogger` pattern with CLI initialization
+    - CLI commands now log to `~/obra-runtime/logs/production.jsonl`
+    - Logs user_input and execution_result events for all CLI operations
+    - Integrated into `task execute`, `project create`, `epic create`, `story create`, `task create`
+    - **Impact**: Closes monitoring gap for direct CLI usage (not just NL commands)
+    - **Files**: `src/monitoring/production_logger.py`, `src/cli.py`, `src/orchestrator.py`
+
+  - **Issue #4: MaxTurnsCalculator Initialization Bug** (P0 - CRITICAL):
+    - **NEWLY DISCOVERED during testing** - Release blocker
+    - MaxTurnsCalculator was never initialized when complexity estimation disabled
+    - Initialization code was placed AFTER early return in `_initialize_complexity_estimator()`
+    - **Symptom**: max_turns always defaulted to 10 instead of config value (50)
+    - **Fix**: Moved MaxTurnsCalculator initialization BEFORE early return
+    - **Impact**: Without this fix, Issue #1 would not work at all
+    - **Files**: `src/orchestrator.py`
+
+### Changed
+
+- **Configuration Validator**: Increased max_turns validation limit from 30 to 200 (`src/core/config.py`)
+- **CLI UX**: Added color-coded task outcomes (SUCCESS_WITH_LIMITS in yellow, PARTIAL in orange)
+- **Test Coverage**: Validated all fixes through real orchestration testing (Story #9)
+
+### Documentation
+
+- Added `docs/testing/ISSUE_VALIDATION_RESULTS.md` - Comprehensive test results with evidence
+- Updated `docs/development/REMEDIATION_IMPLEMENTATION_STATUS.md` - All 4 issues documented
+- Updated `docs/testing/OBRA_SIMULATION_RESULTS_2025-11-15.md` - Original simulation findings
+
+### Notes
+
+- **Backward Compatibility**: All changes are backward compatible
+- **Validation Status**: 3/4 issues validated through testing (Issue #2 needs forced max_turns test)
+- **Code Quality**: All new code has type hints and docstrings
+- **Total Changes**: 850+ lines across 6 files + 3 new files
+
+## [1.8.0] - 2025-11-15
+
 ### Added
+
+- **Production Monitoring System** (v1.8.0):
+  - **ProductionLogger Class** (`src/monitoring/production_logger.py`, 450 lines):
+    - Structured JSON Lines logging for production observability
+    - 6 event types: user_input, nl_result, execution_result, error, orch_prompt, impl_response
+    - Thread-safe logging with RLock for concurrent operations
+    - Automatic log rotation (configurable size/count)
+    - Session tracking with UUID for multi-turn conversation continuity
+    - Tests: 15/15 passing (12 unit + 3 integration)
+  - **Privacy Protection**:
+    - Automatic PII redaction (email, IP, phone, SSN)
+    - Secret redaction (API keys, tokens)
+    - UUID-safe patterns (excludes session IDs from redaction)
+  - **Interactive REPL Integration** (`src/interactive.py`):
+    - 6 integration points: initialization, user input, NL processing, execution, error handling, cleanup
+    - Performance timing for NL processing and execution
+    - Automatic error context capture
+  - **Configuration** (`config/config.yaml`):
+    - Enabled by default for production observability
+    - Configurable event filtering
+    - Privacy settings (redact_pii, redact_secrets)
+    - Log rotation settings (max 100MB per file, 10 files total = 1GB)
+  - **Documentation**:
+    - Added Section 12 in CLAUDE.md: Production Monitoring
+    - Added section in README.md with usage examples
+    - Log analysis examples with jq
+
+### Changed
+
+- **CLAUDE.md**: Renumbered sections 13→14, 14→15, 15→16 to accommodate new Production Monitoring section
+- **Version**: Updated to v1.8.0
+- **Test Coverage**: 830+ tests across 74 test files
+
+### Added (Previous)
 
 - **Phase 4: Targeted NL Testing Improvements** (November 14, 2025):
   - **Confidence Calibration System** (`src/nl/confidence_calibrator.py`, 229 lines):

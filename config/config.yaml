@@ -73,6 +73,38 @@ monitoring:
       - "Failed:"
       - "Exception:"
 
+  # Production Monitoring (v1.8.0)
+  production_logging:
+    # Master enable/disable
+    enabled: true  # Enabled by default for production observability
+
+    # Log file location
+    path: "~/obra-runtime/logs/production.jsonl"
+
+    # What to log
+    events:
+      user_input: true
+      nl_results: true
+      execution_results: true
+      errors: true
+      orchestrator_prompts: false    # Verbose, disabled by default
+      implementer_responses: false   # Verbose, disabled by default
+
+    # Privacy settings
+    privacy:
+      redact_pii: true               # Email, IP, phone, SSN
+      redact_secrets: true           # API keys, tokens
+      redact_patterns: []            # Custom regex patterns (future)
+
+    # Log rotation
+    rotation:
+      max_file_size_mb: 100          # Rotate at 100MB
+      max_files: 10                  # Keep 10 files (1GB total)
+
+    # Performance (future)
+    async_logging: false             # Sync by default
+    buffer_size: 1024                # Flush every 1KB
+
 # Orchestration Settings
 orchestration:
   max_iterations: 50  # Maximum iterations per task
@@ -87,7 +119,8 @@ orchestration:
     adaptive: true
 
     # Fallback value if adaptive calculation fails
-    default: 10
+    # UPDATED (v1.8.1): Increased from 10 to 50 for complex stories
+    default: 50
 
     # Task-type specific overrides (takes precedence over adaptive)
     by_task_type:
@@ -100,14 +133,24 @@ orchestration:
       documentation: 3
       testing: 8
 
+    # NEW (v1.8.1): Obra task type specific limits
+    # These map to TaskType enum (TASK, STORY, EPIC, SUBTASK)
+    by_obra_task_type:
+      TASK: 30        # Simple technical tasks
+      STORY: 50       # User stories (default)
+      EPIC: 100       # Large epics (batch execution)
+      SUBTASK: 20     # Granular subtasks
+
     # Safety bounds - never exceed these limits
-    min: 3    # Never less than 3 turns (minimum for meaningful iteration)
-    max: 30   # Never more than 30 turns (prevent infinite loops)
+    # UPDATED (v1.8.1): Increased max from 30 to 150 to allow retry_multiplier headroom
+    min: 3     # Never less than 3 turns (minimum for meaningful iteration)
+    max: 150   # Never more than 150 turns (prevent infinite loops)
 
     # Retry behavior when error_max_turns is hit
+    # UPDATED (v1.8.1): Increased multiplier from 2 to 3 for better retry capacity
     auto_retry: true         # Automatically retry with increased limit
     max_retries: 1           # Number of retries allowed (1 = try twice total)
-    retry_multiplier: 2      # Multiply max_turns by this on retry (e.g., 10 -> 20)
+    retry_multiplier: 3      # Multiply max_turns by this on retry (e.g., 50 -> 150)
 
 # Breakpoint Configuration
 breakpoints:

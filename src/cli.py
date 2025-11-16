@@ -12,6 +12,7 @@ Usage:
 
 import sys
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,7 @@ from src.orchestrator import Orchestrator, OrchestratorState
 from src.core.config import Config
 from src.core.state import StateManager
 from src.core.exceptions import OrchestratorException
+from src.monitoring.production_logger import initialize_production_logger, generate_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,21 @@ def cli(ctx, config: Optional[str], verbose: bool):
     else:
         config_mgr = Config.load()  # FIX: Use Config.load() not Config()
 
+    # Initialize production logger (Issue #3 - v1.8.1)
+    # Extract the config dict from Config object
+    prod_logger = initialize_production_logger(config_mgr._config)
+
+    # Generate CLI session ID for logging
+    session_id = generate_session_id()
+
     ctx.ensure_object(dict)
     ctx.obj['config'] = config_mgr
     ctx.obj['verbose'] = verbose
+    ctx.obj['production_logger'] = prod_logger
+    ctx.obj['session_id'] = session_id
+
+    if prod_logger:
+        logger.debug(f"Production logging enabled for CLI session {session_id}")
 
 
 @cli.command()
@@ -151,6 +165,19 @@ def project():
 @click.pass_context
 def project_create(ctx, name: str, description: str, working_dir: Optional[str]):
     """Create a new project."""
+    # Get production logger and session ID (Issue #3 - v1.8.1)
+    prod_logger = ctx.obj.get('production_logger')
+    session_id = ctx.obj.get('session_id', 'cli-session')
+
+    # Log user input (Issue #3 - v1.8.1)
+    if prod_logger:
+        user_command = f"project create '{name}'"
+        if description:
+            user_command += f" --description '{description[:30]}...'"
+        prod_logger.log_user_input(session_id, user_command)
+
+    start_time = time.time()
+
     try:
         config = ctx.obj['config']
         db_url = config.get('database.url', 'sqlite:///orchestrator.db')
@@ -170,7 +197,27 @@ def project_create(ctx, name: str, description: str, working_dir: Optional[str])
         click.echo(f"✓ Created project #{project.id}: {name}")
         click.echo(f"  Working directory: {working_dir}")
 
+        # Log execution result (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            log_result = {
+                'success': True,
+                'message': f"Created project {project.id}",
+                'data': {'project_id': project.id, 'name': name}
+            }
+            prod_logger.log_execution_result(session_id, log_result, duration_ms)
+
     except Exception as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='project_creation',
+                error=e,
+                context={'project_name': name, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Failed to create project: {e}", err=True)
         sys.exit(1)
 
@@ -257,6 +304,17 @@ def task():
 @click.pass_context
 def task_create(ctx, title: str, project: int, description: str, priority: int):
     """Create a new task."""
+    # Get production logger and session ID (Issue #3 - v1.8.1)
+    prod_logger = ctx.obj.get('production_logger')
+    session_id = ctx.obj.get('session_id', 'cli-session')
+
+    # Log user input (Issue #3 - v1.8.1)
+    if prod_logger:
+        user_command = f"task create '{title}' --project {project}"
+        prod_logger.log_user_input(session_id, user_command)
+
+    start_time = time.time()
+
     try:
         config = ctx.obj['config']
         db_url = config.get('database.url', 'sqlite:///orchestrator.db')
@@ -275,7 +333,27 @@ def task_create(ctx, title: str, project: int, description: str, priority: int):
         click.echo(f"  Project: #{project}")
         click.echo(f"  Priority: {priority}")
 
+        # Log execution result (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            log_result = {
+                'success': True,
+                'message': f"Created task {task.id}",
+                'data': {'task_id': task.id, 'project_id': project, 'title': title}
+            }
+            prod_logger.log_execution_result(session_id, log_result, duration_ms)
+
     except Exception as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='task_creation',
+                error=e,
+                context={'project_id': project, 'title': title, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Failed to create task: {e}", err=True)
         sys.exit(1)
 
@@ -327,6 +405,21 @@ def task_list(ctx, project: Optional[int], status: Optional[str]):
 @click.pass_context
 def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interactive: bool, confirm_destructive: bool):
     """Execute a single task."""
+    # Get production logger and session ID (Issue #3 - v1.8.1)
+    prod_logger = ctx.obj.get('production_logger')
+    session_id = ctx.obj.get('session_id', 'cli-session')
+
+    # Log user input (Issue #3 - v1.8.1)
+    if prod_logger:
+        user_command = f"task execute {task_id} --max-iterations={max_iterations}"
+        if stream:
+            user_command += " --stream"
+        if interactive:
+            user_command += " --interactive"
+        prod_logger.log_user_input(session_id, user_command)
+
+    start_time = time.time()
+
     try:
         config = ctx.obj['config']
 
@@ -361,23 +454,99 @@ def task_execute(ctx, task_id: int, max_iterations: int, stream: bool, interacti
         if 'confidence' in result:
             click.echo(f"Confidence: {result['confidence']:.2f}")
 
+        # v1.8.1: Display outcome if present (SUCCESS_WITH_LIMITS, PARTIAL, etc)
+        outcome = result.get('outcome')
         if result['status'] == 'completed':
-            click.echo("\n✓ Task completed successfully!")
+            if outcome == 'success_limits':
+                # SUCCESS_WITH_LIMITS - completed but hit limits
+                click.echo(click.style("\n⚠ Task completed with warnings", fg='yellow', bold=True))
+                if 'warning' in result:
+                    click.echo(click.style(f"  Warning: {result['warning']}", fg='yellow'))
+                if 'files' in result and result['files']:
+                    click.echo(f"  Deliverables: {len(result['files'])} files created")
+                    for file_path in result['files'][:5]:  # Show first 5 files
+                        click.echo(f"    - {file_path}")
+                    if len(result['files']) > 5:
+                        click.echo(f"    ... and {len(result['files']) - 5} more")
+                if 'estimated_completeness' in result:
+                    completeness_pct = int(result['estimated_completeness'] * 100)
+                    click.echo(f"  Estimated completeness: {completeness_pct}%")
+                if 'reason' in result:
+                    click.echo(f"  Details: {result['reason']}")
+
+            elif outcome == 'partial':
+                # PARTIAL - delivered value but incomplete
+                click.echo(click.style("\n⚠ Task partially completed", fg='yellow', bold=True))
+                if 'files' in result and result['files']:
+                    click.echo(f"  Files created: {len(result['files'])}")
+                    for file_path in result['files'][:5]:
+                        click.echo(f"    - {file_path}")
+                    if len(result['files']) > 5:
+                        click.echo(f"    ... and {len(result['files']) - 5} more")
+                if 'estimated_completeness' in result:
+                    completeness_pct = int(result['estimated_completeness'] * 100)
+                    click.echo(f"  Estimated completeness: {completeness_pct}%")
+                click.echo(click.style("  ℹ Review recommended before proceeding", fg='yellow'))
+                if 'reason' in result:
+                    click.echo(f"  Details: {result['reason']}")
+
+            else:
+                # SUCCESS - normal completion
+                click.echo(click.style("\n✓ Task completed successfully!", fg='green', bold=True))
+
         elif result['status'] == 'escalated':
-            click.echo(f"\n⚠ Task escalated: {result.get('reason', 'Unknown')}")
+            click.echo(click.style(f"\n⚠ Task escalated: {result.get('reason', 'Unknown')}", fg='yellow'))
         else:
-            click.echo(f"\n✗ Task did not complete: {result.get('message', '')}")
+            click.echo(click.style(f"\n✗ Task did not complete: {result.get('message', '')}", fg='red'))
+
+        # Log execution result (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            log_result = {
+                'success': result['status'] == 'completed',
+                'message': f"Task {task_id} {result['status']}",
+                'data': {
+                    'task_id': task_id,
+                    'status': result['status'],
+                    'outcome': result.get('outcome'),
+                    'quality_score': result.get('quality_score'),
+                    'confidence': result.get('confidence'),
+                    'iterations': result.get('iterations'),
+                    'files_created': len(result.get('files', []))
+                }
+            }
+            prod_logger.log_execution_result(session_id, log_result, duration_ms)
 
         # Cleanup
         orchestrator.shutdown()
 
     except OrchestratorException as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='task_execution',
+                error=e,
+                context={'task_id': task_id, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Orchestration error: {e}", err=True)
         click.echo(f"  Context: {e.context}", err=True)
         if e.recovery:
             click.echo(f"  Recovery: {e.recovery}", err=True)
         sys.exit(1)
     except Exception as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='task_execution',
+                error=e,
+                context={'task_id': task_id, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Failed to execute task: {e}", err=True)
         sys.exit(1)
 
@@ -400,6 +569,17 @@ def epic():
 @click.pass_context
 def epic_create(ctx, title: str, project: int, description: str, priority: int):
     """Create a new epic."""
+    # Get production logger and session ID (Issue #3 - v1.8.1)
+    prod_logger = ctx.obj.get('production_logger')
+    session_id = ctx.obj.get('session_id', 'cli-session')
+
+    # Log user input (Issue #3 - v1.8.1)
+    if prod_logger:
+        user_command = f"epic create '{title}' --project {project}"
+        prod_logger.log_user_input(session_id, user_command)
+
+    start_time = time.time()
+
     try:
         config = ctx.obj['config']
         db_url = config.get('database.url', 'sqlite:///orchestrator.db')
@@ -416,7 +596,27 @@ def epic_create(ctx, title: str, project: int, description: str, priority: int):
         click.echo(f"  Project: #{project}")
         click.echo(f"  Priority: {priority}")
 
+        # Log execution result (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            log_result = {
+                'success': True,
+                'message': f"Created epic {epic_id}",
+                'data': {'epic_id': epic_id, 'project_id': project, 'title': title}
+            }
+            prod_logger.log_execution_result(session_id, log_result, duration_ms)
+
     except Exception as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='epic_creation',
+                error=e,
+                context={'project_id': project, 'title': title, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Failed to create epic: {e}", err=True)
         sys.exit(1)
 
@@ -658,6 +858,17 @@ def story():
 @click.pass_context
 def story_create(ctx, title: str, epic: int, project: int, description: str):
     """Create a new story under an epic."""
+    # Get production logger and session ID (Issue #3 - v1.8.1)
+    prod_logger = ctx.obj.get('production_logger')
+    session_id = ctx.obj.get('session_id', 'cli-session')
+
+    # Log user input (Issue #3 - v1.8.1)
+    if prod_logger:
+        user_command = f"story create '{title}' --epic {epic} --project {project}"
+        prod_logger.log_user_input(session_id, user_command)
+
+    start_time = time.time()
+
     try:
         config = ctx.obj['config']
         db_url = config.get('database.url', 'sqlite:///orchestrator.db')
@@ -674,7 +885,27 @@ def story_create(ctx, title: str, epic: int, project: int, description: str):
         click.echo(f"  Epic: #{epic}")
         click.echo(f"  Project: #{project}")
 
+        # Log execution result (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            log_result = {
+                'success': True,
+                'message': f"Created story {story_id}",
+                'data': {'story_id': story_id, 'epic_id': epic, 'project_id': project, 'title': title}
+            }
+            prod_logger.log_execution_result(session_id, log_result, duration_ms)
+
     except Exception as e:
+        # Log error (Issue #3 - v1.8.1)
+        duration_ms = int((time.time() - start_time) * 1000)
+        if prod_logger:
+            prod_logger.log_error(
+                session_id,
+                stage='story_creation',
+                error=e,
+                context={'epic_id': epic, 'project_id': project, 'title': title, 'duration_ms': duration_ms}
+            )
+
         click.echo(f"✗ Failed to create story: {e}", err=True)
         sys.exit(1)
 

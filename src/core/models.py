@@ -74,6 +74,19 @@ class TaskType(str, enum.Enum):
     SUBTASK = 'subtask'     # Granular step (via parent_task_id)
 
 
+class TaskOutcome(str, enum.Enum):
+    """Task execution outcome values (v1.8.1).
+
+    Distinguishes between different types of completion beyond simple success/failure.
+    Enables recognition of partial success when deliverables are created despite hitting limits.
+    """
+    SUCCESS = 'success'                      # Completed successfully within all limits
+    SUCCESS_WITH_LIMITS = 'success_limits'   # Completed but hit turn/time limits
+    PARTIAL = 'partial'                      # Delivered value but incomplete
+    FAILED = 'failed'                        # No deliverables or critical errors
+    BLOCKED = 'blocked'                      # Cannot proceed (dependencies, etc)
+
+
 # Models
 
 class ProjectState(Base):
