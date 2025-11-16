@@ -124,33 +124,19 @@ agent = ClaudeCodeAgent()  # Don't do this
 
 ## Testing - CRITICAL Rules
 
-**⚠️ READ `docs/testing/TEST_GUIDELINES.md` BEFORE WRITING TESTS**
+**⚠️ READ `.claude/skills/testing-guidelines` BEFORE WRITING TESTS**
 
 ### Resource Limits (WSL2 Crash Prevention)
-- **Max sleep**: 0.5s per test (use `fast_time` fixture)
+- **Max sleep**: 0.5s per test (use `fast_time` fixture for longer)
 - **Max threads**: 5 per test (with mandatory `timeout=` on join)
 - **Max memory**: 20KB per test
 - **Mark heavy**: `@pytest.mark.slow`
 
 ### Why These Limits
-M2 testing caused WSL2 crashes from 75s cumulative sleeps, 25+ threads, 100KB+ memory allocations.
+M2 testing caused WSL2 crashes from 75s sleeps, 25+ threads, 100KB+ allocations.
 
-### Test Patterns
-```python
-# Use shared fixture
-def test_with_config(test_config):
-    orchestrator = Orchestrator(config=test_config)
-
-# Mock time for long sleeps
-def test_completion(fast_time):
-    time.sleep(2.0)  # Instant with fast_time
-
-# Threads with timeouts
-def test_concurrent():
-    threads = [Thread(target=work) for _ in range(3)]  # Max 5
-    for t in threads: t.start()
-    for t in threads: t.join(timeout=5.0)  # MANDATORY
-```
+**Detailed Patterns**: See `testing-guidelines` Skill
+**Full Documentation**: `docs/testing/TEST_GUIDELINES.md`
 
 ## Common Pitfalls (DO NOT DO)
 
@@ -239,16 +225,10 @@ All NL commands route through orchestrator (Unified Execution - ADR-017):
 
 ```
 User → NL Processing → Orchestrator → StateManager → Task
-                                ↓
-                        StructuredPromptBuilder
-                                ↓
-                        Agent (fresh session)
-                                ↓
-                        Validation Pipeline (3 stages)
-                                ↓
-                        DecisionEngine → Action
-                                ↓
-                        StateManager → Git (optional)
+          ↓
+    PromptBuilder → Agent → Validation(3) → Decision → StateManager/Git
+
+Details: .claude/PROJECT.md (Architecture section)
 ```
 
 **Interactive Checkpoints**: 6 injection points for user commands
@@ -278,20 +258,15 @@ User → NL Processing → Orchestrator → StateManager → Task
 
 Essential patterns:
 ```python
-# StateManager access (always through orchestrator)
+# StateManager, plugins, config
 state = orchestrator.state_manager
 task = state.create_task(project_id=1, title="...", description="...")
-
-# Plugin loading
 agent = AgentRegistry.get(config.get('agent.type'))()
-llm = LLMRegistry.get(config.get('llm.type'))()
-
-# Configuration
 config = Config.load('config/config.yaml')
 
 # Testing
-pytest --cov=src --cov-report=term  # With coverage
-pytest -m "not slow"                # Fast tests only
+pytest --cov=src --cov-report=term  # Coverage
+pytest -m "not slow"                # Fast only
 ```
 
 ## When Stuck - Documentation Map

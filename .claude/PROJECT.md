@@ -72,48 +72,19 @@ src/
 
 ### LLM-Optimized Tools (Installed)
 
-These tools are optimized for AI-assisted development and provide cleaner output than traditional Unix tools:
+Modern CLI tools optimized for AI-assisted development.
 
-```bash
-# Code analysis
-tokei                              # Code statistics (fast, accurate)
-tree -L 2 -I 'venv|*.pyc'         # Directory structure visualization
-rg "pattern" -t py                 # Search code (ripgrep - 10-100x faster than grep)
-fd filename -e py                  # Find files (faster than find)
+**See Skill**: `development-tools` for complete tool reference
 
-# File operations
-bat file.py                        # View with syntax highlighting
-ll                                 # Directory listing (if aliased to eza/exa)
+**Quick Reference**:
+- `tokei` - Code statistics
+- `rg "pattern"` - Fast code search (10-100x faster than grep)
+- `fd filename` - Find files (faster than find)
+- `bat file.py` - View with syntax highlighting
+- `jq '.key' data.json` - Parse JSON
+- `yq '.key' file.yaml` - Parse YAML
 
-# Data processing
-cat data.json | jq '.key'          # Parse JSON
-yq '.key' config.yaml              # Parse YAML
-
-# Automation
-watchexec -e py pytest             # Auto-run tests on file changes
-hyperfine 'pytest tests/'          # Benchmark commands
-
-# API testing
-http GET localhost:8000/health     # HTTP requests (httpie)
-
-# Git workflow
-lazygit                            # Git TUI (visual interface)
-git diff                           # Uses delta for better diffs
-```
-
-### Tool Selection Guidelines
-
-| Task | Instead of | Use | Why |
-|------|-----------|-----|-----|
-| Search code | `grep` | `rg` (ripgrep) | 10-100x faster, respects .gitignore |
-| Find files | `find` | `fd` | Faster, better syntax, respects .gitignore |
-| View files | `cat` | `bat` | Syntax highlighting, line numbers |
-| Parse JSON | `grep`/`sed` | `jq` | Proper JSON parsing |
-| Parse YAML | `grep`/`sed` | `yq` | Proper YAML parsing |
-| Watch files | Manual loops | `watchexec` | Efficient, debounced file watching |
-| HTTP requests | `curl` | `http` (httpie) | More readable syntax |
-| Benchmark | `time` | `hyperfine` | Statistical analysis, warmup runs |
-| Git operations | Manual git | `lazygit` | Visual interface, faster workflows |
+**Full Guide**: Invoke `development-tools` Skill when needed
 
 ## Environment Setup
 
@@ -203,32 +174,17 @@ python -m src.cli llm switch openai-codex --model gpt-5-codex
 
 ### Testing Workflows
 
-**CRITICAL**: Read `docs/testing/TEST_GUIDELINES.md` before writing tests to prevent WSL2 crashes!
+**CRITICAL**: Read `docs/testing/TEST_GUIDELINES.md` before writing tests!
 
+**Run tests**:
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=term
-
-# Run specific module tests
-pytest tests/test_state.py              # StateManager (M1)
-pytest tests/test_orchestrator.py       # Core orchestration (M6)
-pytest tests/test_integration_e2e.py    # Integration tests
-
-# Auto-run tests on file changes
-watchexec -e py pytest
-
-# Run only fast tests (exclude slow tests)
-pytest -m "not slow"
+pytest                           # All tests
+pytest --cov=src --cov-report=term  # With coverage
+pytest -m "not slow"             # Fast tests only
+pytest tests/test_state.py       # Specific module
 ```
 
-**Test Resource Limits** (Critical for WSL2 stability):
-- Max sleep per test: 0.5s (use `fast_time` fixture for longer)
-- Max threads per test: 5 (with mandatory `timeout=` on join)
-- Max memory allocation: 20KB per test
-- Mark heavy tests: `@pytest.mark.slow`
+**Detailed Patterns**: See `testing-guidelines` Skill
 
 ### Code Quality
 
@@ -320,97 +276,20 @@ python -m src.cli milestone achieve 1
 
 ## Shell Enhancements for LLM-Led Development
 
-The WSL2 environment includes 35+ commands optimized for Claude Code workflows.
+WSL2 includes 35+ optimized commands for Claude Code workflows.
 
-### Before Starting Claude Code Sessions
+**See Skill**: `shell-enhancements` for complete command reference
 
-**Get Complete Context**:
+**Quick Start**:
 ```bash
-context              # Complete project snapshot (location, git, files, stats)
-recent 5             # Show 5 recently modified files
-todos                # All TODO/FIXME/XXX comments
-docs                 # List documentation files
-root                 # Jump to project root
+context              # Get project snapshot
+recent 5             # Show recent files
+todos                # Find TODO comments
+gcom "msg"          # Stage all and commit
+gnew branch         # Create and switch branch
 ```
 
-**MUST Follow Pre-Session Workflow**:
-```bash
-z obra               # Navigate to project (or use 'obra' alias)
-context              # Get comprehensive overview
-recent 5             # Check recent activity
-todos                # Review pending TODOs
-gs                   # Git status
-```
-
-### Git Workflow (Fast Iteration)
-
-```bash
-gcom <msg>           # Stage all changes and commit
-gamend               # Amend last commit with current changes
-gs                   # Short git status
-gundo                # Undo last commit (keep changes in working dir)
-gnew <branch>        # Create and switch to new branch
-glog [N]             # Show last N commits in compact format
-gdiff [opts]         # Pretty git diff (with delta if installed)
-```
-
-### Code Navigation
-
-```bash
-ff                   # Fuzzy file finder with preview
-search <pattern>     # Grep with context and colors
-es <pattern>         # Edit files containing pattern
-```
-
-### Testing & Validation (Auto-detects Project Type)
-
-```bash
-test [opts]          # Run tests (Python/Node/Rust/Go auto-detected)
-lint [opts]          # Run linter (auto-detected)
-fmt [opts]           # Format code (auto-detected)
-check-all            # Run format + lint + test in sequence
-```
-
-**Python Projects** (auto-detected):
-- Tests: `pytest` → `python -m pytest`
-- Lint: `ruff check` → `pylint` → `flake8`
-- Format: `ruff format` → `black`
-
-**Node.js Projects**: `npm test`, `npm run lint`, `npm run format`
-**Rust Projects**: `cargo test`, `cargo clippy`, `cargo fmt`
-**Go Projects**: `go test ./...`, `go fmt ./...`
-
-### Session Management
-
-```bash
-save-context [file]  # Save work context (git status, recent files, diff)
-load-context [file]  # View saved context
-diagnose             # Environment diagnostics (versions, git, disk, processes)
-```
-
-**Example**:
-```bash
-# End of session
-save-context ~/work-context-$(date +%Y%m%d).md
-
-# Next session
-load-context ~/work-context-20251115.md
-```
-
-### Quick Reference
-
-```bash
-claude-help          # Show all commands with descriptions
-ch                   # Alias for claude-help
-```
-
-**Performance**:
-- Startup overhead: < 50ms
-- `context` command: ~500ms
-- `recent` command: ~100ms
-- All commands use native tools (no Python/Node overhead)
-
-**Full Documentation**: `~/CLAUDE_ENHANCEMENTS_README.md`
+**Full Documentation**: Invoke `shell-enhancements` Skill when needed
 
 ## Notes for Claude
 
@@ -482,29 +361,6 @@ task = state.create_task(
 available_profiles = ProfileManager.list_profiles()
 if profile_name in available_profiles:
     profile = ProfileManager.load_profile(profile_name)
-```
-
-### Testing Patterns
-
-```python
-# Use shared test_config fixture
-def test_orchestrator(test_config):
-    orchestrator = Orchestrator(config=test_config)
-    assert orchestrator.config is not None
-
-# Use fast_time fixture to avoid blocking sleeps
-def test_completion(fast_time):
-    monitor.mark_complete()
-    time.sleep(2.0)  # Instant with fast_time mock
-    assert monitor.is_complete()
-
-# Threading with limits and mandatory timeouts
-def test_concurrent(test_config):
-    threads = [threading.Thread(target=worker) for _ in range(3)]  # Max 5
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=5.0)  # MANDATORY timeout
 ```
 
 ### Helper Scripts Location
