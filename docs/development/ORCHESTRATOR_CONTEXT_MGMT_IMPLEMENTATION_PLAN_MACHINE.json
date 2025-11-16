@@ -1,0 +1,1088 @@
+{
+  "plan_manifest": {
+    "meta": {
+      "version": "2.2",
+      "created": "2025-01-15T00:00:00Z",
+      "project": "obra",
+      "epic_id": "EPIC-018",
+      "epic_title": "Orchestrator Context Management System",
+      "related_adr": "ADR-018",
+      "agent_role": "Implementation Agent",
+      "agent_authority": "Create code, tests, documentation per approved plan",
+      "agent_restrictions": "Cannot modify core Orchestrator logic without approval, cannot change ADR decisions",
+      "estimated_total_hours": 520,
+      "estimated_duration_weeks": 8
+    },
+    "context": {
+      "problem_statement": "Orchestrator (local Qwen LLM) operates statelessly with no context window management, limiting long sessions, preventing reference resolution, and risking overflow without warning",
+      "solution_approach": "Multi-tier memory architecture (Working/Session/Episodic/Semantic) with adaptive optimization for 4K-1M+ context windows",
+      "technical_stack": {
+        "language": "Python 3.11+",
+        "frameworks": ["SQLAlchemy", "Click", "prompt_toolkit"],
+        "existing_components": ["StateManager", "ContextManager", "Orchestrator", "NLCommandProcessor"],
+        "new_components": [
+          "ContextWindowManager",
+          "WorkingMemory",
+          "SessionMemoryManager",
+          "EpisodicMemoryManager",
+          "CheckpointManager",
+          "ContextOptimizer",
+          "AdaptiveOptimizer",
+          "OrchestratorContextManager"
+        ],
+        "dependencies": ["PyYAML (config)", "pathlib (filesystem)", "json (serialization)", "threading (locks)"]
+      },
+      "constraints": {
+        "test_coverage": "≥90% for new components",
+        "performance": {
+          "context_refresh_latency_p95_ms": 5000,
+          "memory_overhead_max_mb": 100,
+          "compression_ratio_min": 0.7
+        },
+        "compatibility": {
+          "context_windows_supported": ["4K", "8K", "16K", "32K", "128K", "200K", "1M+"],
+          "backward_compatible": true
+        }
+      },
+      "key_decisions": [
+        {
+          "id": "DR-001",
+          "title": "Industry-standard thresholds (50%, 70%, 85%)",
+          "rationale": "Empirical research shows optimal warning time and optimization windows"
+        },
+        {
+          "id": "DR-002",
+          "title": "Five optimization techniques (summarization, artifact registry, differential state, external storage, pruning)",
+          "rationale": "Industry best practices from LLM Dev Guide v2.2"
+        },
+        {
+          "id": "DR-003",
+          "title": "ADR decision record format (no raw reasoning)",
+          "rationale": "Privacy-compliant, auditable, structured"
+        },
+        {
+          "id": "DR-004",
+          "title": "Adaptive profiles for context sizes",
+          "rationale": "4K contexts need ultra-aggressive optimization, 1M+ need minimal"
+        },
+        {
+          "id": "DR-005",
+          "title": "Multi-trigger checkpoints (threshold + time + operation count)",
+          "rationale": "Ensures no data loss across different usage patterns"
+        }
+      ]
+    },
+    "phases": [
+      {
+        "phase_id": "P1",
+        "phase_name": "Core Infrastructure",
+        "phase_order": 1,
+        "estimated_hours": 120,
+        "stories": ["STORY-018-1", "STORY-018-2"],
+        "deliverables": [
+          "config/models.yaml schema and loader",
+          "ContextWindowManager with adaptive thresholds",
+          "Auto-detection system for context windows",
+          "Unit tests ≥90% coverage"
+        ],
+        "success_criteria": [
+          "Auto-detection works for Ollama, Anthropic, OpenAI",
+          "Thresholds calculate correctly for 4K-1M contexts",
+          "Utilization limit applies correctly",
+          "All unit tests pass"
+        ]
+      },
+      {
+        "phase_id": "P2",
+        "phase_name": "Memory Tiers & Optimization",
+        "phase_order": 2,
+        "estimated_hours": 220,
+        "stories": ["STORY-018-3", "STORY-018-4", "STORY-018-5"],
+        "deliverables": [
+          "WorkingMemory with adaptive sizing",
+          "ContextOptimizer with 5 techniques",
+          "AdaptiveOptimizer with 5 profiles",
+          "Unit tests ≥90% coverage"
+        ],
+        "success_criteria": [
+          "Working memory adapts to context size (10 ops for 4K, 100 ops for 1M)",
+          "Compression achieves ≥0.7 ratio",
+          "Adaptive profiles auto-select correctly",
+          "All optimization techniques functional"
+        ]
+      },
+      {
+        "phase_id": "P3",
+        "phase_name": "Persistent Memory & Checkpoints",
+        "phase_order": 3,
+        "estimated_hours": 148,
+        "stories": ["STORY-018-6", "STORY-018-7"],
+        "deliverables": [
+          "SessionMemoryManager with compression",
+          "EpisodicMemoryManager with versioning",
+          "CheckpointManager with multi-trigger support",
+          "Unit tests ≥90% coverage"
+        ],
+        "success_criteria": [
+          "Session documents compress at 40K tokens",
+          "Episodic documents version correctly",
+          "Checkpoints trigger on thresholds, time, and operation count",
+          "Resume from checkpoint works"
+        ]
+      },
+      {
+        "phase_id": "P4",
+        "phase_name": "Integration & Validation",
+        "phase_order": 4,
+        "estimated_hours": 180,
+        "stories": ["STORY-018-8"],
+        "deliverables": [
+          "OrchestratorContextManager coordinator",
+          "Integration with Orchestrator.execute_task()",
+          "Integration with Orchestrator.execute_nl_command()",
+          "Reference resolution in NLCommandProcessor",
+          "Performance tests",
+          "Documentation"
+        ],
+        "success_criteria": [
+          "All components work together",
+          "Reference resolution works ('add stories to it')",
+          "Performance meets targets (<5s refresh, <100MB memory, ≥0.7 compression)",
+          "Works with 4K, 16K, 128K, 200K contexts",
+          "Integration tests pass ≥90%"
+        ]
+      }
+    ],
+    "stories": [
+      {
+        "story_id": "STORY-018-1",
+        "title": "Context Window Detection & Configuration System",
+        "phase": "P1",
+        "estimated_hours": 44,
+        "priority": "critical",
+        "dependencies": [],
+        "tasks": [
+          {
+            "task_id": "T1.1",
+            "title": "Design config/models.yaml Schema",
+            "estimated_hours": 4,
+            "file_changes": ["config/models.yaml.example"],
+            "acceptance_criteria": [
+              "Schema supports: provider, model, context_window, costs",
+              "Example file includes 5+ models (4K, 16K, 128K, 200K, 1M)",
+              "Documentation of all schema fields"
+            ],
+            "implementation_notes": [
+              "Use YAML for human-readability",
+              "Include comments explaining each field",
+              "Provide examples for Ollama, Anthropic, OpenAI"
+            ]
+          },
+          {
+            "task_id": "T1.2",
+            "title": "Implement Model Configuration Loader",
+            "estimated_hours": 8,
+            "file_changes": ["src/core/model_config_loader.py", "tests/test_model_config_loader.py"],
+            "dependencies": ["T1.1"],
+            "acceptance_criteria": [
+              "Loads config/models.yaml successfully",
+              "Validates schema (raises error if invalid)",
+              "Returns model config dictionary",
+              "Unit tests ≥90% coverage"
+            ],
+            "code_structure": {
+              "class": "ModelConfigLoader",
+              "methods": [
+                "load_models(path: str) -> Dict",
+                "get_model(model_id: str) -> Dict",
+                "validate_schema(config: Dict) -> bool"
+              ]
+            }
+          },
+          {
+            "task_id": "T1.3",
+            "title": "Implement Context Window Auto-Detection",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/context_window_detector.py", "tests/test_context_window_detector.py"],
+            "dependencies": ["T1.2"],
+            "acceptance_criteria": [
+              "Queries Ollama API for model info (GET /api/show)",
+              "Queries Anthropic/OpenAI for model capabilities",
+              "Falls back to config value if API unavailable",
+              "Returns detected context window size",
+              "Unit tests with mocked API calls ≥90%"
+            ],
+            "code_structure": {
+              "class": "ContextWindowDetector",
+              "methods": [
+                "detect(provider: str, model: str) -> int",
+                "_detect_ollama(model: str) -> int",
+                "_detect_anthropic(model: str) -> int",
+                "_detect_openai(model: str) -> int"
+              ]
+            }
+          },
+          {
+            "task_id": "T1.4",
+            "title": "Implement Utilization Limit Logic",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py", "tests/test_context_window_manager.py"],
+            "dependencies": ["T1.3"],
+            "acceptance_criteria": [
+              "Applies utilization_limit to max_tokens (e.g., 128K × 0.75 = 96K)",
+              "Effective max used for all calculations",
+              "Configuration option in config/default_config.yaml",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T1.5",
+            "title": "Integration Tests for Configuration System",
+            "estimated_hours": 8,
+            "file_changes": ["tests/integration/test_model_configuration.py"],
+            "dependencies": ["T1.2", "T1.3", "T1.4"],
+            "acceptance_criteria": [
+              "Tests loading config/models.yaml",
+              "Tests auto-detection (mocked)",
+              "Tests utilization limit calculations",
+              "Tests multiple models (4K, 16K, 128K, 200K)",
+              "All tests pass"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-2",
+        "title": "Context Window Manager & Threshold System",
+        "phase": "P1",
+        "estimated_hours": 44,
+        "priority": "critical",
+        "dependencies": ["STORY-018-1"],
+        "tasks": [
+          {
+            "task_id": "T2.1",
+            "title": "Implement ContextWindowManager Core",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py", "tests/test_context_window_manager.py"],
+            "acceptance_criteria": [
+              "Tracks used_tokens with add_usage(tokens)",
+              "Calculates usage_percentage()",
+              "Returns used_tokens(), available_tokens()",
+              "Thread-safe with RLock",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "ContextWindowManager",
+              "attributes": ["max_tokens", "_used_tokens", "_lock", "thresholds"],
+              "methods": [
+                "__init__(model_config: Dict)",
+                "add_usage(tokens: int) -> None",
+                "used_tokens() -> int",
+                "available_tokens() -> int",
+                "usage_percentage() -> float",
+                "reset() -> None"
+              ]
+            }
+          },
+          {
+            "task_id": "T2.2",
+            "title": "Implement Adaptive Threshold Calculation",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py"],
+            "dependencies": ["T2.1"],
+            "acceptance_criteria": [
+              "Converts percentages (50%, 70%, 85%, 95%) to absolute tokens",
+              "Works with 4K to 1M+ contexts",
+              "Stores thresholds: green_upper, yellow_upper, orange_upper, red",
+              "Unit tests for various context sizes"
+            ],
+            "code_structure": {
+              "method": "_calculate_thresholds() -> Dict[str, int]"
+            }
+          },
+          {
+            "task_id": "T2.3",
+            "title": "Implement Zone Determination & Actions",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py"],
+            "dependencies": ["T2.2"],
+            "acceptance_criteria": [
+              "get_zone() returns 'green', 'yellow', 'orange', or 'red'",
+              "get_recommended_action() returns appropriate action",
+              "Logs zone transitions",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "methods": [
+                "get_zone() -> str",
+                "get_recommended_action() -> str"
+              ]
+            }
+          },
+          {
+            "task_id": "T2.4",
+            "title": "Implement Usage Tracking with Overflow Detection",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py"],
+            "dependencies": ["T2.3"],
+            "acceptance_criteria": [
+              "add_usage(tokens) logs warnings at thresholds",
+              "Detects overflow (usage > red threshold)",
+              "Thread-safe concurrent usage tracking",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T2.5",
+            "title": "Comprehensive Unit Tests",
+            "estimated_hours": 12,
+            "file_changes": ["tests/test_context_window_manager.py"],
+            "dependencies": ["T2.1", "T2.2", "T2.3", "T2.4"],
+            "acceptance_criteria": [
+              "Tests all zones (green/yellow/orange/red)",
+              "Tests threshold calculations (4K, 16K, 128K, 1M)",
+              "Tests concurrent access (thread safety)",
+              "Tests overflow scenarios",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-3",
+        "title": "Working Memory (Tier 1)",
+        "phase": "P2",
+        "estimated_hours": 48,
+        "priority": "high",
+        "dependencies": ["STORY-018-2"],
+        "tasks": [
+          {
+            "task_id": "T3.1",
+            "title": "Implement WorkingMemory Core",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/working_memory.py", "tests/test_working_memory.py"],
+            "acceptance_criteria": [
+              "Uses collections.deque for FIFO",
+              "Tracks current_tokens",
+              "add_operation(op: Dict) adds to deque",
+              "get_all_operations() returns list",
+              "Thread-safe with RLock",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "WorkingMemory",
+              "attributes": ["_operations: deque", "_current_tokens", "_lock", "max_operations", "max_tokens"],
+              "methods": [
+                "__init__(config: Dict)",
+                "add_operation(op: Dict) -> None",
+                "get_all_operations() -> List[Dict]",
+                "clear() -> None"
+              ]
+            }
+          },
+          {
+            "task_id": "T3.2",
+            "title": "Implement Adaptive Sizing Logic",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/working_memory.py"],
+            "dependencies": ["T3.1"],
+            "acceptance_criteria": [
+              "Calculates max_operations from context size (4K→10, 16K→30, 128K→50, 1M→100)",
+              "Calculates max_tokens (5-10% of context)",
+              "Configuration overrides supported",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T3.3",
+            "title": "Implement Query Interface",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/working_memory.py"],
+            "dependencies": ["T3.1"],
+            "acceptance_criteria": [
+              "get_recent_operations(limit) returns most recent first",
+              "get_operations(operation_type, limit) filters by type",
+              "search(query) does keyword search",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "methods": [
+                "get_recent_operations(limit: int = None) -> List[Dict]",
+                "get_operations(operation_type: str = None, limit: int = 10) -> List[Dict]",
+                "search(query: str, max_results: int = 5) -> List[str]"
+              ]
+            }
+          },
+          {
+            "task_id": "T3.4",
+            "title": "Implement FIFO Eviction Logic",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/working_memory.py"],
+            "dependencies": ["T3.2"],
+            "acceptance_criteria": [
+              "Auto-evicts when max_operations exceeded",
+              "Auto-evicts when max_tokens exceeded",
+              "Tracks eviction stats",
+              "Logs evictions",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T3.5",
+            "title": "Comprehensive Unit Tests",
+            "estimated_hours": 12,
+            "file_changes": ["tests/test_working_memory.py"],
+            "dependencies": ["T3.1", "T3.2", "T3.3", "T3.4"],
+            "acceptance_criteria": [
+              "Tests FIFO eviction",
+              "Tests adaptive sizing (4K, 16K, 128K, 1M)",
+              "Tests query methods",
+              "Tests thread safety",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-4",
+        "title": "Context Optimization Techniques",
+        "phase": "P2",
+        "estimated_hours": 88,
+        "priority": "high",
+        "dependencies": ["STORY-018-3"],
+        "tasks": [
+          {
+            "task_id": "T4.1",
+            "title": "Implement ContextOptimizer Base",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py", "tests/test_context_optimizer.py"],
+            "acceptance_criteria": [
+              "Coordinates 5 optimization techniques",
+              "optimize_context(context, target_reduction) applies all techniques",
+              "Tracks before/after token counts",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "ContextOptimizer",
+              "methods": [
+                "__init__(context_builder, llm_interface)",
+                "optimize_context(context: Dict, target_reduction: float = 0.3) -> Dict",
+                "_summarize_completed_phases(context: Dict) -> Dict",
+                "_apply_artifact_registry(context: Dict) -> Dict",
+                "_convert_to_differential_state(context: Dict) -> Dict",
+                "_externalize_large_artifacts(context: Dict) -> Dict",
+                "_prune_temporary_data(context: Dict) -> Dict"
+              ]
+            }
+          },
+          {
+            "task_id": "T4.2",
+            "title": "Implement Summarization Technique",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py"],
+            "dependencies": ["T4.1"],
+            "acceptance_criteria": [
+              "Compresses completed phases to ≤500 tokens (or ≤100 for small contexts)",
+              "Uses LLM for summarization",
+              "Preserves key accomplishments, decisions, issues",
+              "Saves full data to .obra/archive/phases/",
+              "Unit tests with mocked LLM ≥90%"
+            ]
+          },
+          {
+            "task_id": "T4.3",
+            "title": "Implement Artifact Registry Technique",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py"],
+            "dependencies": ["T4.1"],
+            "acceptance_criteria": [
+              "Replaces file_contents with artifact_registry",
+              "Maps: file_path → {summary, last_modified, size_tokens}",
+              "Removes full file contents from context",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T4.4",
+            "title": "Implement Differential State Technique",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py"],
+            "dependencies": ["T4.1"],
+            "acceptance_criteria": [
+              "Computes diff between current state and last checkpoint",
+              "Stores state_delta + state_base_checkpoint_id",
+              "Removes full_state from context",
+              "Unit tests with state diffs ≥90%"
+            ]
+          },
+          {
+            "task_id": "T4.5",
+            "title": "Implement External Storage Technique",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py"],
+            "dependencies": ["T4.1"],
+            "acceptance_criteria": [
+              "Moves artifacts >2000 tokens to .obra/memory/artifacts/",
+              "Replaces with {_external_ref, _summary, _tokens}",
+              "File I/O with error handling",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T4.6",
+            "title": "Implement Pruning Technique",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/context_optimizer.py"],
+            "dependencies": ["T4.1"],
+            "acceptance_criteria": [
+              "Removes debug traces >1hr old",
+              "Keeps only last 5 validation results",
+              "Keeps unresolved errors + last 10 resolved",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T4.7",
+            "title": "Integration Tests for Optimization",
+            "estimated_hours": 12,
+            "file_changes": ["tests/integration/test_context_optimization.py"],
+            "dependencies": ["T4.2", "T4.3", "T4.4", "T4.5", "T4.6"],
+            "acceptance_criteria": [
+              "Tests full optimization pipeline",
+              "Verifies compression ratio ≥0.7",
+              "Tests with various context sizes",
+              "Verifies preservation of critical data",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-5",
+        "title": "Adaptive Optimization Profiles",
+        "phase": "P2",
+        "estimated_hours": 48,
+        "priority": "high",
+        "dependencies": ["STORY-018-4"],
+        "tasks": [
+          {
+            "task_id": "T5.1",
+            "title": "Design Optimization Profile Schema",
+            "estimated_hours": 4,
+            "file_changes": ["config/optimization_profiles.yaml.example"],
+            "acceptance_criteria": [
+              "5 profiles defined: ultra-aggressive, aggressive, balanced-aggressive, balanced, minimal",
+              "Each profile specifies: summarization_threshold, checkpoint_interval_hours, max_operations, max_decision_records",
+              "Documentation of when each profile applies"
+            ]
+          },
+          {
+            "task_id": "T5.2",
+            "title": "Implement AdaptiveOptimizer",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/adaptive_optimizer.py", "tests/test_adaptive_optimizer.py"],
+            "dependencies": ["T5.1"],
+            "acceptance_criteria": [
+              "Auto-selects profile based on context size",
+              "Applies profile thresholds",
+              "Manual override supported via config",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "AdaptiveOptimizer",
+              "methods": [
+                "__init__(context_window_size: int)",
+                "_select_profile() -> Dict",
+                "should_optimize(item_tokens: int, item_type: str) -> bool"
+              ]
+            }
+          },
+          {
+            "task_id": "T5.3",
+            "title": "Implement Profile-Specific Optimizations",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/adaptive_optimizer.py"],
+            "dependencies": ["T5.2"],
+            "acceptance_criteria": [
+              "Ultra-aggressive (4K-8K): summarize >100 tokens, checkpoint every 30 min",
+              "Aggressive (8K-32K): summarize >300 tokens, checkpoint every 1 hour",
+              "Balanced-aggressive (32K-100K): summarize >500 tokens, checkpoint every 2 hours",
+              "Balanced (100K-250K): summarize >500 tokens, checkpoint every 4 hours",
+              "Minimal (250K+): summarize >1000 tokens, checkpoint every 8 hours",
+              "Unit tests for each profile ≥90%"
+            ]
+          },
+          {
+            "task_id": "T5.4",
+            "title": "Integration with ContextWindowManager",
+            "estimated_hours": 8,
+            "file_changes": ["src/orchestration/memory/context_window_manager.py"],
+            "dependencies": ["T5.3"],
+            "acceptance_criteria": [
+              "Passes detected context size to AdaptiveOptimizer",
+              "Applies selected profile thresholds",
+              "Logs profile selection",
+              "Integration tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T5.5",
+            "title": "Configuration and Override System",
+            "estimated_hours": 8,
+            "file_changes": ["config/default_config.yaml", "tests/test_profile_config.py"],
+            "dependencies": ["T5.4"],
+            "acceptance_criteria": [
+              "Config option: optimization_profile: null | ultra-aggressive | ...",
+              "Overrides auto-selection if specified",
+              "Validation of manual overrides",
+              "Unit tests ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-6",
+        "title": "Session & Episodic Memory (Tiers 2-3)",
+        "phase": "P3",
+        "estimated_hours": 84,
+        "priority": "high",
+        "dependencies": ["STORY-018-4"],
+        "tasks": [
+          {
+            "task_id": "T6.1",
+            "title": "Implement SessionMemoryManager",
+            "estimated_hours": 20,
+            "file_changes": ["src/orchestration/memory/session_memory_manager.py", "tests/test_session_memory_manager.py"],
+            "acceptance_criteria": [
+              "Creates session document at .obra/sessions/session_<uuid>.md",
+              "Appends operations chronologically",
+              "Compresses when >40K tokens",
+              "Generates session summary on end",
+              "Archives to .obra/sessions/archive/",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "SessionMemoryManager",
+              "methods": [
+                "__init__(config, llm_interface)",
+                "append_operations(ops: List[Dict]) -> None",
+                "compress() -> None",
+                "generate_summary() -> Dict",
+                "archive() -> Path",
+                "get_summary(max_tokens: int) -> str",
+                "token_count() -> int"
+              ]
+            }
+          },
+          {
+            "task_id": "T6.2",
+            "title": "Implement EpisodicMemoryManager",
+            "estimated_hours": 20,
+            "file_changes": ["src/orchestration/memory/episodic_memory_manager.py", "tests/test_episodic_memory_manager.py"],
+            "acceptance_criteria": [
+              "Manages project_state.md, work_plan.md, decision_log.md at .obra/memory/",
+              "Versions documents before updates to .obra/memory/versions/",
+              "Compresses when >30K tokens",
+              "Integrates session summaries",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "EpisodicMemoryManager",
+              "methods": [
+                "__init__(config, llm_interface)",
+                "integrate_session(session_summary: Dict) -> None",
+                "update_project_state(data: Dict) -> None",
+                "get_project_state(max_tokens: int) -> str",
+                "get_work_plan(max_tokens: int) -> str",
+                "get_recent_decisions(max_tokens: int) -> List[str]"
+              ]
+            }
+          },
+          {
+            "task_id": "T6.3",
+            "title": "Implement Document Compression",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/episodic_memory_manager.py", "src/orchestration/memory/session_memory_manager.py"],
+            "dependencies": ["T6.1", "T6.2"],
+            "acceptance_criteria": [
+              "Uses LLM for intelligent summarization",
+              "Achieves ≥0.7 compression ratio",
+              "Preserves critical information (decisions, issues, key accomplishments)",
+              "Unit tests with mocked LLM ≥90%"
+            ]
+          },
+          {
+            "task_id": "T6.4",
+            "title": "Implement Versioning System",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/episodic_memory_manager.py"],
+            "dependencies": ["T6.2"],
+            "acceptance_criteria": [
+              "Versions documents before modification",
+              "Saves to .obra/memory/versions/ with timestamp",
+              "Keeps last N versions (configurable, default 10)",
+              "Cleanup old versions",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T6.5",
+            "title": "Integration Tests for Memory Tiers",
+            "estimated_hours": 16,
+            "file_changes": ["tests/integration/test_memory_tiers.py"],
+            "dependencies": ["T6.1", "T6.2", "T6.3", "T6.4"],
+            "acceptance_criteria": [
+              "Tests session lifecycle (create, append, compress, archive)",
+              "Tests episodic updates and versioning",
+              "Tests compression ratios",
+              "Tests cross-session continuity",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-7",
+        "title": "Checkpoint System with Multi-Trigger Support",
+        "phase": "P3",
+        "estimated_hours": 64,
+        "priority": "high",
+        "dependencies": ["STORY-018-5"],
+        "tasks": [
+          {
+            "task_id": "T7.1",
+            "title": "Design Checkpoint Schema",
+            "estimated_hours": 4,
+            "file_changes": ["docs/schemas/checkpoint_schema.json"],
+            "acceptance_criteria": [
+              "Schema includes: id, timestamp, trigger, context_snapshot, resume_instructions, metadata",
+              "Example checkpoint JSON provided",
+              "Documentation of all fields"
+            ]
+          },
+          {
+            "task_id": "T7.2",
+            "title": "Implement CheckpointManager Core",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/checkpoint_manager.py", "tests/test_checkpoint_manager.py"],
+            "dependencies": ["T7.1"],
+            "acceptance_criteria": [
+              "create_checkpoint() saves to .obra/checkpoints/",
+              "load_checkpoint(checkpoint_id) loads from disk",
+              "Structured format with resume instructions",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "CheckpointManager",
+              "methods": [
+                "__init__(config: Dict)",
+                "create_checkpoint(context_snapshot, tokens_used, model_name, trigger, resume_instructions) -> Checkpoint",
+                "load_checkpoint(checkpoint_id: str) -> Checkpoint",
+                "should_checkpoint(usage_pct: float, force_check_time: bool = True) -> Tuple[bool, str]"
+              ]
+            }
+          },
+          {
+            "task_id": "T7.3",
+            "title": "Implement Multi-Trigger Logic",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestration/memory/checkpoint_manager.py"],
+            "dependencies": ["T7.2"],
+            "acceptance_criteria": [
+              "Threshold triggers: 70%, 85%",
+              "Time trigger: Hours since last checkpoint (adaptive: 0.5hr for 4K, 4hr for 128K, 8hr for 1M)",
+              "Operation-count trigger: Operations since last (adaptive: 20 for 4K, 100 for 128K, 200 for 1M)",
+              "Unit tests for all trigger types ≥90%"
+            ]
+          },
+          {
+            "task_id": "T7.4",
+            "title": "Implement Checkpoint Resume",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/memory/checkpoint_manager.py"],
+            "dependencies": ["T7.2"],
+            "acceptance_criteria": [
+              "resume_from_checkpoint(checkpoint_id) loads state",
+              "Restores working memory, session state",
+              "Follows resume_instructions",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T7.5",
+            "title": "Integration Tests for Checkpointing",
+            "estimated_hours": 16,
+            "file_changes": ["tests/integration/test_checkpoint_system.py"],
+            "dependencies": ["T7.2", "T7.3", "T7.4"],
+            "acceptance_criteria": [
+              "Tests checkpoint creation (all triggers)",
+              "Tests checkpoint resume",
+              "Tests with different context sizes",
+              "Tests failure recovery",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-018-8",
+        "title": "Integration & Orchestrator Coordination",
+        "phase": "P4",
+        "estimated_hours": 108,
+        "priority": "critical",
+        "dependencies": ["STORY-018-6", "STORY-018-7"],
+        "tasks": [
+          {
+            "task_id": "T8.1",
+            "title": "Implement OrchestratorContextManager Coordinator",
+            "estimated_hours": 24,
+            "file_changes": ["src/orchestration/orchestrator_context_manager.py", "tests/test_orchestrator_context_manager.py"],
+            "acceptance_criteria": [
+              "Initializes all components (WorkingMemory, SessionMemory, EpisodicMemory, CheckpointManager, etc.)",
+              "Coordinates context building across tiers",
+              "Handles checkpoint triggers and execution",
+              "Tracks context usage",
+              "Unit tests ≥90%"
+            ],
+            "code_structure": {
+              "class": "OrchestratorContextManager",
+              "methods": [
+                "__init__(state_manager, context_builder, llm_interface, config)",
+                "record_operation(op_type, op_data, tokens_used, phase) -> None",
+                "get_orchestrator_context(for_operation, phase, max_tokens) -> Dict",
+                "flush_session() -> str",
+                "_trigger_checkpoint(trigger: str) -> None",
+                "_optimize_context() -> None",
+                "query_recent_operations(op_type, limit) -> List[Dict]"
+              ]
+            }
+          },
+          {
+            "task_id": "T8.2",
+            "title": "Integrate with Orchestrator.execute_task()",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestrator.py", "tests/integration/test_orchestrator_context_integration.py"],
+            "dependencies": ["T8.1"],
+            "acceptance_criteria": [
+              "Calls orch_context.record_operation() before/after task execution",
+              "Builds Orchestrator context for operation",
+              "Triggers checkpoint if needed",
+              "Integration tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T8.3",
+            "title": "Integrate with Orchestrator.execute_nl_command()",
+            "estimated_hours": 16,
+            "file_changes": ["src/orchestrator.py", "tests/integration/test_nl_context_integration.py"],
+            "dependencies": ["T8.1"],
+            "acceptance_criteria": [
+              "Records NL command operation",
+              "Builds Orchestrator context",
+              "Triggers checkpoint if needed",
+              "Integration tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T8.4",
+            "title": "Integrate with NLCommandProcessor for Reference Resolution",
+            "estimated_hours": 16,
+            "file_changes": ["src/nl/nl_command_processor.py", "tests/integration/test_reference_resolution.py"],
+            "dependencies": ["T8.1"],
+            "acceptance_criteria": [
+              "Queries recent operations for pronoun resolution ('it', 'that')",
+              "Context-aware entity extraction",
+              "Integration tests with reference examples ('add 3 stories to it') ≥90%"
+            ]
+          },
+          {
+            "task_id": "T8.5",
+            "title": "Configuration Loading and Validation",
+            "estimated_hours": 12,
+            "file_changes": ["src/orchestration/orchestrator_context_manager.py", "tests/test_config_loading.py"],
+            "dependencies": ["T8.1"],
+            "acceptance_criteria": [
+              "Loads config/models.yaml and config/default_config.yaml",
+              "Validates configurations",
+              "Applies defaults",
+              "Error handling for invalid configs",
+              "Unit tests ≥90%"
+            ]
+          },
+          {
+            "task_id": "T8.6",
+            "title": "End-to-End Integration Tests",
+            "estimated_hours": 24,
+            "file_changes": ["tests/integration/test_e2e_context_management.py"],
+            "dependencies": ["T8.2", "T8.3", "T8.4", "T8.5"],
+            "acceptance_criteria": [
+              "Tests full task execution with context tracking",
+              "Tests full NL command with reference resolution",
+              "Tests checkpoint triggers during execution",
+              "Tests cross-session continuity",
+              "Tests with different context sizes (4K, 16K, 128K, 200K)",
+              "Coverage ≥90%"
+            ]
+          }
+        ]
+      }
+    ],
+    "testing_validation": {
+      "performance_tests": {
+        "estimated_hours": 16,
+        "deliverables": [
+          "Context refresh latency benchmark (target <5s P95)",
+          "Memory overhead benchmark (target <100MB)",
+          "Compression ratio validation (target ≥0.7)",
+          "Context size scalability tests (4K to 1M)"
+        ],
+        "acceptance_criteria": [
+          "All performance targets met",
+          "Performance report generated"
+        ]
+      },
+      "small_context_validation": {
+        "estimated_hours": 16,
+        "deliverables": [
+          "4K context testing (phi-3-mini)",
+          "8K context testing (qwen 3b)",
+          "16K context testing (qwen 7b)",
+          "Adaptive strategy validation"
+        ],
+        "acceptance_criteria": [
+          "All small context sizes functional",
+          "Checkpoint frequencies appropriate",
+          "Optimization profiles correct"
+        ]
+      }
+    },
+    "documentation": {
+      "estimated_hours": 24,
+      "deliverables": [
+        "User Guide: Orchestrator Context Management",
+        "Developer Guide: Context Management Architecture",
+        "Configuration Reference",
+        "Migration Guide for existing deployments",
+        "API documentation (docstrings for all public methods)"
+      ],
+      "acceptance_criteria": [
+        "All guides complete and reviewed",
+        "API docs generated successfully",
+        "Migration guide tested"
+      ]
+    },
+    "deployment": {
+      "estimated_hours": 16,
+      "deliverables": [
+        "Backward compatibility verification",
+        "Migration script for existing sessions",
+        "Rollout plan with feature flag",
+        "Rollback plan"
+      ],
+      "acceptance_criteria": [
+        "Backward compatibility verified",
+        "Migration script tested",
+        "Rollout plan approved"
+      ]
+    }
+  },
+  "response_schema": {
+    "format": "json",
+    "required_fields": [
+      "implementation_status",
+      "completed_tasks",
+      "issues_encountered",
+      "next_steps",
+      "test_coverage"
+    ],
+    "field_definitions": {
+      "implementation_status": {
+        "type": "enum",
+        "values": ["not_started", "in_progress", "completed", "blocked"]
+      },
+      "completed_tasks": {
+        "type": "array",
+        "items": "string (task_id)"
+      },
+      "issues_encountered": {
+        "type": "array",
+        "items": {
+          "task_id": "string",
+          "issue_description": "string",
+          "severity": "enum[low,medium,high,critical]",
+          "resolution": "string or null"
+        }
+      },
+      "next_steps": {
+        "type": "array",
+        "items": "string (next task_id or action)"
+      },
+      "test_coverage": {
+        "type": "object",
+        "fields": {
+          "overall_percentage": "float",
+          "per_module": "object (module_name: percentage)"
+        }
+      }
+    }
+  },
+  "execution_guidelines": {
+    "phase_execution_order": [
+      "P1: Core Infrastructure (Stories 1-2)",
+      "P2: Memory Tiers & Optimization (Stories 3-5)",
+      "P3: Persistent Memory & Checkpoints (Stories 6-7)",
+      "P4: Integration & Validation (Story 8)"
+    ],
+    "critical_path": [
+      "STORY-018-1 (Config System) → STORY-018-2 (Window Manager) → STORY-018-3 (Working Memory) → STORY-018-8 (Integration)"
+    ],
+    "parallelizable_work": [
+      "After P1 complete: Stories 3, 4, 5 can run in parallel",
+      "After P2 complete: Stories 6, 7 can run in parallel"
+    ],
+    "verification_gates": [
+      {
+        "gate": "P1 Complete",
+        "criteria": [
+          "Auto-detection works for 3+ providers",
+          "Thresholds calculate correctly for 4K-1M",
+          "All P1 unit tests pass ≥90% coverage"
+        ]
+      },
+      {
+        "gate": "P2 Complete",
+        "criteria": [
+          "Working memory evicts correctly",
+          "Compression achieves ≥0.7 ratio",
+          "Adaptive profiles auto-select",
+          "All P2 unit tests pass ≥90% coverage"
+        ]
+      },
+      {
+        "gate": "P3 Complete",
+        "criteria": [
+          "Session compression at 40K tokens",
+          "Checkpoints trigger correctly (all types)",
+          "Resume from checkpoint works",
+          "All P3 unit tests pass ≥90% coverage"
+        ]
+      },
+      {
+        "gate": "P4 Complete (FINAL)",
+        "criteria": [
+          "All integration tests pass ≥90%",
+          "Performance targets met (<5s, <100MB, ≥0.7)",
+          "Reference resolution works",
+          "Works with 4K, 16K, 128K, 200K contexts",
+          "Documentation complete"
+        ]
+      }
+    ],
+    "error_handling_protocol": [
+      "If test coverage <90% for any module, refactor and add tests before proceeding",
+      "If performance target missed, profile and optimize before next phase",
+      "If integration fails, create detailed issue and pause phase until resolved",
+      "If compression ratio <0.7, tune LLM prompts or adjust thresholds"
+    ]
+  }
+}

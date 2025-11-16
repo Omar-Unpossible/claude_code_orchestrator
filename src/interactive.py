@@ -11,6 +11,7 @@ Usage:
 
 import logging
 import shlex
+import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -18,6 +19,7 @@ from src.orchestrator import Orchestrator
 from src.core.config import Config
 from src.core.state import StateManager
 from src.core.exceptions import OrchestratorException
+from src.monitoring.production_logger import ProductionLogger, generate_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,20 @@ class InteractiveMode:
         self.current_project: Optional[int] = None
         self.running = False
         self.nl_processor: Optional[Any] = None  # NL command processor for executing commands
+
+        # Production logging (v1.8.0)
+        self.session_id = generate_session_id()
+        monitoring_config = config.get('monitoring.production_logging', {})
+
+        if monitoring_config.get('enabled', False):
+            try:
+                self.prod_logger = ProductionLogger(monitoring_config)
+                logger.info(f"Production logging enabled: session={self.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to initialize ProductionLogger: {e}", exc_info=True)
+                self.prod_logger = None
+        else:
+            self.prod_logger = None
 
         # Command history
         self.history: List[str] = []
@@ -134,6 +150,13 @@ class InteractiveMode:
         # Cleanup
         if self.orchestrator:
             self.orchestrator.shutdown()
+
+        # Close production logger
+        if self.prod_logger:
+            try:
+                self.prod_logger.close()
+            except Exception as e:
+                logger.error(f"Failed to close ProductionLogger: {e}")
 
         print("Goodbye!")
 
@@ -707,6 +730,12 @@ class InteractiveMode:
             message = ' '.join(args)
             print(f"\n[You → Orchestrator]: {message}")
 
+            # Log user input (production monitoring)
+            if self.prod_logger:
+                self.prod_logger.log_user_input(self.session_id, message)
+
+            start_time = time.time()  # Track total duration
+
             # Use NL processor if available (executes commands)
             if self.nl_processor:
                 print("[Orchestrator processing...]")
@@ -717,7 +746,13 @@ class InteractiveMode:
                     context['project_id'] = self.current_project
 
                 # Process through NL pipeline to get ParsedIntent
+                nl_start = time.time()
                 parsed_intent = self.nl_processor.process(message, context=context)
+                nl_duration_ms = int((time.time() - nl_start) * 1000)
+
+                # Log NL processing result (production monitoring)
+                if self.prod_logger:
+                    self.prod_logger.log_nl_result(self.session_id, parsed_intent, nl_duration_ms)
 
                 # Handle based on intent type
                 if parsed_intent.is_question():
@@ -749,11 +784,19 @@ class InteractiveMode:
                         return
 
                     try:
+                        exec_start = time.time()
                         result = self.orchestrator.execute_nl_command(
                             parsed_intent,
                             project_id=self.current_project,
                             interactive=True
                         )
+                        exec_duration_ms = int((time.time() - exec_start) * 1000)
+
+                        # Log execution result (production monitoring)
+                        if self.prod_logger:
+                            self.prod_logger.log_execution_result(
+                                self.session_id, result, exec_duration_ms
+                            )
 
                         # Display result message
                         if result.get('success'):
@@ -770,6 +813,15 @@ class InteractiveMode:
                         if 'project_id' in result.get('data', {}):
                             self.current_project = result['data']['project_id']
                     except Exception as exec_error:
+                        # Log error (production monitoring)
+                        if self.prod_logger:
+                            self.prod_logger.log_error(
+                                self.session_id,
+                                stage="execution",
+                                error=exec_error,
+                                context={"project_id": self.current_project}
+                            )
+
                         print(f"\n✗ Execution failed: {exec_error}\n")
                         logger.exception("Error executing NL command through orchestrator")
                 else:
@@ -792,6 +844,15 @@ class InteractiveMode:
                 return
 
         except Exception as e:
+            # Log error (production monitoring)
+            if self.prod_logger:
+                self.prod_logger.log_error(
+                    self.session_id,
+                    stage="nl_processing",
+                    error=e,
+                    context={"message": message[:100] if 'message' in locals() else ""}
+                )
+
             print(f"\n✗ Failed to process request: {e}\n")
             logger.exception("Error in orchestrator command processing")
 

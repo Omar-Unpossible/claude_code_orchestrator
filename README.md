@@ -24,6 +24,9 @@ The Claude Code Orchestrator is a supervision system where a local LLM (Qwen 2.5
 - 🖥️ **Multiple Interfaces**: CLI, Interactive REPL, Simple Scripts, and Programmatic API
 - 🐳 **Easy Deployment**: Docker Compose for one-command setup
 - 🚀 **LLM-First Prompt Engineering**: Hybrid format (35% token efficiency, 23% faster responses) - See [PHASE_6](#phase_6-llm-first-prompt-engineering)
+- 📊 **Production Monitoring**: Structured JSON logging with quality metrics, privacy redaction, and session tracking (v1.8.0)
+
+**📖 New to Obra? Read the [Product Overview](docs/PRODUCT_OVERVIEW.md) for a comprehensive introduction to features, architecture, and use cases.**
 
 ## Quick Start
 
@@ -267,6 +270,68 @@ Obra provides intelligent session management for complex, multi-task workflows:
 
 **See [Session Management Guide](docs/guides/SESSION_MANAGEMENT_GUIDE.md) for detailed usage and configuration.**
 
+### Production Monitoring (v1.8.0)
+
+Obra includes **built-in production logging** for real-time observability and quality monitoring:
+
+#### Features
+- **JSON Lines Format**: Machine-parsable logs for easy analysis
+- **I/O Boundary Logging**: Captures user input → NL processing → execution → results
+- **Quality Metrics**: Confidence scores, validation status, and performance timing
+- **Privacy Protection**: Automatic PII and secret redaction
+- **Session Tracking**: Multi-turn conversation continuity via UUID
+
+#### Logged Events
+- `user_input`: All user commands and natural language input
+- `nl_result`: NL parsing quality (confidence, validation, duration)
+- `execution_result`: Task execution outcomes (success, entities affected, timing)
+- `error`: Failures with stage context for debugging
+
+#### Configuration
+
+Production logging is **enabled by default**. To disable or customize:
+
+```yaml
+# config/config.yaml
+monitoring:
+  production_logging:
+    enabled: true  # Set to false to disable
+    path: "~/obra-runtime/logs/production.jsonl"
+    events:
+      user_input: true
+      nl_results: true
+      execution_results: true
+      errors: true
+    privacy:
+      redact_pii: true      # Email, IP, phone, SSN
+      redact_secrets: true  # API keys, tokens
+```
+
+#### Viewing Logs
+
+```bash
+# View all logs
+cat ~/obra-runtime/logs/production.jsonl | jq .
+
+# Filter by event type
+cat ~/obra-runtime/logs/production.jsonl | jq 'select(.type == "error")'
+
+# View quality metrics
+cat ~/obra-runtime/logs/production.jsonl | jq 'select(.type == "nl_result") | {confidence, validation, duration_ms}'
+
+# Track a specific session
+cat ~/obra-runtime/logs/production.jsonl | jq 'select(.session == "SESSION_ID")'
+```
+
+#### When to Disable
+
+Production logging is enabled by default for observability. Consider disabling in:
+- **Privacy-sensitive environments**: Even with redaction, logging all interactions may not be acceptable
+- **Disk space constraints**: Logs can grow to 1GB with default rotation settings
+- **Development**: Frequent restarts generate many sessions
+
+**See [Production Monitoring Guide](docs/guides/PRODUCTION_MONITORING_GUIDE.md) for complete documentation.**
+
 ### Iterative Orchestration Workflow
 
 The `run_obra_iterative.py` script demonstrates multi-turn task execution:
@@ -345,6 +410,37 @@ pylint src/
 mypy src/
 black src/ tests/
 ```
+
+### Shell Enhancements for Claude Code
+
+**WSL2 development environment includes 35+ specialized commands for LLM-led development workflows.**
+
+**Quick Reference**:
+```bash
+claude-help          # Show all available commands
+context              # Get complete project snapshot (use BEFORE Claude Code sessions)
+recent 5             # Show recently modified files
+todos                # Show all TODO/FIXME comments
+gcom <msg>           # Quick git commit (stage all + commit)
+test                 # Auto-detecting test runner (Python/Node/Rust/Go)
+save-context         # Save work context between sessions
+```
+
+**Documentation**:
+- See `CLAUDE.md` → "Development Environment & Shell Enhancements" section
+- Full guide: `~/CLAUDE_ENHANCEMENTS_README.md`
+- Quick start: `~/CLAUDE_ENHANCEMENTS_QUICKSTART.md`
+
+**Installed Tools**:
+- Modern CLI: bat, exa, fd, ripgrep, fzf, zoxide, direnv
+- Enhancement tools: git-delta, tokei, hyperfine, tree, httpie, jless, watchexec
+
+**Recommended Workflow**:
+1. Navigate to project: `z obra` or `obra`
+2. Get context: `context && recent 5 && todos`
+3. Start Claude Code: `claude`
+4. During development: Use `ff`, `test`, `gcom`, `gamend`
+5. End session: `save-context`
 
 ### Project Structure
 
@@ -427,6 +523,7 @@ pytest tests/test_integration_e2e.py
 ## Documentation
 
 **Quick Links**:
+- ⭐ **[Product Overview](docs/PRODUCT_OVERVIEW.md)** - **START HERE** - Comprehensive introduction to Obra
 - 📖 [Documentation Index](docs/README.md) - Complete documentation navigation
 - 🚀 [Complete Setup Walkthrough](docs/guides/COMPLETE_SETUP_WALKTHROUGH.md) - Windows 11 + Hyper-V setup
 - 📘 [Getting Started Guide](docs/guides/GETTING_STARTED.md) - Quick start and basic usage

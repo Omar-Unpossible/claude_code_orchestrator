@@ -1,6 +1,6 @@
 # Testing Documentation Index
 
-**Last Updated**: 2025-11-13
+**Last Updated**: 2025-11-15
 
 ---
 
@@ -9,6 +9,25 @@
 - **[Test Guidelines](TEST_GUIDELINES.md)** - WSL2-safe testing practices (CRITICAL) ⚠️
 - **[NL Testing Strategy](NL_TESTING_STRATEGY.md)** - Mock vs Real LLM testing strategy
 - **[Real LLM Testing Guide](REAL_LLM_TESTING_GUIDE.md)** - Running integration tests with Ollama/Qwen
+
+## New: End-to-End Simulation Testing (2025-11-15) 🎯
+
+**Objective**: Validate Obra's complete orchestration workflow with realistic development scenarios
+
+- **[Simulation Test Plan](OBRA_SIMULATION_TEST.md)** - Complete end-to-end test scenario (JSON-to-Markdown CLI tool)
+- **[Quick Start Guide](OBRA_SIMULATION_QUICKSTART.md)** - Fast reference for running the simulation
+- **[Startup Prompt](SIMULATION_STARTUP_PROMPT.md)** - Copy-paste prompt for Claude Code to run autonomously
+- **[Validation Script](../../scripts/validate_simulation.sh)** - Automated success criteria checking
+
+**What This Tests**:
+- Natural language command interface (all entity types)
+- Task hierarchy (project → epic → story → task)
+- Quality validation pipeline
+- Production logging and debugging
+- Iterative improvement workflow
+- Epic completion and documentation maintenance
+
+**Duration**: ~90 minutes | **Difficulty**: Medium | **Success Criteria**: Working CLI + Tests (≥80% coverage)
 
 ## New: NL Query Testing Suite (2025-11-13) ⭐
 
@@ -217,6 +236,11 @@ docs/testing/
 ├── README.md                                    (This file)
 ├── TEST_GUIDELINES.md                           (WSL2-safe testing rules)
 │
+├── End-to-End Simulation Testing (NEW - 2025-11-15) 🎯
+│   ├── OBRA_SIMULATION_TEST.md                  (Complete test scenario)
+│   ├── OBRA_SIMULATION_QUICKSTART.md            (Quick reference)
+│   └── SIMULATION_STARTUP_PROMPT.md             (Copy-paste prompt for Claude)
+│
 ├── NL Query Testing (NEW - 2025-11-13)
 │   ├── CLAUDE_IMPLEMENTATION_NL_QUERY_TESTS.md  (Machine-optimized guide)
 │   ├── NL_QUERY_TESTING_IMPLEMENTATION_PLAN.md  (Human-readable plan)
@@ -243,6 +267,12 @@ docs/testing/
     ├── NL_PHASE1_COMPLETION_REPORT.md
     ├── NL_PHASE2_SUMMARY.md
     └── NL_PHASE3_FINAL_REPORT.md
+```
+
+**Helper Scripts**:
+```
+scripts/
+└── validate_simulation.sh                       (Automated validation script)
 ```
 
 ---

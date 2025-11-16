@@ -4,6 +4,9 @@
 
 ## Quick Navigation
 
+### ⭐ Start Here
+- **[Product Overview](PRODUCT_OVERVIEW.md)** - ⭐ **NEW** - Comprehensive introduction to Obra (features, architecture, use cases)
+
 ### 🚀 Getting Started
 - **[Complete Setup Walkthrough](guides/COMPLETE_SETUP_WALKTHROUGH.md)** - Step-by-step setup for Windows 11 + Hyper-V + WSL2
 - **[Getting Started Guide](guides/GETTING_STARTED.md)** - Quick start and basic usage
@@ -57,6 +60,7 @@
 - **[Issue Analysis Tool](quality/analyze_issues.py)** - Generate statistics and insights
 
 ### 🎨 Design
+- **[Product Overview](PRODUCT_OVERVIEW.md)** - ⭐ Comprehensive product introduction (standalone)
 - **[System Overview](design/OBRA_SYSTEM_OVERVIEW.md)** - Comprehensive system overview (830+ lines)
 - **[LLM-First Prompt Engineering Framework](design/LLM_FIRST_PROMPT_ENGINEERING_FRAMEWORK.md)** - Hybrid prompt design
 - **[Future Design](design/design_future.md)** - Planned features and enhancements
@@ -87,6 +91,7 @@
 
 ```
 docs/
+├── PRODUCT_OVERVIEW.md                   # ⭐ START HERE - Comprehensive product introduction
 ├── guides/                               # User-facing guides (12 guides)
 │   ├── COMPLETE_SETUP_WALKTHROUGH.md       (Windows 11 + Hyper-V + WSL2)
 │   ├── GETTING_STARTED.md                  (Quick start)
