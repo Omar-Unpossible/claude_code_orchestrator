@@ -23,8 +23,10 @@ tests/reports/
 tests/performance/
 tests/fixtures/failed_demo_commands.jsonl
 
-# Claude Code CLI
-.claude/
+# Claude Code CLI - local files only
+.claude/settings.local.json
+.claude/.cache/
+.claude/logs/
 
 # Runtime directories (use ~/obra-runtime/ instead)
 data/
