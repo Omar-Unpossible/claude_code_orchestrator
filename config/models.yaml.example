@@ -1,0 +1,267 @@
+# LLM Models Configuration
+# Purpose: Define model capabilities and optimization strategies for context management
+# Used by: ModelConfigLoader, ContextWindowManager, AdaptiveOptimizer
+#
+# This file configures model-specific settings for the Orchestrator and Implementer LLMs.
+# Copy this file to config/models.yaml and customize for your deployment.
+#
+# Schema Version: 1.0
+# Last Updated: 2025-01-15
+
+# ============================================================================
+# LLM Model Definitions
+# ============================================================================
+# Each model definition includes:
+#   - provider: LLM service provider (ollama, anthropic, openai)
+#   - model: Model identifier/name
+#   - context_window: Maximum context window size in tokens
+#   - optimization_profile: Strategy for context management (ultra-aggressive, aggressive, balanced-aggressive, balanced, minimal)
+#   - cost_per_1m_input_tokens: Cost per 1 million input tokens (USD) - 0 for local models
+#   - cost_per_1m_output_tokens: Cost per 1 million output tokens (USD) - 0 for local models
+#   - supports_prompt_caching: (optional) Whether model supports prompt caching
+#   - cache_creation_cost_per_1m: (optional) Cost to create cache per 1M tokens
+#   - cache_read_cost_per_1m: (optional) Cost to read from cache per 1M tokens
+
+llm_models:
+  # ============================================================================
+  # ULTRA-SMALL LOCAL MODELS (4K-8K context)
+  # Best for: Resource-constrained deployments, quick prototyping
+  # Optimization: Ultra-aggressive (frequent checkpoints, minimal history)
+  # ============================================================================
+
+  phi3_mini:
+    provider: ollama
+    model: phi3:mini
+    context_window: 4096
+    optimization_profile: ultra-aggressive
+    cost_per_1m_input_tokens: 0  # Local model
+    cost_per_1m_output_tokens: 0
+    description: "Microsoft Phi-3 Mini - Ultra-compact model for constrained environments"
+    notes: "Very aggressive optimization required: checkpoint every 30 min, keep last 10 operations only"
+
+  # ============================================================================
+  # SMALL LOCAL MODELS (8K-32K context)
+  # Best for: Local development, budget-conscious deployments
+  # Optimization: Aggressive (moderate checkpoints, limited history)
+  # ============================================================================
+
+  qwen_2_5_3b:
+    provider: ollama
+    model: qwen2.5-coder:3b
+    context_window: 8192
+    optimization_profile: aggressive
+    cost_per_1m_input_tokens: 0
+    cost_per_1m_output_tokens: 0
+    description: "Qwen 2.5 Coder 3B - Small but capable coding model"
+    notes: "Aggressive optimization: checkpoint every 1 hour, keep last 30 operations"
+
+  qwen_2_5_7b:
+    provider: ollama
+    model: qwen2.5-coder:7b
+    context_window: 16384
+    optimization_profile: aggressive
+    cost_per_1m_input_tokens: 0
+    cost_per_1m_output_tokens: 0
+    description: "Qwen 2.5 Coder 7B - Balanced performance/resource model"
+    notes: "Aggressive optimization: checkpoint every 1 hour, keep last 30 operations"
+
+  # ============================================================================
+  # MEDIUM-SMALL LOCAL MODELS (32K-100K context)
+  # Best for: Standard local deployments
+  # Optimization: Balanced-aggressive (moderate checkpoints, reasonable history)
+  # ============================================================================
+
+  qwen_2_5_14b:
+    provider: ollama
+    model: qwen2.5-coder:14b
+    context_window: 32768
+    optimization_profile: balanced-aggressive
+    cost_per_1m_input_tokens: 0
+    cost_per_1m_output_tokens: 0
+    description: "Qwen 2.5 Coder 14B - Good balance for medium contexts"
+    notes: "Balanced-aggressive: checkpoint every 2 hours, keep last 50 operations"
+
+  # ============================================================================
+  # MEDIUM LOCAL MODELS (100K-250K context)
+  # Best for: Production local deployments with RTX 4090/5090
+  # Optimization: Balanced (reasonable checkpoints, good history)
+  # ============================================================================
+
+  qwen_2_5_32b:
+    provider: ollama
+    model: qwen2.5-coder:32b
+    context_window: 128000
+    optimization_profile: balanced
+    cost_per_1m_input_tokens: 0
+    cost_per_1m_output_tokens: 0
+    description: "Qwen 2.5 Coder 32B - Production-grade local model (RECOMMENDED for Orchestrator)"
+    notes: "Balanced optimization: checkpoint every 4 hours, keep last 50 operations"
+
+  # ============================================================================
+  # LARGE CLOUD MODELS (200K+ context)
+  # Best for: Production deployments with budget
+  # Optimization: Balanced to minimal (infrequent checkpoints, extensive history)
+  # ============================================================================
+
+  claude_3_5_sonnet:
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    context_window: 200000
+    optimization_profile: balanced
+    cost_per_1m_input_tokens: 3.00
+    cost_per_1m_output_tokens: 15.00
+    supports_prompt_caching: true
+    cache_creation_cost_per_1m: 3.75
+    cache_read_cost_per_1m: 0.30
+    description: "Claude 3.5 Sonnet - High-quality cloud model with prompt caching (RECOMMENDED for Implementer)"
+    notes: "Balanced optimization with prompt caching support: checkpoint every 4 hours, keep last 50 operations"
+
+  claude_3_5_haiku:
+    provider: anthropic
+    model: claude-3-5-haiku-20241022
+    context_window: 200000
+    optimization_profile: balanced
+    cost_per_1m_input_tokens: 1.00
+    cost_per_1m_output_tokens: 5.00
+    supports_prompt_caching: true
+    cache_creation_cost_per_1m: 1.25
+    cache_read_cost_per_1m: 0.10
+    description: "Claude 3.5 Haiku - Fast, cost-effective cloud model"
+    notes: "Good for budget-conscious cloud deployments"
+
+  # ============================================================================
+  # FUTURE LARGE MODELS (1M+ context)
+  # Best for: Future deployments with massive context requirements
+  # Optimization: Minimal (rare checkpoints, full history)
+  # ============================================================================
+
+  gpt5_turbo:
+    provider: openai
+    model: gpt-5-turbo
+    context_window: 1000000
+    optimization_profile: minimal
+    cost_per_1m_input_tokens: 2.00
+    cost_per_1m_output_tokens: 10.00
+    description: "GPT-5 Turbo - Future model with 1M token context (hypothetical)"
+    notes: "Minimal optimization: checkpoint every 8 hours, keep last 100 operations"
+
+  claude_opus_4:
+    provider: anthropic
+    model: claude-opus-4
+    context_window: 2000000
+    optimization_profile: minimal
+    cost_per_1m_input_tokens: 15.00
+    cost_per_1m_output_tokens: 75.00
+    description: "Claude Opus 4 - Future flagship model with 2M context (hypothetical)"
+    notes: "Minimal optimization for massive contexts"
+
+# ============================================================================
+# Active Model Selection
+# ============================================================================
+# Specify which models are currently active for Orchestrator and Implementer
+
+active_orchestrator_model: qwen_2_5_32b
+  # The Orchestrator handles validation, quality scoring, and decision-making
+  # Recommended: Local model (qwen_2_5_32b) for cost-free operation
+  # Alternative: Claude 3.5 Sonnet for higher quality (costs apply)
+
+active_implementer_model: claude_3_5_sonnet
+  # The Implementer (Claude Code) handles code generation
+  # Recommended: Claude 3.5 Sonnet for best code quality
+  # Alternative: qwen_2_5_32b for local, cost-free operation
+
+# ============================================================================
+# Optimization Profile Definitions
+# ============================================================================
+# Profiles are auto-selected based on context_window size, but can be overridden
+# in config/default_config.yaml if needed.
+#
+# Profile Ranges:
+#   - ultra-aggressive: 4K-8K contexts
+#   - aggressive: 8K-32K contexts
+#   - balanced-aggressive: 32K-100K contexts
+#   - balanced: 100K-250K contexts
+#   - minimal: 250K+ contexts
+#
+# Profile Settings:
+#   - summarization_threshold: Summarize items larger than N tokens
+#   - checkpoint_interval_hours: Time-based checkpoint frequency
+#   - max_operations: Working memory operation count
+#   - max_decision_records: Decision records to keep in context
+
+optimization_profiles:
+  ultra-aggressive:
+    context_range: [4096, 8192]
+    summarization_threshold: 100
+    artifact_registry_threshold: 200
+    max_decision_records: 3
+    max_operations: 10
+    checkpoint_interval_hours: 0.5
+    description: "For 4K-8K contexts: extreme optimization, frequent checkpoints"
+
+  aggressive:
+    context_range: [8193, 32768]
+    summarization_threshold: 300
+    artifact_registry_threshold: 500
+    max_decision_records: 5
+    max_operations: 30
+    checkpoint_interval_hours: 1.0
+    description: "For 8K-32K contexts: aggressive optimization, moderate checkpoints"
+
+  balanced-aggressive:
+    context_range: [32769, 100000]
+    summarization_threshold: 500
+    artifact_registry_threshold: 1000
+    max_decision_records: 10
+    max_operations: 50
+    checkpoint_interval_hours: 2.0
+    description: "For 32K-100K contexts: balanced optimization, reasonable checkpoints"
+
+  balanced:
+    context_range: [100001, 250000]
+    summarization_threshold: 500
+    artifact_registry_threshold: 1000
+    max_decision_records: 20
+    max_operations: 50
+    checkpoint_interval_hours: 4.0
+    description: "For 100K-250K contexts: moderate optimization, infrequent checkpoints"
+
+  minimal:
+    context_range: [250001, 10000000]
+    summarization_threshold: 1000
+    artifact_registry_threshold: 2000
+    max_decision_records: 50
+    max_operations: 100
+    checkpoint_interval_hours: 8.0
+    description: "For 250K+ contexts: minimal optimization, rare checkpoints"
+
+# ============================================================================
+# Usage Notes
+# ============================================================================
+#
+# 1. To use this configuration:
+#    cp config/models.yaml.example config/models.yaml
+#
+# 2. Customize active_orchestrator_model and active_implementer_model
+#
+# 3. Add your own models following the schema above
+#
+# 4. For cloud models (Anthropic, OpenAI):
+#    - Set environment variables for API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY)
+#    - Monitor costs carefully - context management reduces token usage
+#
+# 5. For local models (Ollama):
+#    - Ensure Ollama is running: `ollama serve`
+#    - Pull model: `ollama pull qwen2.5-coder:32b`
+#    - No API keys needed
+#
+# 6. Optimization profiles:
+#    - Auto-selected based on context_window size
+#    - Can override in config/default_config.yaml: orchestrator.optimization_profile
+#
+# 7. Cost tracking:
+#    - Set to 0 for local models
+#    - Cloud models: costs are informational only (Obra doesn't track billing)
+#    - Use for budgeting and model selection decisions
+#
+# ============================================================================
