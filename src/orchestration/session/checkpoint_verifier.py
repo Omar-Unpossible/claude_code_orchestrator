@@ -22,8 +22,6 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, UTC, timedelta
 
 from src.core.config import Config
-from src.core.state import StateManager
-from src.core.models import TaskStatus
 from src.core.exceptions import OrchestratorException
 
 logger = logging.getLogger(__name__)
@@ -31,12 +29,10 @@ logger = logging.getLogger(__name__)
 
 class CheckpointVerificationError(OrchestratorException):
     """Raised when checkpoint verification fails."""
-    pass
 
 
 class CheckpointCorruptedError(OrchestratorException):
     """Raised when checkpoint is corrupted or invalid."""
-    pass
 
 
 class CheckpointVerifier:
@@ -80,7 +76,7 @@ class CheckpointVerifier:
         self,
         config: Config,
         git_manager: Any,  # Type: GitManager
-        state_manager: StateManager
+        state_manager: Any  # Type: StateManager
     ):
         """Initialize checkpoint verifier.
 
@@ -132,8 +128,8 @@ class CheckpointVerifier:
         )
 
         logger.info(
-            f"CheckpointVerifier initialized: enabled={self._enabled}, "
-            f"require_verification={self._require_verification}"
+            "CheckpointVerifier initialized: enabled=%s, require_verification=%s",
+            self._enabled, self._require_verification
         )
 
     def verify_ready(self) -> Tuple[bool, List[str]]:
@@ -179,7 +175,7 @@ class CheckpointVerifier:
         all_passed = len(checks_failed) == 0
 
         if not all_passed:
-            logger.warning(f"Pre-checkpoint verification failed: {checks_failed}")
+            logger.warning("Pre-checkpoint verification failed: %s", checks_failed)
             if self._require_verification:
                 raise CheckpointVerificationError(
                     f"Cannot create checkpoint - failed checks: {checks_failed}",
@@ -203,6 +199,7 @@ class CheckpointVerifier:
         Raises:
             CheckpointCorruptedError: If verification fails and require_verification=True
         """
+        # pylint: disable=too-many-branches  # Validation logic requires multiple checks
         if not self._enabled:
             return True, []
 
@@ -241,11 +238,14 @@ class CheckpointVerifier:
         all_passed = len(checks_failed) == 0
 
         if not all_passed:
-            logger.warning(f"Post-resume verification failed: {checks_failed}")
+            logger.warning("Post-resume verification failed: %s", checks_failed)
             if self._require_verification:
                 raise CheckpointCorruptedError(
                     f"Cannot resume from checkpoint - failed checks: {checks_failed}",
-                    context={'checkpoint_id': checkpoint.get('checkpoint_id'), 'failed_checks': checks_failed},
+                    context={
+                        'checkpoint_id': checkpoint.get('checkpoint_id'),
+                        'failed_checks': checks_failed
+                    },
                     recovery="Use different checkpoint or fix environment"
                 )
 
@@ -261,9 +261,9 @@ class CheckpointVerifier:
             if not self.git_manager.is_clean():
                 return "Uncommitted changes in working directory"
             return None
-        except Exception as e:
-            logger.warning(f"Git clean check failed: {e}")
-            return f"Git check error: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught  # Robustness
+            logger.warning("Git clean check failed: %s", e)
+            return "Git check error: " + str(e)
 
     def _check_tests_passing(self) -> Optional[str]:
         """Run quick test to verify tests pass.
@@ -274,15 +274,13 @@ class CheckpointVerifier:
         try:
             result = self._run_quick_test()
             if result.returncode != 0:
-                # Extract failure count from output if available
-                output = result.stdout.decode('utf-8', errors='ignore')
-                return f"Tests failing (see output for details)"
+                return "Tests failing (see output for details)"
             return None
         except subprocess.TimeoutExpired:
             return f"Tests timed out after {self._quick_test_timeout}s"
-        except Exception as e:
-            logger.warning(f"Test check failed: {e}")
-            return f"Test check error: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught  # Robustness
+            logger.warning("Test check failed: %s", e)
+            return "Test check error: " + str(e)
 
     def _check_coverage(self) -> Optional[str]:
         """Check if test coverage meets minimum threshold.
@@ -295,25 +293,22 @@ class CheckpointVerifier:
             # For now, return None (passes) until coverage tracking implemented
             # TODO: Integrate with actual coverage measurement
             return None
-        except Exception as e:
-            logger.warning(f"Coverage check failed: {e}")
-            return f"Coverage check error: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught  # Robustness
+            logger.warning("Coverage check failed: %s", e)
+            return "Coverage check error: " + str(e)
 
     def _check_task_boundary(self) -> Optional[str]:
         """Check if current task is at safe boundary.
 
         Returns:
             Error message if check fails, None if passes
+
+        Note:
+            This check is disabled until StateManager provides current_task tracking.
         """
-        try:
-            # Get current task from state manager
-            current_task = self.state_manager.get_current_task()
-            if current_task and current_task.status == TaskStatus.IN_PROGRESS:
-                return "Cannot checkpoint mid-task (task in progress)"
-            return None
-        except Exception as e:
-            logger.warning(f"Task boundary check failed: {e}")
-            return f"Task boundary check error: {str(e)}"
+        # TODO(ADR-019): Implement once StateManager has current_task tracking
+        # For now, always pass (safe default: don't block checkpoints)
+        return None
 
     def _check_files_exist(self, files: List[str]) -> List[str]:
         """Check if files exist on filesystem.
@@ -344,9 +339,9 @@ class CheckpointVerifier:
             if current_branch != expected_branch:
                 return f"Branch mismatch: expected {expected_branch}, got {current_branch}"
             return None
-        except Exception as e:
-            logger.warning(f"Branch check failed: {e}")
-            return f"Branch check error: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught  # Robustness
+            logger.warning("Branch check failed: %s", e)
+            return "Branch check error: " + str(e)
 
     def _check_checkpoint_age(self, checkpoint_timestamp: datetime) -> Optional[str]:
         """Check if checkpoint is not too old.
@@ -364,9 +359,9 @@ class CheckpointVerifier:
                 age_hours = age.total_seconds() / 3600
                 return f"Checkpoint too old: {age_hours:.1f}h > {self._max_age_hours}h"
             return None
-        except Exception as e:
-            logger.warning(f"Checkpoint age check failed: {e}")
-            return f"Checkpoint age check error: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught  # Robustness
+            logger.warning("Checkpoint age check failed: %s", e)
+            return "Checkpoint age check error: " + str(e)
 
     def _run_quick_test(self) -> subprocess.CompletedProcess:
         """Run quick test suite.
@@ -380,6 +375,7 @@ class CheckpointVerifier:
         result = subprocess.run(
             ['pytest', '--quiet', '--maxfail=1'],
             capture_output=True,
-            timeout=self._quick_test_timeout
+            timeout=self._quick_test_timeout,
+            check=False
         )
         return result

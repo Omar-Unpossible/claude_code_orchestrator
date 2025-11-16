@@ -18,11 +18,9 @@ import time
 import uuid
 from typing import Dict, Any, Optional
 from threading import RLock
-from datetime import datetime, UTC
 
 from src.core.config import Config
 from src.core.exceptions import OrchestratorException
-from src.llm.local_interface import LocalLLMInterface
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +62,10 @@ class OrchestratorSessionManager:
     def __init__(
         self,
         config: Config,
-        llm_interface: LocalLLMInterface,
+        llm_interface: Any,  # Type: LocalLLMInterface (future: will have disconnect/connect)
         checkpoint_manager: Any,  # Type: CheckpointManager from ADR-018
         context_manager: Any,  # Type: OrchestratorContextManager from ADR-018
-        checkpoint_verifier: 'CheckpointVerifier'
+        checkpoint_verifier: Any  # Type: CheckpointVerifier
     ):
         """Initialize Orchestrator session manager.
 
@@ -113,7 +111,7 @@ class OrchestratorSessionManager:
     def restart_orchestrator_with_checkpoint(
         self,
         checkpoint_id: Optional[str] = None
-    ) -> str:
+    ) -> Optional[str]:
         """Restart Orchestrator LLM with checkpoint context.
 
         Performs complete self-handoff workflow:
