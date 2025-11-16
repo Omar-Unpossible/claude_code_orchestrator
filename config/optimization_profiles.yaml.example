@@ -1,0 +1,222 @@
+# Optimization Profiles for Context Management
+#
+# This file defines adaptive optimization profiles that automatically adjust
+# context management behavior based on detected context window size.
+#
+# Profiles range from ultra-aggressive (for small 4K contexts) to minimal
+# (for large 1M+ contexts), ensuring efficient token usage across all LLMs.
+#
+# Created: 2025-01-15
+# Related: ADR-018 (Orchestrator Context Management), STORY-018-5
+
+# =============================================================================
+# Profile Definitions
+# =============================================================================
+
+profiles:
+
+  # ---------------------------------------------------------------------------
+  # Ultra-Aggressive Profile (4K-8K contexts)
+  # ---------------------------------------------------------------------------
+  # Use case: Small local models (phi3:mini, qwen2.5-coder:3b)
+  # Strategy: Aggressive compression to maximize usable context
+
+  ultra_aggressive:
+    name: "Ultra-Aggressive"
+    description: "Maximum compression for tiny contexts (4K-8K)"
+
+    # Context window range where this profile applies
+    context_min: 4000
+    context_max: 8000
+
+    # Optimization thresholds
+    summarization_threshold: 100       # Summarize items >100 tokens
+    externalization_threshold: 500     # Externalize items >500 tokens
+    artifact_registry_enabled: true    # Always use artifact registry
+    differential_state_enabled: true   # Use differential state
+
+    # Pruning settings
+    pruning_age_hours: 0.5             # Prune data older than 30 minutes
+    max_validation_results: 3          # Keep only last 3 validation results
+    max_resolved_errors: 5             # Keep only 5 most recent resolved errors
+
+    # Checkpoint settings
+    checkpoint_interval_hours: 0.5     # Checkpoint every 30 minutes
+    checkpoint_threshold_pct: 70       # Checkpoint at 70% usage
+    checkpoint_operation_count: 20     # Checkpoint after 20 operations
+
+    # Working memory limits
+    max_operations: 10                 # Max 10 operations in memory
+    max_tokens_pct: 0.05              # Use only 5% of context for working memory
+
+  # ---------------------------------------------------------------------------
+  # Aggressive Profile (8K-32K contexts)
+  # ---------------------------------------------------------------------------
+  # Use case: Small-medium local models (qwen2.5-coder:7b)
+  # Strategy: Heavy compression with moderate checkpointing
+
+  aggressive:
+    name: "Aggressive"
+    description: "Heavy compression for small contexts (8K-32K)"
+
+    context_min: 8001
+    context_max: 32000
+
+    summarization_threshold: 300
+    externalization_threshold: 1000
+    artifact_registry_enabled: true
+    differential_state_enabled: true
+
+    pruning_age_hours: 1.0
+    max_validation_results: 5
+    max_resolved_errors: 10
+
+    checkpoint_interval_hours: 1.0
+    checkpoint_threshold_pct: 70
+    checkpoint_operation_count: 50
+
+    max_operations: 20
+    max_tokens_pct: 0.05
+
+  # ---------------------------------------------------------------------------
+  # Balanced-Aggressive Profile (32K-100K contexts)
+  # ---------------------------------------------------------------------------
+  # Use case: Medium local models (qwen2.5-coder:14b, qwen2.5-coder:32b)
+  # Strategy: Moderate compression with selective optimization
+
+  balanced_aggressive:
+    name: "Balanced-Aggressive"
+    description: "Moderate compression for medium contexts (32K-100K)"
+
+    context_min: 32001
+    context_max: 100000
+
+    summarization_threshold: 500
+    externalization_threshold: 2000
+    artifact_registry_enabled: true
+    differential_state_enabled: true
+
+    pruning_age_hours: 2.0
+    max_validation_results: 5
+    max_resolved_errors: 10
+
+    checkpoint_interval_hours: 2.0
+    checkpoint_threshold_pct: 85
+    checkpoint_operation_count: 100
+
+    max_operations: 40
+    max_tokens_pct: 0.08
+
+  # ---------------------------------------------------------------------------
+  # Balanced Profile (100K-250K contexts)
+  # ---------------------------------------------------------------------------
+  # Use case: Large cloud models (Claude 3.5 Sonnet, GPT-4)
+  # Strategy: Light compression, focus on quality over space
+
+  balanced:
+    name: "Balanced"
+    description: "Light compression for large contexts (100K-250K)"
+
+    context_min: 100001
+    context_max: 250000
+
+    summarization_threshold: 500
+    externalization_threshold: 2000
+    artifact_registry_enabled: false   # Keep full files in context
+    differential_state_enabled: true
+
+    pruning_age_hours: 4.0
+    max_validation_results: 10
+    max_resolved_errors: 15
+
+    checkpoint_interval_hours: 4.0
+    checkpoint_threshold_pct: 85
+    checkpoint_operation_count: 150
+
+    max_operations: 75
+    max_tokens_pct: 0.10
+
+  # ---------------------------------------------------------------------------
+  # Minimal Profile (250K+ contexts)
+  # ---------------------------------------------------------------------------
+  # Use case: Very large cloud models (GPT-4 Turbo, Claude Opus, future models)
+  # Strategy: Minimal compression, preserve all information
+
+  minimal:
+    name: "Minimal"
+    description: "Minimal compression for huge contexts (250K+)"
+
+    context_min: 250001
+    context_max: 10000000  # 10M (future-proof)
+
+    summarization_threshold: 1000
+    externalization_threshold: 5000
+    artifact_registry_enabled: false
+    differential_state_enabled: false  # Keep full state
+
+    pruning_age_hours: 8.0
+    max_validation_results: 20
+    max_resolved_errors: 20
+
+    checkpoint_interval_hours: 8.0
+    checkpoint_threshold_pct: 95
+    checkpoint_operation_count: 200
+
+    max_operations: 100
+    max_tokens_pct: 0.10
+
+
+# =============================================================================
+# Profile Selection Logic
+# =============================================================================
+#
+# Profiles are auto-selected based on detected context window size:
+#
+# 1. Detect context window via ContextWindowDetector
+# 2. Find profile where: context_min <= detected_size <= context_max
+# 3. Apply profile thresholds to all optimization operations
+# 4. Allow manual override via config: optimization_profile: "balanced"
+#
+# Selection Examples:
+#   4K context   → ultra_aggressive
+#   16K context  → aggressive
+#   128K context → balanced_aggressive
+#   200K context → balanced
+#   1M context   → minimal
+
+
+# =============================================================================
+# Configuration Override
+# =============================================================================
+#
+# To manually override auto-selection, add to config/default_config.yaml:
+#
+#   optimization:
+#     profile: "balanced"              # Force specific profile
+#     custom_thresholds:               # Or override individual settings
+#       summarization_threshold: 750
+#       checkpoint_interval_hours: 3.0
+#
+# Custom thresholds take precedence over profile defaults.
+
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+#
+# Example 1: Small local model (Qwen 3B with 8K context)
+#   → auto-selects "aggressive" profile
+#   → Aggressive summarization (>300 tokens)
+#   → Frequent checkpoints (every 1 hour)
+#   → Heavy pruning (1 hour age threshold)
+#
+# Example 2: Large cloud model (Claude 3.5 Sonnet with 200K context)
+#   → auto-selects "balanced" profile
+#   → Light summarization (>500 tokens)
+#   → Infrequent checkpoints (every 4 hours)
+#   → Light pruning (4 hour age threshold)
+#
+# Example 3: Manual override for testing
+#   → Set optimization.profile: "ultra_aggressive" in config
+#   → Forces ultra-aggressive even with large context
+#   → Useful for testing compression algorithms
