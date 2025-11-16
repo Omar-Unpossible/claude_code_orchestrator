@@ -488,14 +488,14 @@ def test_detect_with_none_model_config(detector):
     """Test detection with None model_config."""
     size = detector.detect('ollama', 'qwen2.5-coder:32b', model_config=None)
 
-    assert size == 128000
+    assert size == 128000  # Falls back to known context windows
 
 
 def test_detect_with_empty_model_config(detector):
     """Test detection with empty model_config dict."""
     size = detector.detect('ollama', 'qwen2.5-coder:32b', model_config={})
 
-    assert size == 128000
+    assert size == 128000  # Falls back to known context windows
 
 
 @patch('requests.post')
@@ -505,7 +505,7 @@ def test_detect_ollama_timeout(mock_post, detector):
 
     size = detector.detect('ollama', 'qwen2.5-coder:32b')
 
-    assert size == 128000  # Falls back to known
+    assert size == 128000  # Falls back to known context windows
 
 
 @patch('requests.post')
@@ -519,4 +519,4 @@ def test_detect_ollama_malformed_modelfile(mock_post, detector):
 
     size = detector.detect('ollama', 'qwen2.5-coder:32b')
 
-    assert size == 128000  # Falls back to known
+    assert size == 128000  # Falls back to known context windows

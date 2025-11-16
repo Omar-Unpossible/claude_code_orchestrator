@@ -17,6 +17,7 @@ Created: 2025-01-15
 Version: 1.0.0
 """
 
+import copy
 import logging
 import requests
 from typing import Optional, Dict, Any
@@ -127,6 +128,9 @@ class ContextWindowDetector:
         self.fallback_size = fallback_size
         self.timeout = timeout
 
+        # Create instance copy of known context windows to prevent test pollution
+        self.known_context_windows = copy.deepcopy(self.KNOWN_CONTEXT_WINDOWS)
+
         # Ollama URL: check environment, then use default
         if ollama_base_url is None:
             import os
@@ -196,9 +200,9 @@ class ContextWindowDetector:
             )
 
         # Try known context windows
-        if provider in self.KNOWN_CONTEXT_WINDOWS:
-            if model in self.KNOWN_CONTEXT_WINDOWS[provider]:
-                size = self.KNOWN_CONTEXT_WINDOWS[provider][model]
+        if provider in self.known_context_windows:
+            if model in self.known_context_windows[provider]:
+                size = self.known_context_windows[provider][model]
                 logger.info(
                     f"Using known context window for {provider}/{model}: {size:,} tokens"
                 )
@@ -321,8 +325,8 @@ class ContextWindowDetector:
         )
 
         # Check known values
-        if model in self.KNOWN_CONTEXT_WINDOWS['anthropic']:
-            return self.KNOWN_CONTEXT_WINDOWS['anthropic'][model]
+        if model in self.known_context_windows['anthropic']:
+            return self.known_context_windows['anthropic'][model]
 
         # Pattern matching for model families
         if 'claude-3' in model or 'claude-3-5' in model:
@@ -351,8 +355,8 @@ class ContextWindowDetector:
         )
 
         # Check known values
-        if model in self.KNOWN_CONTEXT_WINDOWS['openai']:
-            return self.KNOWN_CONTEXT_WINDOWS['openai'][model]
+        if model in self.known_context_windows['openai']:
+            return self.known_context_windows['openai'][model]
 
         # Pattern matching for model families
         if 'gpt-4-turbo' in model or 'gpt-4-1106' in model or 'gpt-4-0125' in model:
@@ -385,10 +389,10 @@ class ContextWindowDetector:
         """
         provider = provider.lower()
 
-        if provider not in self.KNOWN_CONTEXT_WINDOWS:
-            self.KNOWN_CONTEXT_WINDOWS[provider] = {}
+        if provider not in self.known_context_windows:
+            self.known_context_windows[provider] = {}
 
-        self.KNOWN_CONTEXT_WINDOWS[provider][model] = context_size
+        self.known_context_windows[provider][model] = context_size
         logger.debug(
             f"Updated known context window: {provider}/{model} = {context_size}"
         )
